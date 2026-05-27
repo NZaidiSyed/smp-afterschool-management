@@ -557,6 +557,19 @@ input, select, textarea {
   height: 82px;
 }
 
+.import-edit-input {
+  width: 100%;
+  min-width: 120px;
+  margin: 0;
+  padding: 8px 9px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.import-edit-input[type="number"] {
+  min-width: 96px;
+}
+
 .overdue-name {
   color: #c1121f !important;
   font-weight: 900;

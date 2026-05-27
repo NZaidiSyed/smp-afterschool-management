@@ -741,6 +741,24 @@ function buildBatchImportPreview(rows) {
   });
 }
 
+function revalidateBatchImportPreview() {
+  const seen = new Set();
+  state.batchImportPreview = (state.batchImportPreview || []).map((row, index) => {
+    const data = row.data;
+    const errors = validateBatchStudent(data, seen);
+    return {
+      ...row,
+      row_number: index + 1,
+      errors,
+      valid: errors.length === 0,
+    };
+  });
+}
+
+function importInput(index, field, value, type = "text") {
+  return `<input class="import-edit-input" type="${type}" data-batch-index="${index}" data-batch-field="${field}" value="${escapeAttr(value || "")}">`;
+}
+
 function renderBatchImportPreview() {
   const panel = qs("#batchImportPanel");
   if (!panel) return;
@@ -754,21 +772,63 @@ function renderBatchImportPreview() {
   const invalid = rows.length - valid;
   qs("#batchImportSummary").textContent = `${state.batchImportFileName || "CSV"}: ${valid} ready, ${invalid} need correction. Valid rows will create Student Roster records and Fee Tracker rows after confirmation.`;
   qs("#applyBatchImport").disabled = valid === 0;
-  const body = rows.map((row) => [
+  const body = rows.map((row, index) => [
     row.row_number,
     row.valid ? `<span class="confidence high">Ready</span>` : `<span class="confidence low">Fix Required</span>`,
-    escapeHtml(row.data.student_name),
-    escapeHtml(row.data.parent_guardian),
-    escapeHtml(row.data.status),
-    escapeHtml(row.data.enrol_date),
-    escapeHtml(row.data.subjects),
-    escapeHtml(row.data.rate_type),
-    money(normalizeMoney(row.data.std_monthly_fee)),
-    escapeHtml(row.data.payment_method),
+    importInput(index, "student_name", row.data.student_name),
+    importInput(index, "parent_guardian", row.data.parent_guardian),
+    `<select class="import-edit-input" data-batch-index="${index}" data-batch-field="status">
+      <option value="C" ${row.data.status === "C" ? "selected" : ""}>C</option>
+      <option value="D" ${row.data.status === "D" ? "selected" : ""}>D</option>
+    </select>`,
+    importInput(index, "enrol_date", row.data.enrol_date, "date"),
+    importInput(index, "subjects", row.data.subjects),
+    importInput(index, "rate_type", row.data.rate_type),
+    importInput(index, "std_monthly_fee", row.data.std_monthly_fee, "number"),
+    importInput(index, "payment_method", row.data.payment_method),
+    importInput(index, "phone", row.data.phone),
+    importInput(index, "email", row.data.email, "email"),
     row.data.miscellaneous.length ? escapeHtml(row.data.miscellaneous.map((item) => item.heading).join(", ")) : "-",
     escapeHtml(row.errors.join("; ") || "Validated"),
+    `<button type="button" class="small danger" data-delete-import-row="${index}">Delete</button>`,
   ]);
-  renderTable(qs("#batchImportTable"), ["Row", "Status", "Student", "Parent / Guardian", "C/D", "Enrol Date", "Subjects", "Rate Type", "STD Fee", "Pay Method", "Miscellaneous Headings", "Validation"], body);
+  renderTable(qs("#batchImportTable"), ["Row", "Status", "Student", "Parent / Guardian", "C/D", "Enrol Date", "Subjects", "Rate Type", "STD Fee", "Pay Method", "Phone", "Email", "Miscellaneous Headings", "Validation", "Action"], body);
+  document.querySelectorAll("[data-batch-field]").forEach((control) => {
+    control.addEventListener("change", () => updateBatchImportCell(control));
+    control.addEventListener("input", () => updateBatchImportCell(control, true));
+  });
+  document.querySelectorAll("[data-delete-import-row]").forEach((button) => {
+    button.addEventListener("click", () => deleteBatchImportRow(Number(button.dataset.deleteImportRow)));
+  });
+}
+
+function updateBatchImportCell(control, quiet = false) {
+  const row = state.batchImportPreview[Number(control.dataset.batchIndex)];
+  if (!row) return;
+  const field = control.dataset.batchField;
+  row.data[field] = control.value;
+  if (field === "status") row.data.status = String(control.value || "").toUpperCase().slice(0, 1);
+  if (field === "subjects") row.data.subjects = subjectText(control.value);
+  if (field === "std_monthly_fee") row.data.std_fee_column_found = true;
+  revalidateBatchImportPreview();
+  if (!quiet) {
+    renderBatchImportPreview();
+    toast("Import row updated and revalidated");
+  } else {
+    const valid = state.batchImportPreview.filter((item) => item.valid).length;
+    qs("#batchImportSummary").textContent = `${state.batchImportFileName || "CSV"}: ${valid} ready, ${state.batchImportPreview.length - valid} need correction. Valid rows will create Student Roster records and Fee Tracker rows after confirmation.`;
+    qs("#applyBatchImport").disabled = valid === 0;
+  }
+}
+
+function deleteBatchImportRow(index) {
+  const row = state.batchImportPreview[index];
+  if (!row) return;
+  if (!confirm(`Remove ${row.data.student_name || "this row"} from the import preview?`)) return;
+  state.batchImportPreview.splice(index, 1);
+  revalidateBatchImportPreview();
+  renderBatchImportPreview();
+  toast("Import row removed");
 }
 
 async function applyBatchImport() {
