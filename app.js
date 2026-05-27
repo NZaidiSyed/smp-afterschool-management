@@ -639,28 +639,71 @@ function pick(row, names) {
   return "";
 }
 
+function matchedKey(row, names) {
+  const keys = Object.keys(row);
+  for (const name of names) {
+    const normalizedName = name.replace(/[^a-z0-9]/g, "");
+    const match = keys.find((key) => key === name || key.replace(/[^a-z0-9]/g, "") === normalizedName);
+    if (match) return match;
+  }
+  return "";
+}
+
 function normalizeMoney(value) {
   const text = String(value || "").replace(/[$,\s]/g, "");
   const parsed = Number(text);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+const batchColumnAliases = {
+  student_name: ["student name", "student", "name"],
+  parent_guardian: ["parent guardian", "parent / guardian", "parent", "guardian", "payer"],
+  status: ["status"],
+  enrol_date: ["enrol date", "enrolment date", "enrollment date", "start date"],
+  subjects: ["subjects", "subject", "subject selections"],
+  rate_type: ["rate type", "type"],
+  std_monthly_fee: ["std fee", "standard monthly fee", "std monthly fee", "monthly fee", "fee"],
+  payment_method: ["payment method", "pay method", "method"],
+  phone: ["phone", "mobile"],
+  email: ["email", "e-mail"],
+  siblings: ["siblings"],
+  notes: ["notes", "comments"],
+};
+
+function miscellaneousCsvData(row) {
+  const knownKeys = new Set(Object.values(batchColumnAliases).flatMap((aliases) => {
+    const key = matchedKey(row, aliases);
+    return key ? [key] : [];
+  }));
+  return Object.entries(row)
+    .filter(([key, value]) => !knownKeys.has(key) && String(value || "").trim())
+    .map(([key, value]) => ({ heading: key, value: String(value).trim() }));
+}
+
 function normalizeBatchRow(row) {
-  const rawSubjects = pick(row, ["subjects", "subject", "subject selections"]);
+  const rawSubjects = pick(row, batchColumnAliases.subjects);
   const subjects = subjectText(rawSubjects);
+  const feeColumn = matchedKey(row, batchColumnAliases.std_monthly_fee);
+  const miscellaneous = miscellaneousCsvData(row);
+  const baseNotes = pick(row, batchColumnAliases.notes).trim();
+  const miscText = miscellaneous.length
+    ? `Miscellaneous CSV Data: ${miscellaneous.map((item) => `${item.heading}: ${item.value}`).join("; ")}`
+    : "";
   return {
-    student_name: pick(row, ["student name", "student", "name"]).trim(),
-    parent_guardian: pick(row, ["parent guardian", "parent / guardian", "parent", "guardian", "payer"]).trim(),
-    status: (pick(row, ["status"]) || "C").trim().toUpperCase().slice(0, 1),
-    enrol_date: pick(row, ["enrol date", "enrolment date", "enrollment date", "start date"]).trim(),
+    student_name: pick(row, batchColumnAliases.student_name).trim(),
+    parent_guardian: pick(row, batchColumnAliases.parent_guardian).trim(),
+    status: (pick(row, batchColumnAliases.status) || "C").trim().toUpperCase().slice(0, 1),
+    enrol_date: pick(row, batchColumnAliases.enrol_date).trim(),
     subjects,
-    rate_type: (pick(row, ["rate type", "type"]) || "Regular").trim(),
-    std_monthly_fee: pick(row, ["std fee", "standard monthly fee", "monthly fee", "fee"]),
-    payment_method: (pick(row, ["payment method", "pay method", "method"]) || "PAD").trim(),
-    phone: pick(row, ["phone", "mobile"]).trim(),
-    email: pick(row, ["email", "e-mail"]).trim(),
-    siblings: pick(row, ["siblings"]).trim(),
-    notes: pick(row, ["notes", "comments"]).trim(),
+    rate_type: (pick(row, batchColumnAliases.rate_type) || "Regular").trim(),
+    std_monthly_fee: feeColumn ? row[feeColumn] : "",
+    std_fee_column_found: Boolean(feeColumn),
+    payment_method: (pick(row, batchColumnAliases.payment_method) || "PAD").trim(),
+    phone: pick(row, batchColumnAliases.phone).trim(),
+    email: pick(row, batchColumnAliases.email).trim(),
+    siblings: pick(row, batchColumnAliases.siblings).trim(),
+    notes: [baseNotes, miscText].filter(Boolean).join("\n"),
+    miscellaneous,
   };
 }
 
@@ -670,7 +713,9 @@ function validateBatchStudent(row, seen) {
   if (!["C", "D"].includes(row.status)) errors.push("Status must be C or D");
   if (!row.subjects) errors.push("Subject missing");
   if (row.enrol_date && Number.isNaN(Date.parse(row.enrol_date))) errors.push("Enrol date not valid");
-  if (String(row.std_monthly_fee || "").trim() && normalizeMoney(row.std_monthly_fee) <= 0) errors.push("STD fee not valid");
+  if (!row.std_fee_column_found) errors.push("STD Fee column missing");
+  else if (!String(row.std_monthly_fee || "").trim()) errors.push("STD Fee value missing");
+  else if (normalizeMoney(row.std_monthly_fee) <= 0) errors.push("STD Fee not valid");
   const key = `${row.student_name.toLowerCase()}|${row.parent_guardian.toLowerCase()}`;
   if (seen.has(key)) errors.push("Duplicate in this CSV");
   seen.add(key);
@@ -720,9 +765,10 @@ function renderBatchImportPreview() {
     escapeHtml(row.data.rate_type),
     money(normalizeMoney(row.data.std_monthly_fee)),
     escapeHtml(row.data.payment_method),
+    row.data.miscellaneous.length ? escapeHtml(row.data.miscellaneous.map((item) => item.heading).join(", ")) : "-",
     escapeHtml(row.errors.join("; ") || "Validated"),
   ]);
-  renderTable(qs("#batchImportTable"), ["Row", "Status", "Student", "Parent / Guardian", "C/D", "Enrol Date", "Subjects", "Rate Type", "STD Fee", "Pay Method", "Validation"], body);
+  renderTable(qs("#batchImportTable"), ["Row", "Status", "Student", "Parent / Guardian", "C/D", "Enrol Date", "Subjects", "Rate Type", "STD Fee", "Pay Method", "Miscellaneous Headings", "Validation"], body);
 }
 
 async function applyBatchImport() {
