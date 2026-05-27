@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, unquote, urlparse, urlunparse
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
@@ -30,12 +30,38 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 WORKBOOK = ROOT / "Kumon_Tracking_FINAL-1.xlsm"
 DB = DATA_DIR / "kumon_tracking.sqlite3"
 BACKUP_DIR = Path(os.environ.get("SMP_BACKUP_DIR", "C:/Back/Day"))
-DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
-PG_MODE = bool(DATABASE_URL)
 SMP_ORGANIZATION_ID = os.environ.get("SMP_ORGANIZATION_ID", "").strip()
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
 SUPABASE_REQUIRE_AUTH = os.environ.get("SUPABASE_REQUIRE_AUTH", "0").lower() in {"1", "true", "yes", "on"}
+
+
+def normalized_database_url():
+    raw = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL") or ""
+    if not raw:
+        return ""
+    parsed = urlparse(raw)
+    if "pooler.supabase.com" not in parsed.hostname or parsed.username != "postgres":
+        return raw
+    project_ref = ""
+    if SUPABASE_URL:
+        project_ref = urlparse(SUPABASE_URL).hostname.split(".")[0]
+    if not project_ref:
+        match = re.search(r"postgresql://postgres\.([a-z0-9]+):", raw)
+        project_ref = match.group(1) if match else ""
+    if not project_ref:
+        return raw
+    password = quote(unquote(parsed.password or ""), safe="")
+    user = f"postgres.{project_ref}"
+    auth = f"{user}:{password}" if password else user
+    host = parsed.hostname or ""
+    if parsed.port:
+        host = f"{host}:{parsed.port}"
+    return urlunparse((parsed.scheme, f"{auth}@{host}", parsed.path, parsed.params, parsed.query, parsed.fragment))
+
+
+DATABASE_URL = normalized_database_url()
+PG_MODE = bool(DATABASE_URL)
 DEFAULT_SETTINGS = {
     "institution_name": "SMP - After School Management Program",
     "institution_phone": "",
