@@ -71,6 +71,36 @@ h2 { font-size: 20px; }
   align-items: flex-end;
 }
 
+.header-signout {
+  padding: 8px 13px;
+  font-size: 13px;
+}
+
+.auth-panel {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(23, 33, 43, .45);
+  backdrop-filter: blur(8px);
+}
+
+.auth-card {
+  width: min(440px, 100%);
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 28px;
+}
+
+.auth-card input {
+  width: 100%;
+  margin: 18px 0 8px;
+}
+
 .phone-pill {
   background: white;
   border: 1px solid var(--line);

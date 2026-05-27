@@ -8,6 +8,16 @@ services:
     envVars:
       - key: SMP_DATA_DIR
         value: /var/data
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_REQUIRE_AUTH
+        value: "1"
+      - key: SMP_ORGANIZATION_ID
+        sync: false
     disk:
       name: smp-data
       mountPath: /var/data

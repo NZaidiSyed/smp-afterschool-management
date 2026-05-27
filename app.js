@@ -18,6 +18,10 @@ let state = {
   feeImportPreview: [],
 };
 
+let appConfig = { auth_required: false };
+let supabaseClient = null;
+let authSession = null;
+
 const money = (value) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(value || 0);
 const number = (value) => new Intl.NumberFormat("en-CA", { maximumFractionDigits: 2 }).format(value || 0);
 const qs = (selector, root = document) => root.querySelector(selector);
@@ -30,13 +34,65 @@ function toast(message) {
 }
 
 async function api(path, options = {}) {
+  const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
+  if (authSession?.access_token) headers.Authorization = `Bearer ${authSession.access_token}`;
   const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
+    headers,
     ...options,
   });
   const data = await res.json();
   if (!res.ok || data.ok === false) throw new Error(data.error || "Request failed");
   return data;
+}
+
+async function initAuth() {
+  const res = await fetch("/api/config", { headers: { "Content-Type": "application/json" } });
+  appConfig = await res.json();
+  if (!appConfig.auth_required) {
+    qs("#authPanel")?.classList.add("collapsed");
+    if (qs("#signOut")) qs("#signOut").style.display = "none";
+    return true;
+  }
+  if (qs("#signOut")) qs("#signOut").style.display = "inline-flex";
+  if (!window.supabase || !appConfig.supabase_url || !appConfig.supabase_anon_key) {
+    qs("#authMessage").textContent = "Authentication is not ready. Check Render environment variables.";
+    qs("#authPanel").classList.remove("collapsed");
+    return false;
+  }
+  supabaseClient = window.supabase.createClient(appConfig.supabase_url, appConfig.supabase_anon_key);
+  const { data } = await supabaseClient.auth.getSession();
+  authSession = data.session;
+  if (!authSession) {
+    qs("#authPanel").classList.remove("collapsed");
+    return false;
+  }
+  qs("#authPanel").classList.add("collapsed");
+  return true;
+}
+
+async function sendMagicLink(event) {
+  event.preventDefault();
+  const email = qs("#loginEmail").value.trim();
+  if (!email || !supabaseClient) return;
+  const { error } = await supabaseClient.auth.signInWithOtp({
+    email,
+    options: { emailRedirectTo: window.location.origin },
+  });
+  qs("#authMessage").textContent = error ? error.message : "Check your email for the login link.";
+}
+
+async function signInWithGoogle() {
+  if (!supabaseClient) return;
+  await supabaseClient.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: window.location.origin },
+  });
+}
+
+async function signOut() {
+  if (supabaseClient) await supabaseClient.auth.signOut();
+  authSession = null;
+  qs("#authPanel").classList.remove("collapsed");
 }
 
 async function load() {
@@ -300,8 +356,8 @@ function renderRoster() {
       `<div class="row-actions"><button class="small" data-profile="${s.id}">Profile</button><button class="small danger" data-delete="${s.id}">Delete</button></div>`,
     ]);
   renderTable(qs("#rosterTable"), ["#", "Student Name", "Parent / Guardian", "Status", "Enrol Date", "Subjects", "Last Modification", "Rate Type", "STD Fee", "Pay Method", "Phone", "Email", "Actions"], rows);
-  document.querySelectorAll("[data-profile]").forEach((button) => button.addEventListener("click", () => showStudentProfile(Number(button.dataset.profile))));
-  document.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", () => deleteStudent(Number(button.dataset.delete))));
+  document.querySelectorAll("[data-profile]").forEach((button) => button.addEventListener("click", () => showStudentProfile(button.dataset.profile)));
+  document.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", () => deleteStudent(button.dataset.delete)));
 }
 
 function isStudentOverdue(studentId) {
@@ -386,8 +442,8 @@ function renderSettings() {
   `;
   qs("#formulaManifest").textContent = JSON.stringify(state.formula_manifest, null, 2);
   renderBillingAndAccess();
-  document.querySelectorAll("[data-save-rate]").forEach((button) => button.addEventListener("click", () => saveRate(Number(button.dataset.saveRate))));
-  document.querySelectorAll("[data-delete-rate]").forEach((button) => button.addEventListener("click", () => deleteRate(Number(button.dataset.deleteRate))));
+  document.querySelectorAll("[data-save-rate]").forEach((button) => button.addEventListener("click", () => saveRate(button.dataset.saveRate)));
+  document.querySelectorAll("[data-delete-rate]").forEach((button) => button.addEventListener("click", () => deleteRate(button.dataset.deleteRate)));
 }
 
 function selectedSubjectValues() {
@@ -438,8 +494,8 @@ function renderBillingAndAccess() {
     state.backups.map((b) => [b.name, b.modified, `${Math.round((b.size || 0) / 1024)} KB`])
   );
 
-  document.querySelectorAll("[data-save-discount]").forEach((button) => button.addEventListener("click", () => saveDiscount(Number(button.dataset.saveDiscount))));
-  document.querySelectorAll("[data-delete-discount]").forEach((button) => button.addEventListener("click", () => deleteDiscount(Number(button.dataset.deleteDiscount))));
+  document.querySelectorAll("[data-save-discount]").forEach((button) => button.addEventListener("click", () => saveDiscount(button.dataset.saveDiscount)));
+  document.querySelectorAll("[data-delete-discount]").forEach((button) => button.addEventListener("click", () => deleteDiscount(button.dataset.deleteDiscount)));
 }
 
 function applyInstitutionDefaults() {
@@ -603,7 +659,7 @@ function renderReconciliation() {
     const confidence = best.confidence || "low";
     const reasons = (best.reasons || []).join("; ") || "No strong matching reason yet";
     const selectedStudentId = row.selected_student_id || best.student_id || "";
-    const selectedCandidate = (row.candidates || []).find((candidate) => candidate.student_id === Number(selectedStudentId)) || best;
+    const selectedCandidate = (row.candidates || []).find((candidate) => String(candidate.student_id) === String(selectedStudentId)) || best;
     const monthValue = row.selected_month || row.month_label || "";
     const buttonClass = row.verified ? "verify-action verified" : "verify-action needs-review";
     const buttonLabel = row.verified ? (row.manually_verified ? "Verified Now to ADD" : "Verified to ADD") : "Verify and Correct";
@@ -613,7 +669,7 @@ function renderReconciliation() {
       money(row.amount),
       escapeHtml(row.source || "-"),
       `<select data-recon-student="${index}">
-        ${(row.candidates || []).map((candidate) => `<option value="${candidate.student_id}" ${candidate.student_id === Number(selectedStudentId) ? "selected" : ""}>${escapeHtml(candidate.student_name)} - ${escapeHtml(candidate.parent_guardian || "No guardian")} - ${candidate.score}%</option>`).join("")}
+        ${(row.candidates || []).map((candidate) => `<option value="${candidate.student_id}" ${String(candidate.student_id) === String(selectedStudentId) ? "selected" : ""}>${escapeHtml(candidate.student_name)} - ${escapeHtml(candidate.parent_guardian || "No guardian")} - ${candidate.score}%</option>`).join("")}
       </select>`,
       escapeHtml(selectedCandidate?.parent_guardian || "-"),
       money(selectedCandidate?.expected_fee || 0),
@@ -703,7 +759,7 @@ function renderModifyResults() {
   qs("#modifyResults").innerHTML = matches.length
     ? matches.map((s) => `<button type="button" class="result-row" data-modify="${s.id}"><strong>${s.student_name}</strong><span>${s.parent_guardian || ""} · ${s.subjects} · ${s.status}</span></button>`).join("")
     : `<p class="muted-note">Type a name to find a student record.</p>`;
-  document.querySelectorAll("[data-modify]").forEach((button) => button.addEventListener("click", () => editStudent(Number(button.dataset.modify))));
+  document.querySelectorAll("[data-modify]").forEach((button) => button.addEventListener("click", () => editStudent(button.dataset.modify)));
 }
 
 async function saveRate(id) {
@@ -817,7 +873,7 @@ function updateReconSelection(index) {
   if (!row) return;
   const select = qs(`[data-recon-student="${index}"]`);
   const month = qs(`[data-recon-month="${index}"]`);
-  row.selected_student_id = Number(select?.value || 0);
+  row.selected_student_id = select?.value || "";
   row.selected_month = month?.value || row.month_label || "";
   row.verified = false;
   row.manually_verified = false;
@@ -827,7 +883,7 @@ function updateReconSelection(index) {
 function verifyReconciliationRow(index) {
   const row = state.reconciliationPreview[index];
   if (!row) return;
-  const selectedStudentId = Number(qs(`[data-recon-student="${index}"]`)?.value || row.selected_student_id || row.best_match?.student_id || 0);
+  const selectedStudentId = qs(`[data-recon-student="${index}"]`)?.value || row.selected_student_id || row.best_match?.student_id || "";
   const selectedMonth = qs(`[data-recon-month="${index}"]`)?.value || row.selected_month || row.month_label || "";
   if (!selectedStudentId) {
     toast("Select a student before applying");
@@ -858,9 +914,9 @@ async function applyReconciliation(index) {
 }
 
 async function postReconciliationRow(row) {
-  const selectedStudentId = Number(row.selected_student_id || row.best_match?.student_id || 0);
+  const selectedStudentId = row.selected_student_id || row.best_match?.student_id || "";
   const selectedMonth = row.selected_month || row.month_label || "";
-  const candidate = (row.candidates || []).find((item) => item.student_id === selectedStudentId) || row.best_match || {};
+  const candidate = (row.candidates || []).find((item) => String(item.student_id) === String(selectedStudentId)) || row.best_match || {};
   if (!selectedStudentId || !selectedMonth || !row.verified) {
     throw new Error("Verify each row before adding");
   }
@@ -977,6 +1033,9 @@ qs("#applyFeeImport").addEventListener("click", applyFeeImport);
 qs("#paymentCsv").addEventListener("change", handlePaymentUpload);
 qs("#batchCsv").addEventListener("change", handleBatchCsv);
 qs("#applyVerifiedRows").addEventListener("click", applyVerifiedRows);
+qs("#authForm")?.addEventListener("submit", sendMagicLink);
+qs("#googleLogin")?.addEventListener("click", signInWithGoogle);
+qs("#signOut")?.addEventListener("click", signOut);
 
 qs("#batchForm").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1000,4 +1059,16 @@ qs("#batchForm").addEventListener("submit", async (event) => {
 
 qs("#clearBatch").addEventListener("click", renderBatch);
 
-load().catch((error) => toast(error.message));
+(async function start() {
+  const ready = await initAuth();
+  if (ready) await load();
+  if (supabaseClient) {
+    supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+      authSession = session;
+      if (session) {
+        qs("#authPanel").classList.add("collapsed");
+        await load();
+      }
+    });
+  }
+})().catch((error) => toast(error.message));

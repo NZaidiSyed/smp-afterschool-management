@@ -8,11 +8,20 @@ import csv
 import io
 import os
 from difflib import SequenceMatcher
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
+
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:  # Local development can keep using SQLite without extra packages.
+    psycopg = None
+    dict_row = None
 
 
 ROOT = Path(__file__).resolve().parent
@@ -21,6 +30,12 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 WORKBOOK = ROOT / "Kumon_Tracking_FINAL-1.xlsm"
 DB = DATA_DIR / "kumon_tracking.sqlite3"
 BACKUP_DIR = Path(os.environ.get("SMP_BACKUP_DIR", "C:/Back/Day"))
+DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL")
+PG_MODE = bool(DATABASE_URL)
+SMP_ORGANIZATION_ID = os.environ.get("SMP_ORGANIZATION_ID", "").strip()
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
+SUPABASE_REQUIRE_AUTH = os.environ.get("SUPABASE_REQUIRE_AUTH", "0").lower() in {"1", "true", "yes", "on"}
 DEFAULT_SETTINGS = {
     "institution_name": "SMP - After School Management Program",
     "institution_phone": "",
@@ -604,6 +619,10 @@ def ensure_meta_defaults():
 
 
 def db():
+    if PG_MODE:
+        if psycopg is None:
+            raise RuntimeError("psycopg is required when DATABASE_URL/SUPABASE_DB_URL is configured")
+        return psycopg.connect(DATABASE_URL, row_factory=dict_row)
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -611,10 +630,110 @@ def db():
 
 
 def rowdict(row):
-    return dict(row)
+    def clean(value):
+        if isinstance(value, Decimal):
+            return float(value)
+        if isinstance(value, (date, datetime)):
+            return value.isoformat()
+        if isinstance(value, list):
+            return [clean(item) for item in value]
+        return value
+    return {key: clean(value) for key, value in dict(row).items()}
+
+
+def execute(conn, sql, params=()):
+    if PG_MODE:
+        return conn.execute(sql.replace("?", "%s"), params)
+    return conn.execute(sql, params)
+
+
+def execute_many(conn, sql, rows):
+    if PG_MODE:
+        return conn.executemany(sql.replace("?", "%s"), rows)
+    return conn.executemany(sql, rows)
+
+
+def row_value(row, key, default=""):
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    return row[key] if key in row.keys() else default
+
+
+def pg_scalar(value):
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value
+    return str(value)
+
+
+def current_org_id(conn):
+    global SMP_ORGANIZATION_ID
+    if not PG_MODE:
+        return None
+    if SMP_ORGANIZATION_ID:
+        return SMP_ORGANIZATION_ID
+    row = conn.execute("SELECT id::text AS id FROM public.organizations ORDER BY created_at LIMIT 1").fetchone()
+    if row:
+        SMP_ORGANIZATION_ID = row["id"]
+        return SMP_ORGANIZATION_ID
+    row = conn.execute(
+        """
+        INSERT INTO public.organizations(name, details, subjects_offered, current_month)
+        VALUES (%s, %s, %s, %s)
+        RETURNING id::text AS id
+        """,
+        (
+            DEFAULT_SETTINGS["institution_name"],
+            DEFAULT_SETTINGS["institution_details"],
+            configured_subjects(DEFAULT_SETTINGS),
+            DEFAULT_SETTINGS["current_month"],
+        ),
+    ).fetchone()
+    SMP_ORGANIZATION_ID = row["id"]
+    conn.commit()
+    return SMP_ORGANIZATION_ID
+
+
+def pg_subjects(value):
+    return subject_list(value)
+
+
+def display_student(row):
+    item = rowdict(row)
+    item["id"] = str(item["id"])
+    item["subjects"] = subjects_text(item.get("subjects"))
+    if item.get("enrol_date"):
+        item["enrol_date"] = str(item["enrol_date"])
+    item["std_monthly_fee"] = float(item.get("std_monthly_fee") or 0)
+    return item
 
 
 def get_settings(conn):
+    if PG_MODE:
+        org_id = current_org_id(conn)
+        row = conn.execute(
+            """
+            SELECT name, phone, details, subjects_offered, current_month
+            FROM public.organizations
+            WHERE id=%s
+            """,
+            (org_id,),
+        ).fetchone()
+        values = dict(DEFAULT_SETTINGS)
+        if row:
+            values.update(
+                {
+                    "institution_name": row.get("name") or DEFAULT_SETTINGS["institution_name"],
+                    "institution_phone": row.get("phone") or "",
+                    "institution_details": row.get("details") or DEFAULT_SETTINGS["institution_details"],
+                    "subjects_offered": "\n".join(row.get("subjects_offered") or ["Math", "English"]),
+                    "current_month": row.get("current_month") or DEFAULT_SETTINGS["current_month"],
+                }
+            )
+        return values
     rows = conn.execute("SELECT key, value FROM app_meta").fetchall()
     values = {row["key"]: row["value"] for row in rows}
     for key, value in DEFAULT_SETTINGS.items():
@@ -698,10 +817,20 @@ def normalize_student(data):
         with db() as conn:
             fee = 0
             for subject in subject_list(subjects):
-                rate = conn.execute(
-                    "SELECT monthly_fee FROM rates WHERE lower(subject)=lower(?) AND rate_type=?",
-                    (subject, rate_type),
-                ).fetchone()
+                if PG_MODE:
+                    rate = conn.execute(
+                        """
+                        SELECT monthly_fee
+                        FROM public.rates
+                        WHERE organization_id=%s AND lower(subject)=lower(%s) AND rate_type=%s
+                        """,
+                        (current_org_id(conn), subject, rate_type),
+                    ).fetchone()
+                else:
+                    rate = conn.execute(
+                        "SELECT monthly_fee FROM rates WHERE lower(subject)=lower(?) AND rate_type=?",
+                        (subject, rate_type),
+                    ).fetchone()
                 fee += float(rate["monthly_fee"]) if rate else 0
     return {
         "student_name": str(data.get("student_name", "")).strip(),
@@ -818,7 +947,7 @@ def score_payment_match(row, student, aliases, payments):
             reasons.append("parent/guardian name token match")
 
     alias_hit = ""
-    for alias in aliases.get(student["id"], []):
+    for alias in aliases.get(str(student["id"]), []):
         alias_text = clean_match_text(alias)
         if alias_text and alias_text in description:
             alias_hit = alias
@@ -840,7 +969,7 @@ def score_payment_match(row, student, aliases, payments):
         reasons.append("amount is close to standard fee")
 
     prev_month = previous_month_label(month_label)
-    prev_paid = float(payments.get(student["id"], {}).get(prev_month, 0) or 0) if prev_month else 0
+    prev_paid = float(payments.get(str(student["id"]), {}).get(prev_month, 0) or 0) if prev_month else 0
     enrol_date = str(student.get("enrol_date") or "")
     month_date = month_to_date(month_label)
     is_new_enrolment = bool(enrol_date and month_label and enrol_date.startswith(month_date.strftime("%Y-%m")))
@@ -879,10 +1008,17 @@ def preview_reconciliation(rows):
     with db() as conn:
         students = [rowdict(row) for row in conn.execute("SELECT * FROM students WHERE upper(status)='C' ORDER BY student_name")]
         payments = get_payments(conn)
-        alias_rows = conn.execute("SELECT student_id, alias FROM payer_aliases").fetchall()
+        if PG_MODE:
+            students = get_students(conn)
+            alias_rows = conn.execute(
+                "SELECT student_id::text AS student_id, alias FROM public.payer_aliases WHERE organization_id=%s",
+                (current_org_id(conn),),
+            ).fetchall()
+        else:
+            alias_rows = conn.execute("SELECT student_id, alias FROM payer_aliases").fetchall()
     aliases = {}
     for row in alias_rows:
-        aliases.setdefault(row["student_id"], []).append(row["alias"])
+        aliases.setdefault(str(row["student_id"]), []).append(row["alias"])
 
     previews = []
     for index, row in enumerate(rows, start=1):
@@ -912,6 +1048,17 @@ def preview_reconciliation(rows):
 
 
 def reconciliation_summary(conn):
+    if PG_MODE:
+        rows = conn.execute(
+            """
+            SELECT match_status, COUNT(*) AS count, COALESCE(SUM(amount),0) AS total
+            FROM public.payment_import_rows
+            WHERE organization_id=%s
+            GROUP BY match_status
+            """,
+            (current_org_id(conn),),
+        ).fetchall()
+        return [rowdict(row) for row in rows]
     rows = conn.execute(
         """
         SELECT match_status, COUNT(*) AS count, COALESCE(SUM(amount),0) AS total
@@ -990,18 +1137,30 @@ def apply_fee_import(rows):
     applied = 0
     skipped = 0
     with db() as conn:
+        org_id = current_org_id(conn) if PG_MODE else None
         for item in preview:
             if not item["student_id"]:
                 skipped += 1
                 continue
             for month, amount in item["months"].items():
-                conn.execute(
-                    """
-                    INSERT INTO payments(student_id, month_label, amount) VALUES (?,?,?)
-                    ON CONFLICT(student_id, month_label) DO UPDATE SET amount=excluded.amount
-                    """,
-                    (item["student_id"], month, amount),
-                )
+                if PG_MODE:
+                    conn.execute(
+                        """
+                        INSERT INTO public.payments(organization_id, student_id, month_label, amount, payment_verified, payment_source)
+                        VALUES (%s,%s,%s,%s,true,'fee import')
+                        ON CONFLICT(student_id, month_label)
+                        DO UPDATE SET amount=excluded.amount, payment_verified=true, updated_at=now()
+                        """,
+                        (org_id, item["student_id"], month, amount),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        INSERT INTO payments(student_id, month_label, amount) VALUES (?,?,?)
+                        ON CONFLICT(student_id, month_label) DO UPDATE SET amount=excluded.amount
+                        """,
+                        (item["student_id"], month, amount),
+                    )
                 applied += 1
         conn.commit()
     return {"applied": applied, "skipped": skipped, "rows": preview}
@@ -1019,14 +1178,37 @@ def recent_months(current_month, count=13):
 
 
 def get_students(conn):
+    if PG_MODE:
+        rows = conn.execute(
+            """
+            SELECT id::text AS id, number, student_name, parent_guardian, status, enrol_date,
+                   subjects, rate_type, std_monthly_fee, payment_method, phone, email, siblings,
+                   notes, last_modification, created_at, updated_at
+            FROM public.students
+            WHERE organization_id=%s
+            ORDER BY number, student_name
+            """,
+            (current_org_id(conn),),
+        ).fetchall()
+        return [display_student(row) for row in rows]
     return [rowdict(row) for row in conn.execute("SELECT * FROM students ORDER BY number, student_name")]
 
 
 def get_payments(conn):
-    rows = conn.execute("SELECT student_id, month_label, amount FROM payments").fetchall()
+    if PG_MODE:
+        rows = conn.execute(
+            """
+            SELECT student_id::text AS student_id, month_label, amount
+            FROM public.payments
+            WHERE organization_id=%s
+            """,
+            (current_org_id(conn),),
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT student_id, month_label, amount FROM payments").fetchall()
     by_student = {}
     for row in rows:
-        by_student.setdefault(row["student_id"], {})[row["month_label"]] = float(row["amount"] or 0)
+        by_student.setdefault(str(row["student_id"]), {})[row["month_label"]] = float(row["amount"] or 0)
     return by_student
 
 
@@ -1034,7 +1216,7 @@ def fee_tracker(conn):
     payments = get_payments(conn)
     rows = []
     for student in get_students(conn):
-        month_values = {month: payments.get(student["id"], {}).get(month, 0) for month in MONTHS}
+        month_values = {month: payments.get(str(student["id"]), {}).get(month, 0) for month in MONTHS}
         total_paid = sum(month_values.values())
         balance = max(0, float(student["std_monthly_fee"] or 0) - total_paid) if student["status"].lower() == "c" else 0
         rows.append(
@@ -1091,6 +1273,129 @@ def dashboard(conn, current_month="May-26"):
     }
 
 
+def insert_student_record(conn, student, number):
+    note = datetime.now().strftime("%Y-%m-%d: Created")
+    if PG_MODE:
+        org_id = current_org_id(conn)
+        row = conn.execute(
+            """
+            INSERT INTO public.students (
+                organization_id, number, student_name, parent_guardian, status, enrol_date, subjects, rate_type,
+                std_monthly_fee, payment_method, phone, email, siblings, notes, last_modification
+            ) VALUES (%s,%s,%s,%s,%s,NULLIF(%s,'')::date,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id::text AS id
+            """,
+            (
+                org_id,
+                number,
+                student["student_name"],
+                student["parent_guardian"],
+                student["status"],
+                student["enrol_date"],
+                pg_subjects(student["subjects"]),
+                student["rate_type"],
+                student["std_monthly_fee"],
+                student["payment_method"],
+                student["phone"],
+                student["email"],
+                student["siblings"],
+                student["notes"],
+                note,
+            ),
+        ).fetchone()
+        student_id = row["id"]
+        execute_many(
+            conn,
+            """
+            INSERT INTO public.payments(organization_id, student_id, month_label, amount)
+            VALUES (?,?,?,0)
+            ON CONFLICT(student_id, month_label) DO NOTHING
+            """,
+            [(org_id, student_id, month) for month in MONTHS],
+        )
+        return student_id
+    cur = conn.execute(
+        """
+        INSERT INTO students (
+            number, student_name, parent_guardian, status, enrol_date, subjects, rate_type,
+            std_monthly_fee, payment_method, phone, email, siblings, notes, last_modification
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        (
+            number,
+            student["student_name"],
+            student["parent_guardian"],
+            student["status"],
+            student["enrol_date"],
+            student["subjects"],
+            student["rate_type"],
+            student["std_monthly_fee"],
+            student["payment_method"],
+            student["phone"],
+            student["email"],
+            student["siblings"],
+            student["notes"],
+            note,
+        ),
+    )
+    for month in MONTHS:
+        conn.execute("INSERT INTO payments(student_id, month_label, amount) VALUES (?,?,0)", (cur.lastrowid, month))
+    return cur.lastrowid
+
+
+def next_student_number(conn):
+    if PG_MODE:
+        row = conn.execute("SELECT COALESCE(MAX(number),0)+1 AS n FROM public.students WHERE organization_id=%s", (current_org_id(conn),)).fetchone()
+    else:
+        row = conn.execute("SELECT COALESCE(MAX(number),0)+1 AS n FROM students").fetchone()
+    return int(row["n"] or 1)
+
+
+def update_payment_amount(conn, student_id, month_label, amount, source="manual"):
+    if PG_MODE:
+        conn.execute(
+            """
+            INSERT INTO public.payments(organization_id, student_id, month_label, amount, payment_verified, payment_source)
+            VALUES (%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(student_id, month_label)
+            DO UPDATE SET amount=excluded.amount, payment_verified=excluded.payment_verified,
+                          payment_source=excluded.payment_source, updated_at=now()
+            """,
+            (current_org_id(conn), student_id, month_label, amount, amount > 0, source),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO payments(student_id, month_label, amount) VALUES (?,?,?)
+            ON CONFLICT(student_id, month_label) DO UPDATE SET amount=excluded.amount
+            """,
+            (student_id, month_label, amount),
+        )
+
+
+def ensure_pg_defaults():
+    with db() as conn:
+        org_id = current_org_id(conn)
+        for subject in ["Math", "English"]:
+            conn.execute(
+                """
+                INSERT INTO public.rates(organization_id, subject, rate_type, monthly_fee, description)
+                VALUES (%s,%s,'Regular',165,'Default starter rate')
+                ON CONFLICT(organization_id, subject, rate_type) DO NOTHING
+                """,
+                (org_id, subject),
+            )
+        conn.execute(
+            """
+            INSERT INTO public.discount_codes(organization_id, code, description, percent_off, amount_off, active)
+            VALUES (%s,'WELCOME14','Example admin-provided launch discount',10,0,true)
+            ON CONFLICT(organization_id, code) DO NOTHING
+            """,
+            (org_id,),
+        )
+        conn.commit()
+
+
 class Handler(SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
@@ -1119,26 +1424,85 @@ class Handler(SimpleHTTPRequestHandler):
             return {}
         return json.loads(self.rfile.read(length).decode("utf-8"))
 
+    def require_auth(self):
+        if not SUPABASE_REQUIRE_AUTH:
+            return True
+        if not SUPABASE_URL or not SUPABASE_ANON_KEY:
+            self.send_json({"ok": False, "error": "Supabase auth is not configured on the server"}, 503)
+            return False
+        token = self.headers.get("Authorization", "").replace("Bearer ", "", 1).strip()
+        if not token:
+            self.send_json({"ok": False, "error": "Login is required"}, 401)
+            return False
+        try:
+            request = Request(
+                f"{SUPABASE_URL}/auth/v1/user",
+                headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"},
+            )
+            with urlopen(request, timeout=8) as response:
+                return response.status == 200
+        except Exception:
+            self.send_json({"ok": False, "error": "Login session could not be verified"}, 401)
+            return False
+
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/config":
+            self.send_json(
+                {
+                    "ok": True,
+                    "auth_required": SUPABASE_REQUIRE_AUTH,
+                    "supabase_url": SUPABASE_URL if SUPABASE_REQUIRE_AUTH else "",
+                    "supabase_anon_key": SUPABASE_ANON_KEY if SUPABASE_REQUIRE_AUTH else "",
+                    "database": "supabase" if PG_MODE else "sqlite",
+                }
+            )
+            return
+        if parsed.path.startswith("/api/") and not self.require_auth():
+            return
         if parsed.path == "/api/bootstrap":
             with db() as conn:
                 settings = get_settings(conn)
+                if PG_MODE:
+                    org_id = current_org_id(conn)
+                    rates = [rowdict(row) for row in conn.execute("SELECT id::text AS id, subject, rate_type, monthly_fee, description FROM public.rates WHERE organization_id=%s ORDER BY subject, rate_type", (org_id,)).fetchall()]
+                    users = []
+                    subscriptions = [
+                        {
+                            "id": org_id,
+                            "user_id": "",
+                            "status": "trialing",
+                            "trial_start": "",
+                            "trial_end": "",
+                            "stripe_customer_id": "",
+                            "stripe_subscription_id": "",
+                        }
+                    ]
+                    discount_codes = [rowdict(row) for row in conn.execute("SELECT id::text AS id, code, description, percent_off, amount_off, active, created_at FROM public.discount_codes WHERE organization_id=%s OR organization_id IS NULL ORDER BY active DESC, code", (org_id,)).fetchall()]
+                    payer_aliases = [rowdict(row) for row in conn.execute("SELECT id::text AS id, student_id::text AS student_id, alias, source, created_at FROM public.payer_aliases WHERE organization_id=%s ORDER BY alias", (org_id,)).fetchall()]
+                    backups = []
+                else:
+                    rates = [rowdict(row) for row in conn.execute("SELECT * FROM rates ORDER BY subject, rate_type")]
+                    users = [rowdict(row) for row in conn.execute("SELECT id, email, display_name, role, auth_provider, created_at FROM users ORDER BY role, email")]
+                    subscriptions = [rowdict(row) for row in conn.execute("SELECT * FROM subscriptions ORDER BY id DESC")]
+                    discount_codes = [rowdict(row) for row in conn.execute("SELECT * FROM discount_codes ORDER BY active DESC, code")]
+                    payer_aliases = [rowdict(row) for row in conn.execute("SELECT * FROM payer_aliases ORDER BY alias")]
+                    backups = list_backups()
                 self.send_json(
                     {
                         "students": get_students(conn),
                         "fee_tracker": fee_tracker(conn),
                         "dashboard": dashboard(conn, settings.get("current_month", "May-26")),
-                        "rates": [rowdict(row) for row in conn.execute("SELECT * FROM rates ORDER BY subject, rate_type")],
+                        "rates": rates,
                         "months": MONTHS,
                         "formula_manifest": FORMULA_MANIFEST,
                         "settings": settings,
-                        "users": [rowdict(row) for row in conn.execute("SELECT id, email, display_name, role, auth_provider, created_at FROM users ORDER BY role, email")],
-                        "subscriptions": [rowdict(row) for row in conn.execute("SELECT * FROM subscriptions ORDER BY id DESC")],
-                        "discount_codes": [rowdict(row) for row in conn.execute("SELECT * FROM discount_codes ORDER BY active DESC, code")],
-                        "backups": list_backups(),
+                        "users": users,
+                        "subscriptions": subscriptions,
+                        "discount_codes": discount_codes,
+                        "backups": backups,
                         "reconciliation": reconciliation_summary(conn),
-                        "payer_aliases": [rowdict(row) for row in conn.execute("SELECT * FROM payer_aliases ORDER BY alias")],
+                        "payer_aliases": payer_aliases,
                     }
                 )
             return
@@ -1160,42 +1524,15 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/") and not self.require_auth():
+            return
         try:
             if parsed.path == "/api/students":
                 student = normalize_student(self.read_json())
                 with db() as conn:
-                    next_number = conn.execute("SELECT COALESCE(MAX(number),0)+1 AS n FROM students").fetchone()["n"]
-                    cur = conn.execute(
-                        """
-                        INSERT INTO students (
-                            number, student_name, parent_guardian, status, enrol_date, subjects, rate_type,
-                            std_monthly_fee, payment_method, phone, email, siblings, notes, last_modification
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                        """,
-                        (
-                            next_number,
-                            student["student_name"],
-                            student["parent_guardian"],
-                            student["status"],
-                            student["enrol_date"],
-                            student["subjects"],
-                            student["rate_type"],
-                            student["std_monthly_fee"],
-                            student["payment_method"],
-                            student["phone"],
-                            student["email"],
-                            student["siblings"],
-                            student["notes"],
-                            datetime.now().strftime("%Y-%m-%d: Created"),
-                        ),
-                    )
-                    for month in MONTHS:
-                        conn.execute(
-                            "INSERT INTO payments(student_id, month_label, amount) VALUES (?,?,0)",
-                            (cur.lastrowid, month),
-                        )
+                    new_id = insert_student_record(conn, student, next_student_number(conn))
                     conn.commit()
-                    self.send_json({"ok": True, "id": cur.lastrowid})
+                    self.send_json({"ok": True, "id": new_id})
                 return
             if parsed.path == "/api/batch":
                 rows = self.read_json().get("rows", [])
@@ -1204,34 +1541,9 @@ class Handler(SimpleHTTPRequestHandler):
                     if str(item.get("student_name", "")).strip():
                         saved.append(normalize_student(item))
                 with db() as conn:
-                    next_number = conn.execute("SELECT COALESCE(MAX(number),0)+1 AS n FROM students").fetchone()["n"]
+                    next_number = next_student_number(conn)
                     for student in saved:
-                        cur = conn.execute(
-                            """
-                            INSERT INTO students (
-                                number, student_name, parent_guardian, status, enrol_date, subjects, rate_type,
-                                std_monthly_fee, payment_method, phone, email, siblings, notes, last_modification
-                            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-                            """,
-                            (
-                                next_number,
-                                student["student_name"],
-                                student["parent_guardian"],
-                                student["status"],
-                                student["enrol_date"],
-                                student["subjects"],
-                                student["rate_type"],
-                                student["std_monthly_fee"],
-                                student["payment_method"],
-                                student["phone"],
-                                student["email"],
-                                student["siblings"],
-                                student["notes"],
-                                datetime.now().strftime("%Y-%m-%d: Created"),
-                            ),
-                        )
-                        for month in MONTHS:
-                            conn.execute("INSERT INTO payments(student_id, month_label, amount) VALUES (?,?,0)", (cur.lastrowid, month))
+                        insert_student_record(conn, student, next_number)
                         next_number += 1
                     conn.commit()
                 self.send_json({"ok": True, "saved": len(saved)})
@@ -1239,9 +1551,26 @@ class Handler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/settings":
                 payload = self.read_json()
                 with db() as conn:
-                    for key in DEFAULT_SETTINGS:
-                        if key in payload:
-                            conn.execute("INSERT OR REPLACE INTO app_meta(key,value) VALUES (?,?)", (key, str(payload.get(key, ""))))
+                    if PG_MODE:
+                        conn.execute(
+                            """
+                            UPDATE public.organizations
+                            SET name=%s, phone=%s, details=%s, subjects_offered=%s, current_month=%s, updated_at=now()
+                            WHERE id=%s
+                            """,
+                            (
+                                str(payload.get("institution_name", DEFAULT_SETTINGS["institution_name"])),
+                                str(payload.get("institution_phone", "")),
+                                str(payload.get("institution_details", DEFAULT_SETTINGS["institution_details"])),
+                                configured_subjects({"subjects_offered": str(payload.get("subjects_offered", DEFAULT_SETTINGS["subjects_offered"]))}),
+                                str(payload.get("current_month", DEFAULT_SETTINGS["current_month"])),
+                                current_org_id(conn),
+                            ),
+                        )
+                    else:
+                        for key in DEFAULT_SETTINGS:
+                            if key in payload:
+                                conn.execute("INSERT OR REPLACE INTO app_meta(key,value) VALUES (?,?)", (key, str(payload.get(key, ""))))
                     conn.commit()
                 self.send_json({"ok": True})
                 return
@@ -1252,12 +1581,24 @@ class Handler(SimpleHTTPRequestHandler):
                 if not subject or not rate_type:
                     raise ValueError("Subject and rate type are required")
                 with db() as conn:
-                    cur = conn.execute(
-                        "INSERT INTO rates(subject, rate_type, monthly_fee, description) VALUES (?,?,?,?)",
-                        (subject, rate_type, money(payload.get("monthly_fee")), str(payload.get("description", "")).strip()),
-                    )
+                    if PG_MODE:
+                        cur = conn.execute(
+                            """
+                            INSERT INTO public.rates(organization_id, subject, rate_type, monthly_fee, description)
+                            VALUES (%s,%s,%s,%s,%s)
+                            RETURNING id::text AS id
+                            """,
+                            (current_org_id(conn), subject, rate_type, money(payload.get("monthly_fee")), str(payload.get("description", "")).strip()),
+                        )
+                        new_id = cur.fetchone()["id"]
+                    else:
+                        cur = conn.execute(
+                            "INSERT INTO rates(subject, rate_type, monthly_fee, description) VALUES (?,?,?,?)",
+                            (subject, rate_type, money(payload.get("monthly_fee")), str(payload.get("description", "")).strip()),
+                        )
+                        new_id = cur.lastrowid
                     conn.commit()
-                self.send_json({"ok": True, "id": cur.lastrowid})
+                self.send_json({"ok": True, "id": new_id})
                 return
             if parsed.path == "/api/discounts":
                 payload = self.read_json()
@@ -1265,21 +1606,34 @@ class Handler(SimpleHTTPRequestHandler):
                 if not code:
                     raise ValueError("Discount code is required")
                 with db() as conn:
-                    cur = conn.execute(
-                        """
-                        INSERT INTO discount_codes(code, description, percent_off, amount_off, active)
-                        VALUES (?,?,?,?,?)
-                        """,
-                        (
-                            code,
-                            str(payload.get("description", "")).strip(),
-                            money(payload.get("percent_off")),
-                            money(payload.get("amount_off")),
-                            1 if str(payload.get("active", "1")) in {"1", "true", "on", "yes"} else 0,
-                        ),
-                    )
+                    active = str(payload.get("active", "1")) in {"1", "true", "on", "yes"}
+                    if PG_MODE:
+                        cur = conn.execute(
+                            """
+                            INSERT INTO public.discount_codes(organization_id, code, description, percent_off, amount_off, active)
+                            VALUES (%s,%s,%s,%s,%s,%s)
+                            RETURNING id::text AS id
+                            """,
+                            (current_org_id(conn), code, str(payload.get("description", "")).strip(), money(payload.get("percent_off")), money(payload.get("amount_off")), active),
+                        )
+                        new_id = cur.fetchone()["id"]
+                    else:
+                        cur = conn.execute(
+                            """
+                            INSERT INTO discount_codes(code, description, percent_off, amount_off, active)
+                            VALUES (?,?,?,?,?)
+                            """,
+                            (
+                                code,
+                                str(payload.get("description", "")).strip(),
+                                money(payload.get("percent_off")),
+                                money(payload.get("amount_off")),
+                                1 if active else 0,
+                            ),
+                        )
+                        new_id = cur.lastrowid
                     conn.commit()
-                    self.send_json({"ok": True, "id": cur.lastrowid})
+                    self.send_json({"ok": True, "id": new_id})
                 return
             if parsed.path == "/api/restore":
                 payload = self.read_json()
@@ -1297,7 +1651,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             if parsed.path == "/api/reconciliation/apply":
                 payload = self.read_json()
-                student_id = int(payload.get("student_id") or 0)
+                student_id = str(payload.get("student_id") or "").strip()
                 month_label = str(payload.get("month_label") or "").strip()
                 amount = money(payload.get("amount"))
                 description = str(payload.get("description") or "").strip()
@@ -1305,46 +1659,86 @@ class Handler(SimpleHTTPRequestHandler):
                 if not student_id or month_label not in MONTHS:
                     raise ValueError("Student and month are required before applying a match")
                 with db() as conn:
-                    student = conn.execute("SELECT * FROM students WHERE id=?", (student_id,)).fetchone()
+                    org_id = current_org_id(conn) if PG_MODE else None
+                    if PG_MODE:
+                        student = conn.execute("SELECT id::text AS id FROM public.students WHERE id=%s AND organization_id=%s", (student_id, org_id)).fetchone()
+                    else:
+                        student = conn.execute("SELECT * FROM students WHERE id=?", (int(student_id),)).fetchone()
                     if not student:
                         raise ValueError("Student was not found")
-                    conn.execute(
-                        """
-                        INSERT INTO payments(student_id, month_label, amount) VALUES (?,?,?)
-                        ON CONFLICT(student_id, month_label) DO UPDATE SET amount=excluded.amount
-                        """,
-                        (student_id, month_label, amount),
-                    )
+                    update_payment_amount(conn, student_id, month_label, amount, "reconciliation")
                     if description:
                         alias = description[:120]
-                        conn.execute(
-                            "INSERT OR IGNORE INTO payer_aliases(student_id, alias, source) VALUES (?,?,?)",
-                            (student_id, alias, source),
+                        if PG_MODE:
+                            conn.execute(
+                                """
+                                INSERT INTO public.payer_aliases(organization_id, student_id, alias, source)
+                                VALUES (%s,%s,%s,%s)
+                                ON CONFLICT(student_id, alias) DO NOTHING
+                                """,
+                                (org_id, student_id, alias, source),
+                            )
+                        else:
+                            conn.execute(
+                                "INSERT OR IGNORE INTO payer_aliases(student_id, alias, source) VALUES (?,?,?)",
+                                (int(student_id), alias, source),
+                            )
+                    if PG_MODE:
+                        cur = conn.execute(
+                            """
+                            INSERT INTO public.payment_imports(organization_id, file_name, source)
+                            VALUES (%s,%s,%s)
+                            RETURNING id::text AS id
+                            """,
+                            (org_id, str(payload.get("file_name") or "manual review"), source),
                         )
-                    cur = conn.execute(
-                        "INSERT INTO payment_imports(file_name, source, imported_by) VALUES (?,?,?)",
-                        (str(payload.get("file_name") or "manual review"), source, "admin"),
-                    )
-                    conn.execute(
-                        """
-                        INSERT INTO payment_import_rows(
-                            import_id, student_id, transaction_date, description, amount, source,
-                            month_label, match_score, match_status, notes, applied_at
-                        ) VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
-                        """,
-                        (
-                            cur.lastrowid,
-                            student_id,
-                            str(payload.get("date") or "").strip(),
-                            description,
-                            amount,
-                            source,
-                            month_label,
-                            int(payload.get("score") or 0),
-                            "approved",
-                            str(payload.get("notes") or "").strip(),
-                        ),
-                    )
+                        import_id = cur.fetchone()["id"]
+                        conn.execute(
+                            """
+                            INSERT INTO public.payment_import_rows(
+                                import_id, organization_id, student_id, transaction_date, description, amount, source,
+                                month_label, match_score, match_status, notes, applied_at
+                            ) VALUES (%s,%s,%s,NULLIF(%s,'')::date,%s,%s,%s,%s,%s,%s,%s,now())
+                            """,
+                            (
+                                import_id,
+                                org_id,
+                                student_id,
+                                str(payload.get("date") or "").strip(),
+                                description,
+                                amount,
+                                source,
+                                month_label,
+                                int(payload.get("score") or 0),
+                                "approved",
+                                str(payload.get("notes") or "").strip(),
+                            ),
+                        )
+                    else:
+                        cur = conn.execute(
+                            "INSERT INTO payment_imports(file_name, source, imported_by) VALUES (?,?,?)",
+                            (str(payload.get("file_name") or "manual review"), source, "admin"),
+                        )
+                        conn.execute(
+                            """
+                            INSERT INTO payment_import_rows(
+                                import_id, student_id, transaction_date, description, amount, source,
+                                month_label, match_score, match_status, notes, applied_at
+                            ) VALUES (?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
+                            """,
+                            (
+                                cur.lastrowid,
+                                int(student_id),
+                                str(payload.get("date") or "").strip(),
+                                description,
+                                amount,
+                                source,
+                                month_label,
+                                int(payload.get("score") or 0),
+                                "approved",
+                                str(payload.get("notes") or "").strip(),
+                            ),
+                        )
                     conn.commit()
                 self.send_json({"ok": True})
                 return
@@ -1369,25 +1763,22 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_PUT(self):
         parsed = urlparse(self.path)
-        match = re.match(r"^/api/students/(\d+)$", parsed.path)
-        rate_match = re.match(r"^/api/rates/(\d+)$", parsed.path)
-        discount_match = re.match(r"^/api/discounts/(\d+)$", parsed.path)
-        payment_match = re.match(r"^/api/payments/(\d+)/([^/]+)$", parsed.path)
+        if parsed.path.startswith("/api/") and not self.require_auth():
+            return
+        id_pattern = r"([0-9a-fA-F-]+)"
+        match = re.match(rf"^/api/students/{id_pattern}$", parsed.path)
+        rate_match = re.match(rf"^/api/rates/{id_pattern}$", parsed.path)
+        discount_match = re.match(rf"^/api/discounts/{id_pattern}$", parsed.path)
+        payment_match = re.match(rf"^/api/payments/{id_pattern}/([^/]+)$", parsed.path)
         try:
             if payment_match:
-                student_id = int(payment_match.group(1))
+                student_id = payment_match.group(1)
                 month_label = payment_match.group(2)
                 if month_label not in MONTHS:
                     raise ValueError("Unknown month")
                 payload = self.read_json()
                 with db() as conn:
-                    conn.execute(
-                        """
-                        INSERT INTO payments(student_id, month_label, amount) VALUES (?,?,?)
-                        ON CONFLICT(student_id, month_label) DO UPDATE SET amount=excluded.amount
-                        """,
-                        (student_id, month_label, money(payload.get("amount"))),
-                    )
+                    update_payment_amount(conn, student_id if PG_MODE else int(student_id), month_label, money(payload.get("amount")))
                     conn.commit()
                 self.send_json({"ok": True})
                 return
@@ -1398,10 +1789,20 @@ class Handler(SimpleHTTPRequestHandler):
                 if not subject or not rate_type:
                     raise ValueError("Subject and rate type are required")
                 with db() as conn:
-                    conn.execute(
-                        "UPDATE rates SET subject=?, rate_type=?, monthly_fee=?, description=? WHERE id=?",
-                        (subject, rate_type, money(payload.get("monthly_fee")), str(payload.get("description", "")).strip(), int(rate_match.group(1))),
-                    )
+                    if PG_MODE:
+                        conn.execute(
+                            """
+                            UPDATE public.rates
+                            SET subject=%s, rate_type=%s, monthly_fee=%s, description=%s
+                            WHERE id=%s AND organization_id=%s
+                            """,
+                            (subject, rate_type, money(payload.get("monthly_fee")), str(payload.get("description", "")).strip(), rate_match.group(1), current_org_id(conn)),
+                        )
+                    else:
+                        conn.execute(
+                            "UPDATE rates SET subject=?, rate_type=?, monthly_fee=?, description=? WHERE id=?",
+                            (subject, rate_type, money(payload.get("monthly_fee")), str(payload.get("description", "")).strip(), int(rate_match.group(1))),
+                        )
                     conn.commit()
                 self.send_json({"ok": True})
                 return
@@ -1411,21 +1812,32 @@ class Handler(SimpleHTTPRequestHandler):
                 if not code:
                     raise ValueError("Discount code is required")
                 with db() as conn:
-                    conn.execute(
-                        """
-                        UPDATE discount_codes
-                        SET code=?, description=?, percent_off=?, amount_off=?, active=?
-                        WHERE id=?
-                        """,
-                        (
-                            code,
-                            str(payload.get("description", "")).strip(),
-                            money(payload.get("percent_off")),
-                            money(payload.get("amount_off")),
-                            1 if str(payload.get("active", "1")) in {"1", "true", "on", "yes"} else 0,
-                            int(discount_match.group(1)),
-                        ),
-                    )
+                    active = str(payload.get("active", "1")) in {"1", "true", "on", "yes"}
+                    if PG_MODE:
+                        conn.execute(
+                            """
+                            UPDATE public.discount_codes
+                            SET code=%s, description=%s, percent_off=%s, amount_off=%s, active=%s
+                            WHERE id=%s AND (organization_id=%s OR organization_id IS NULL)
+                            """,
+                            (code, str(payload.get("description", "")).strip(), money(payload.get("percent_off")), money(payload.get("amount_off")), active, discount_match.group(1), current_org_id(conn)),
+                        )
+                    else:
+                        conn.execute(
+                            """
+                            UPDATE discount_codes
+                            SET code=?, description=?, percent_off=?, amount_off=?, active=?
+                            WHERE id=?
+                            """,
+                            (
+                                code,
+                                str(payload.get("description", "")).strip(),
+                                money(payload.get("percent_off")),
+                                money(payload.get("amount_off")),
+                                1 if active else 0,
+                                int(discount_match.group(1)),
+                            ),
+                        )
                     conn.commit()
                 self.send_json({"ok": True})
                 return
@@ -1434,33 +1846,66 @@ class Handler(SimpleHTTPRequestHandler):
                 return
             student = normalize_student(self.read_json())
             with db() as conn:
-                old_student = conn.execute("SELECT * FROM students WHERE id=?", (int(match.group(1)),)).fetchone()
+                if PG_MODE:
+                    old_student = conn.execute("SELECT * FROM public.students WHERE id=%s AND organization_id=%s", (match.group(1), current_org_id(conn))).fetchone()
+                    if old_student:
+                        old_student = display_student(old_student)
+                else:
+                    old_student = conn.execute("SELECT * FROM students WHERE id=?", (int(match.group(1)),)).fetchone()
                 modification_note = student_modification_note(old_student, student)
-                conn.execute(
-                    """
-                    UPDATE students SET
-                        student_name=?, parent_guardian=?, status=?, enrol_date=?, subjects=?, rate_type=?,
-                        std_monthly_fee=?, payment_method=?, phone=?, email=?, siblings=?, notes=?, last_modification=?,
-                        updated_at=CURRENT_TIMESTAMP
-                    WHERE id=?
-                    """,
-                    (
-                        student["student_name"],
-                        student["parent_guardian"],
-                        student["status"],
-                        student["enrol_date"],
-                        student["subjects"],
-                        student["rate_type"],
-                        student["std_monthly_fee"],
-                        student["payment_method"],
-                        student["phone"],
-                        student["email"],
-                        student["siblings"],
-                        student["notes"],
-                        modification_note,
-                        int(match.group(1)),
-                    ),
-                )
+                if PG_MODE:
+                    conn.execute(
+                        """
+                        UPDATE public.students SET
+                            student_name=%s, parent_guardian=%s, status=%s, enrol_date=NULLIF(%s,'')::date,
+                            subjects=%s, rate_type=%s, std_monthly_fee=%s, payment_method=%s, phone=%s,
+                            email=%s, siblings=%s, notes=%s, last_modification=%s, updated_at=now()
+                        WHERE id=%s AND organization_id=%s
+                        """,
+                        (
+                            student["student_name"],
+                            student["parent_guardian"],
+                            student["status"],
+                            student["enrol_date"],
+                            pg_subjects(student["subjects"]),
+                            student["rate_type"],
+                            student["std_monthly_fee"],
+                            student["payment_method"],
+                            student["phone"],
+                            student["email"],
+                            student["siblings"],
+                            student["notes"],
+                            modification_note,
+                            match.group(1),
+                            current_org_id(conn),
+                        ),
+                    )
+                else:
+                    conn.execute(
+                        """
+                        UPDATE students SET
+                            student_name=?, parent_guardian=?, status=?, enrol_date=?, subjects=?, rate_type=?,
+                            std_monthly_fee=?, payment_method=?, phone=?, email=?, siblings=?, notes=?, last_modification=?,
+                            updated_at=CURRENT_TIMESTAMP
+                        WHERE id=?
+                        """,
+                        (
+                            student["student_name"],
+                            student["parent_guardian"],
+                            student["status"],
+                            student["enrol_date"],
+                            student["subjects"],
+                            student["rate_type"],
+                            student["std_monthly_fee"],
+                            student["payment_method"],
+                            student["phone"],
+                            student["email"],
+                            student["siblings"],
+                            student["notes"],
+                            modification_note,
+                            int(match.group(1)),
+                        ),
+                    )
                 conn.commit()
             self.send_json({"ok": True})
         except ValueError as exc:
@@ -1468,18 +1913,27 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_DELETE(self):
         parsed = urlparse(self.path)
-        match = re.match(r"^/api/students/(\d+)$", parsed.path)
-        rate_match = re.match(r"^/api/rates/(\d+)$", parsed.path)
-        discount_match = re.match(r"^/api/discounts/(\d+)$", parsed.path)
+        if parsed.path.startswith("/api/") and not self.require_auth():
+            return
+        id_pattern = r"([0-9a-fA-F-]+)"
+        match = re.match(rf"^/api/students/{id_pattern}$", parsed.path)
+        rate_match = re.match(rf"^/api/rates/{id_pattern}$", parsed.path)
+        discount_match = re.match(rf"^/api/discounts/{id_pattern}$", parsed.path)
         if rate_match:
             with db() as conn:
-                conn.execute("DELETE FROM rates WHERE id=?", (int(rate_match.group(1)),))
+                if PG_MODE:
+                    conn.execute("DELETE FROM public.rates WHERE id=%s AND organization_id=%s", (rate_match.group(1), current_org_id(conn)))
+                else:
+                    conn.execute("DELETE FROM rates WHERE id=?", (int(rate_match.group(1)),))
                 conn.commit()
             self.send_json({"ok": True})
             return
         if discount_match:
             with db() as conn:
-                conn.execute("DELETE FROM discount_codes WHERE id=?", (int(discount_match.group(1)),))
+                if PG_MODE:
+                    conn.execute("DELETE FROM public.discount_codes WHERE id=%s AND (organization_id=%s OR organization_id IS NULL)", (discount_match.group(1), current_org_id(conn)))
+                else:
+                    conn.execute("DELETE FROM discount_codes WHERE id=?", (int(discount_match.group(1)),))
                 conn.commit()
             self.send_json({"ok": True})
             return
@@ -1487,14 +1941,20 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "error": "Not found"}, 404)
             return
         with db() as conn:
-            conn.execute("DELETE FROM students WHERE id=?", (int(match.group(1)),))
+            if PG_MODE:
+                conn.execute("DELETE FROM public.students WHERE id=%s AND organization_id=%s", (match.group(1), current_org_id(conn)))
+            else:
+                conn.execute("DELETE FROM students WHERE id=?", (int(match.group(1)),))
             conn.commit()
         self.send_json({"ok": True})
 
 
 if __name__ == "__main__":
-    init_db(force="--reseed" in sys.argv)
-    ensure_meta_defaults()
+    if PG_MODE:
+        ensure_pg_defaults()
+    else:
+        init_db(force="--reseed" in sys.argv)
+        ensure_meta_defaults()
     port = int(os.environ.get("PORT", "8765"))
     if "--port" in sys.argv:
         port = int(sys.argv[sys.argv.index("--port") + 1])

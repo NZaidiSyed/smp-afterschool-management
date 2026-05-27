@@ -13,9 +13,21 @@ The current app is a Python web server with SQLite storage. Cloudflare can manag
 3. Use the included `render.yaml`, or configure manually:
    - Build command: `pip install -r requirements.txt`
    - Start command: `python app.py`
-   - Environment variable: `SMP_DATA_DIR=/var/data`
-   - Add a persistent disk mounted at `/var/data`
+   - For local SQLite testing: `SMP_DATA_DIR=/var/data` and a persistent disk mounted at `/var/data`
+   - For Supabase production: set `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_REQUIRE_AUTH=1`
 4. After Render creates the service, copy its hostname.
+
+## Supabase Production Environment
+
+Set these on Render under **Environment**:
+
+- `DATABASE_URL`: Supabase direct Postgres connection string. Use the project database password in the dashboard, not in chat.
+- `SUPABASE_URL`: Supabase project API URL, for example `https://PROJECT_REF.supabase.co`.
+- `SUPABASE_ANON_KEY`: Public anon key from Supabase API settings.
+- `SUPABASE_REQUIRE_AUTH`: `1`
+- `SMP_ORGANIZATION_ID`: optional. If omitted, SMP uses the first organization row or creates a starter one.
+
+The current production bridge supports one selected organization for the first live test. Full self-service multi-organization onboarding should be the next production milestone.
 
 ## Cloudflare DNS
 
@@ -36,8 +48,6 @@ Known Cloudflare values supplied by owner:
 
 ## Important Production Work Still Needed
 
-- Replace local SQLite with hosted Postgres before real multi-organization use.
-- Add real authentication and roles.
+- Add invite-based organization membership management for multiple staff users.
 - Add Stripe billing with Google Pay enabled.
-- Split each organization by `organization_id`.
 - Add automated database backups on the hosting provider.

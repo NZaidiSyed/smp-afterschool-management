@@ -16,8 +16,23 @@
     <div class="header-actions">
       <div id="institutionPhone" class="phone-pill"></div>
       <div class="status-pill"><span id="recordCount">0</span> student records</div>
+      <button type="button" id="signOut" class="ghost header-signout">Sign Out</button>
     </div>
   </header>
+
+  <section id="authPanel" class="auth-panel collapsed">
+    <form id="authForm" class="auth-card">
+      <p class="eyebrow">Secure Login</p>
+      <h2>SMP Access</h2>
+      <p class="muted-note">Use your centre email or Google account to continue.</p>
+      <input id="loginEmail" type="email" placeholder="Email address" autocomplete="email">
+      <div class="actions">
+        <button type="submit">Email Login Link</button>
+        <button type="button" id="googleLogin" class="ghost">Continue with Google</button>
+      </div>
+      <p id="authMessage" class="muted-note"></p>
+    </form>
+  </section>
 
   <nav class="tabs" aria-label="Workbook tabs">
     <button class="tab active" data-tab="dashboard">Dashboard</button>
@@ -322,6 +337,7 @@
   </div>
 
   <div id="toast" role="status"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="app.js"></script>
 </body>
 </html>
