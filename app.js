@@ -709,6 +709,7 @@ function normalizeBatchRow(row) {
 
 function validateBatchStudent(row, seen) {
   const errors = [];
+  const warnings = [];
   if (!row.student_name) errors.push("Student name missing");
   if (!["C", "D"].includes(row.status)) errors.push("Status must be C or D");
   if (!row.subjects) errors.push("Subject missing");
@@ -717,26 +718,31 @@ function validateBatchStudent(row, seen) {
   else if (!String(row.std_monthly_fee || "").trim()) errors.push("STD Fee value missing");
   else if (normalizeMoney(row.std_monthly_fee) <= 0) errors.push("STD Fee not valid");
   const key = `${row.student_name.toLowerCase()}|${row.parent_guardian.toLowerCase()}`;
-  if (seen.has(key)) errors.push("Duplicate in this CSV");
+  if (seen.has(key)) warnings.push("Duplicate in this CSV - Admin acceptance required");
   seen.add(key);
-  const existing = state.students.find((student) =>
+  const existingRecords = state.students.filter((student) =>
     String(student.student_name || "").toLowerCase() === row.student_name.toLowerCase()
     && String(student.parent_guardian || "").toLowerCase() === row.parent_guardian.toLowerCase()
   );
-  if (existing) errors.push("Already exists in Student Roster");
-  return errors;
+  if (existingRecords.length) {
+    const statuses = existingRecords.map((student) => student.status).join(", ");
+    warnings.push(`Already exists in Student Roster with status ${statuses} - Admin acceptance required`);
+  }
+  return { errors, warnings };
 }
 
 function buildBatchImportPreview(rows) {
   const seen = new Set();
   return rows.map((row, index) => {
     const normalized = normalizeBatchRow(row);
-    const errors = validateBatchStudent(normalized, seen);
+    const validation = validateBatchStudent(normalized, seen);
     return {
       row_number: index + 1,
       data: normalized,
-      errors,
-      valid: errors.length === 0,
+      errors: validation.errors,
+      warnings: validation.warnings,
+      accepted: validation.warnings.length === 0,
+      valid: validation.errors.length === 0 && validation.warnings.length === 0,
     };
   });
 }
@@ -745,12 +751,14 @@ function revalidateBatchImportPreview() {
   const seen = new Set();
   state.batchImportPreview = (state.batchImportPreview || []).map((row, index) => {
     const data = row.data;
-    const errors = validateBatchStudent(data, seen);
+    const validation = validateBatchStudent(data, seen);
     return {
       ...row,
       row_number: index + 1,
-      errors,
-      valid: errors.length === 0,
+      errors: validation.errors,
+      warnings: validation.warnings,
+      accepted: validation.warnings.length ? Boolean(row.accepted) : true,
+      valid: validation.errors.length === 0 && (!validation.warnings.length || Boolean(row.accepted)),
     };
   });
 }
@@ -769,12 +777,13 @@ function renderBatchImportPreview() {
   }
   panel.classList.remove("collapsed");
   const valid = rows.filter((row) => row.valid).length;
-  const invalid = rows.length - valid;
-  qs("#batchImportSummary").textContent = `${state.batchImportFileName || "CSV"}: ${valid} ready, ${invalid} need correction. Valid rows will create Student Roster records and Fee Tracker rows after confirmation.`;
+  const needsAcceptance = rows.filter((row) => row.warnings?.length && !row.accepted).length;
+  const invalid = rows.filter((row) => row.errors?.length).length;
+  qs("#batchImportSummary").textContent = `${state.batchImportFileName || "CSV"}: ${valid} green, ${needsAcceptance} need Admin acceptance, ${invalid} need correction. Final import will post only green rows.`;
   qs("#applyBatchImport").disabled = valid === 0;
   const body = rows.map((row, index) => [
     row.row_number,
-    row.valid ? `<span class="confidence high">Ready</span>` : `<span class="confidence low">Fix Required</span>`,
+    row.valid ? `<span class="confidence high">Green</span>` : row.errors.length ? `<span class="confidence low">Fix Required</span>` : `<span class="confidence medium">Accept Required</span>`,
     importInput(index, "student_name", row.data.student_name),
     importInput(index, "parent_guardian", row.data.parent_guardian),
     `<select class="import-edit-input" data-batch-index="${index}" data-batch-field="status">
@@ -789,8 +798,11 @@ function renderBatchImportPreview() {
     importInput(index, "phone", row.data.phone),
     importInput(index, "email", row.data.email, "email"),
     row.data.miscellaneous.length ? escapeHtml(row.data.miscellaneous.map((item) => item.heading).join(", ")) : "-",
-    escapeHtml(row.errors.join("; ") || "Validated"),
-    `<button type="button" class="small danger" data-delete-import-row="${index}">Delete</button>`,
+    escapeHtml([...(row.errors || []), ...(row.warnings || [])].join("; ") || "Validated"),
+    `<div class="row-actions">
+      <button type="button" class="small ${row.accepted ? "accepted-action" : ""}" data-accept-import-row="${index}">${row.accepted ? "Accepted" : "Accept"}</button>
+      <button type="button" class="small danger" data-delete-import-row="${index}">Delete</button>
+    </div>`,
   ]);
   renderTable(qs("#batchImportTable"), ["Row", "Status", "Student", "Parent / Guardian", "C/D", "Enrol Date", "Subjects", "Rate Type", "STD Fee", "Pay Method", "Phone", "Email", "Miscellaneous Headings", "Validation", "Action"], body);
   document.querySelectorAll("[data-batch-field]").forEach((control) => {
@@ -799,6 +811,9 @@ function renderBatchImportPreview() {
   });
   document.querySelectorAll("[data-delete-import-row]").forEach((button) => {
     button.addEventListener("click", () => deleteBatchImportRow(Number(button.dataset.deleteImportRow)));
+  });
+  document.querySelectorAll("[data-accept-import-row]").forEach((button) => {
+    button.addEventListener("click", () => acceptBatchImportRow(Number(button.dataset.acceptImportRow)));
   });
 }
 
@@ -810,15 +825,31 @@ function updateBatchImportCell(control, quiet = false) {
   if (field === "status") row.data.status = String(control.value || "").toUpperCase().slice(0, 1);
   if (field === "subjects") row.data.subjects = subjectText(control.value);
   if (field === "std_monthly_fee") row.data.std_fee_column_found = true;
+  row.accepted = false;
   revalidateBatchImportPreview();
   if (!quiet) {
     renderBatchImportPreview();
     toast("Import row updated and revalidated");
   } else {
     const valid = state.batchImportPreview.filter((item) => item.valid).length;
-    qs("#batchImportSummary").textContent = `${state.batchImportFileName || "CSV"}: ${valid} ready, ${state.batchImportPreview.length - valid} need correction. Valid rows will create Student Roster records and Fee Tracker rows after confirmation.`;
+    const needsAcceptance = state.batchImportPreview.filter((item) => item.warnings?.length && !item.accepted).length;
+    const invalid = state.batchImportPreview.filter((item) => item.errors?.length).length;
+    qs("#batchImportSummary").textContent = `${state.batchImportFileName || "CSV"}: ${valid} green, ${needsAcceptance} need Admin acceptance, ${invalid} need correction. Final import will post only green rows.`;
     qs("#applyBatchImport").disabled = valid === 0;
   }
+}
+
+function acceptBatchImportRow(index) {
+  const row = state.batchImportPreview[index];
+  if (!row) return;
+  if (row.errors.length) {
+    toast("Fix required fields before accepting this row");
+    return;
+  }
+  row.accepted = true;
+  revalidateBatchImportPreview();
+  renderBatchImportPreview();
+  toast("Row accepted by Admin");
 }
 
 function deleteBatchImportRow(index) {
@@ -840,7 +871,9 @@ async function applyBatchImport() {
     toast("No valid student rows are ready to import");
     return;
   }
-  if (!confirm(`Import ${validRows.length} validated student record${validRows.length === 1 ? "" : "s"} now? This updates Student Roster, Fee Tracker, and Dashboard.`)) return;
+  const totalLines = state.batchImportPreview.length;
+  const blocked = totalLines - validRows.length;
+  if (!confirm(`CSV lines in preview: ${totalLines}\nRecords to post: ${validRows.length}\nRows not posted: ${blocked}\n\nContinue and update Student Roster, Fee Tracker, and Dashboard?`)) return;
   const result = await api("/api/batch", { method: "POST", body: JSON.stringify({ rows: validRows }) });
   state.batchImportRows = [];
   state.batchImportPreview = [];

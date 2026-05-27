@@ -598,6 +598,11 @@ button.ghost {
   color: var(--ink);
 }
 
+button.accepted-action {
+  background: var(--good);
+  color: white;
+}
+
 .file-button {
   display: inline-flex;
   align-items: center;
