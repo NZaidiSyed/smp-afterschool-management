@@ -76,6 +76,63 @@ h2 { font-size: 20px; }
   font-size: 13px;
 }
 
+#signOut,
+#switchAccount {
+  display: none;
+}
+
+.auth-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.account-card {
+  width: min(300px, 100%);
+  background: rgba(255, 255, 255, .94);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 11px 13px;
+  box-shadow: 0 10px 24px rgba(23, 33, 43, .08);
+  text-align: right;
+}
+
+.account-card.collapsed {
+  display: none;
+}
+
+.account-card span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.account-card strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.account-card em {
+  display: inline-flex;
+  margin-top: 7px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(15, 139, 141, .12);
+  color: var(--accent);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
 .auth-panel {
   position: fixed;
   inset: 0;
@@ -92,7 +149,7 @@ h2 { font-size: 20px; }
 }
 
 .auth-card {
-  width: min(440px, 100%);
+  width: min(520px, 100%);
   background: white;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -100,9 +157,57 @@ h2 { font-size: 20px; }
   padding: 28px;
 }
 
+.auth-card h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+}
+
 .auth-card input {
   width: 100%;
-  margin: 18px 0 8px;
+  margin: 14px 0 8px;
+}
+
+.auth-choice-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0;
+}
+
+.auth-choice {
+  background: #e8eef2;
+  color: var(--ink);
+}
+
+.auth-choice.active {
+  background: var(--ink);
+  color: white;
+}
+
+.auth-step {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfdff;
+}
+
+.auth-step.collapsed {
+  display: none;
+}
+
+.auth-submit-row {
+  justify-content: stretch;
+}
+
+.auth-submit-row button {
+  flex: 1 1 180px;
+}
+
+.auth-small-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .phone-pill {
@@ -903,6 +1008,8 @@ pre {
   .metrics, .dashboard-grid, .split { grid-template-columns: 1fr; }
   .topbar { align-items: flex-start; flex-direction: column; }
   .header-actions { align-items: flex-start; }
+  .account-card { text-align: left; }
+  .auth-actions { justify-content: flex-start; }
   .form-grid { grid-template-columns: 1fr; }
   .settings-form, .rate-form, .discount-form, .mini-grid, .role-grid, .restore-panel, .workflow-choices { grid-template-columns: 1fr; }
   .wide { max-width: calc(100vw - 36px); }

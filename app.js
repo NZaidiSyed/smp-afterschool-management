@@ -16,6 +16,9 @@ let state = {
   reconciliationFileName: "",
   feeImportRows: [],
   feeImportPreview: [],
+  batchImportRows: [],
+  batchImportPreview: [],
+  batchImportFileName: "",
 };
 
 let appConfig = { auth_required: false };
@@ -49,25 +52,52 @@ async function initAuth() {
   const res = await fetch("/api/config", { headers: { "Content-Type": "application/json" } });
   appConfig = await res.json();
   if (!appConfig.auth_required) {
-    qs("#authPanel")?.classList.add("collapsed");
-    if (qs("#signOut")) qs("#signOut").style.display = "none";
+    renderAuthState();
     return true;
   }
-  if (qs("#signOut")) qs("#signOut").style.display = "inline-flex";
   if (!window.supabase || !appConfig.supabase_url || !appConfig.supabase_anon_key) {
     qs("#authMessage").textContent = "Authentication is not ready. Check Render environment variables.";
-    qs("#authPanel").classList.remove("collapsed");
+    renderAuthState();
     return false;
   }
   supabaseClient = window.supabase.createClient(appConfig.supabase_url, appConfig.supabase_anon_key);
   const { data } = await supabaseClient.auth.getSession();
   authSession = data.session;
-  if (!authSession) {
-    qs("#authPanel").classList.remove("collapsed");
-    return false;
-  }
-  qs("#authPanel").classList.add("collapsed");
-  return true;
+  renderAuthState();
+  return Boolean(authSession);
+}
+
+function currentUserEmail() {
+  return authSession?.user?.email || authSession?.user?.user_metadata?.email || "Signed in";
+}
+
+function currentUserName() {
+  return authSession?.user?.user_metadata?.full_name || authSession?.user?.user_metadata?.name || currentUserEmail();
+}
+
+function currentUserRole() {
+  const email = currentUserEmail().toLowerCase();
+  const user = (state.users || []).find((item) => String(item.email || "").toLowerCase() === email);
+  if (user?.role) return user.role;
+  return authSession ? "Admin" : "";
+}
+
+function renderAuthState() {
+  const authRequired = Boolean(appConfig.auth_required);
+  const signedIn = Boolean(authSession);
+  const authPanel = qs("#authPanel");
+  const accountStatus = qs("#accountStatus");
+  const accountEmail = qs("#accountEmail");
+  const accountRole = qs("#accountRole");
+  const signOutButton = qs("#signOut");
+  const switchButton = qs("#switchAccount");
+
+  authPanel?.classList.toggle("collapsed", !authRequired || signedIn);
+  accountStatus?.classList.toggle("collapsed", !signedIn);
+  if (accountEmail) accountEmail.textContent = signedIn ? currentUserName() : "Not signed in";
+  if (accountRole) accountRole.textContent = signedIn ? currentUserRole() : "";
+  if (signOutButton) signOutButton.style.display = signedIn ? "inline-flex" : "none";
+  if (switchButton) switchButton.style.display = signedIn ? "inline-flex" : "none";
 }
 
 async function sendMagicLink(event) {
@@ -81,6 +111,17 @@ async function sendMagicLink(event) {
   qs("#authMessage").textContent = error ? error.message : "Check your email for the login link.";
 }
 
+function setAuthMode(mode) {
+  const isSignup = mode === "signup";
+  qs("#loginPanel")?.classList.toggle("collapsed", isSignup);
+  qs("#signupPanel")?.classList.toggle("collapsed", !isSignup);
+  qs("#showLogin")?.classList.toggle("active", !isSignup);
+  qs("#showSignup")?.classList.toggle("active", isSignup);
+  qs("#authMessage").textContent = isSignup
+    ? "Create your login with Google or enter your email to receive a verification link."
+    : "Login with Google or request a secure email link.";
+}
+
 async function signInWithGoogle() {
   if (!supabaseClient) return;
   await supabaseClient.auth.signInWithOAuth({
@@ -92,7 +133,15 @@ async function signInWithGoogle() {
 async function signOut() {
   if (supabaseClient) await supabaseClient.auth.signOut();
   authSession = null;
-  qs("#authPanel").classList.remove("collapsed");
+  renderAuthState();
+}
+
+async function switchAccount() {
+  if (!supabaseClient) return;
+  await supabaseClient.auth.signOut();
+  authSession = null;
+  renderAuthState();
+  await signInWithGoogle();
 }
 
 async function load() {
@@ -103,6 +152,7 @@ async function load() {
 
 function renderAll() {
   renderBrand();
+  renderAuthState();
   qs("#recordCount").textContent = state.students.length;
   renderSubjectChoices();
   renderDashboard();
@@ -218,7 +268,7 @@ function renderDashboard() {
         .map((row) => `
           <div class="unpaid-item">
             <strong>${row.student_name}</strong>
-            <span>${row.parent_guardian || "No guardian"} · ${subjectText(row.subjects)} · Expected ${money(row.std_monthly_fee)}</span>
+            <span>${row.parent_guardian || "No guardian"} - ${subjectText(row.subjects)} - Expected ${money(row.std_monthly_fee)}</span>
           </div>
         `)
         .join("")
@@ -278,13 +328,17 @@ function renderFeeImportPreview() {
     row.row_number,
     escapeHtml(row.student_name),
     escapeHtml(row.parent_guardian),
-    row.matched ? `<span class="confidence high">matched</span>` : `<span class="confidence low">not matched</span>`,
+    row.valid ? `<span class="confidence high">ready</span>` : `<span class="confidence low">review</span>`,
     escapeHtml(row.matched_student || "-"),
     escapeHtml(row.matched_parent || "-"),
+    escapeHtml(row.matched_enrol_date || "-"),
     row.month_count,
+    row.expected_month_count || "-",
+    row.missing_month_count || 0,
     money(row.total_amount),
+    escapeHtml([...(row.errors || []), ...(row.warnings || [])].join("; ") || "Validated"),
   ]);
-  renderTable(qs("#feeImportTable"), ["Row", "CSV Student", "CSV Parent", "Status", "Matched Student", "Matched Parent", "Month Cells", "Total Amount"], body);
+  renderTable(qs("#feeImportTable"), ["Row", "CSV Student", "CSV Parent", "Status", "Matched Student", "Matched Parent", "Enrol Date", "CSV Months", "Expected Months", "Blank Months", "Total Amount", "Validation"], body);
 }
 
 function monthDate(monthLabel) {
@@ -361,13 +415,13 @@ function renderRoster() {
 }
 
 function isStudentOverdue(studentId) {
-  const row = state.fee_tracker.find((item) => item.id === studentId);
+  const row = state.fee_tracker.find((item) => String(item.id) === String(studentId));
   return row ? isCurrentMonthOverdue(row) : false;
 }
 
 function showStudentProfile(id) {
-  const student = state.students.find((s) => s.id === id);
-  const fee = state.fee_tracker.find((s) => s.id === id);
+  const student = state.students.find((s) => String(s.id) === String(id));
+  const fee = state.fee_tracker.find((s) => String(s.id) === String(id));
   if (!student || !fee) return;
   const enrolDate = student.enrol_date ? new Date(`${student.enrol_date}T00:00:00`) : null;
   const timelineMonths = state.months.filter((m) => {
@@ -403,7 +457,7 @@ function showStudentProfile(id) {
       <div class="timeline">
         ${timelineMonths.map((m) => `<span class="${fee.months[m] > 0 ? "paid" : ""}" title="${m}: ${money(fee.months[m])}">${m}</span>`).join("")}
       </div>
-      <p>Total paid: <strong>${money(fee.total_paid)}</strong> · Balance: <strong>${money(fee.balance)}</strong></p>
+      <p>Total paid: <strong>${money(fee.total_paid)}</strong> - Balance: <strong>${money(fee.balance)}</strong></p>
     </div>
     <div class="actions">
       <button type="button" id="profileEdit">Edit Student</button>
@@ -534,6 +588,7 @@ function renderBatch() {
     </tr>
   `).join("");
   qs("#batchTable").innerHTML = `<thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead><tbody>${body}</tbody>`;
+  renderBatchImportPreview();
 }
 
 function parseCsv(text) {
@@ -590,36 +645,101 @@ function normalizeMoney(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function fillBatchFromCsv(rows) {
-  renderBatch();
-  const tableRows = [...qs("#batchTable tbody").rows];
-  rows.slice(0, tableRows.length).forEach((row, index) => {
-    const tr = tableRows[index];
-    const values = {
-      student_name: pick(row, ["student name", "student", "name"]),
-      parent_guardian: pick(row, ["parent guardian", "parent", "guardian", "payer"]),
-      status: pick(row, ["status"]) || "C",
-      enrol_date: pick(row, ["enrol date", "enrolment date", "enrollment date", "start date"]),
-      rate_type: pick(row, ["rate type", "type"]) || "Regular",
-      std_monthly_fee: pick(row, ["std fee", "standard monthly fee", "monthly fee", "fee"]),
-      payment_method: pick(row, ["payment method", "pay method", "method"]) || "PAD",
-      phone: pick(row, ["phone", "mobile"]),
-      email: pick(row, ["email", "e-mail"]),
+function normalizeBatchRow(row) {
+  const rawSubjects = pick(row, ["subjects", "subject", "subject selections"]);
+  const subjects = subjectText(rawSubjects);
+  return {
+    student_name: pick(row, ["student name", "student", "name"]).trim(),
+    parent_guardian: pick(row, ["parent guardian", "parent / guardian", "parent", "guardian", "payer"]).trim(),
+    status: (pick(row, ["status"]) || "C").trim().toUpperCase().slice(0, 1),
+    enrol_date: pick(row, ["enrol date", "enrolment date", "enrollment date", "start date"]).trim(),
+    subjects,
+    rate_type: (pick(row, ["rate type", "type"]) || "Regular").trim(),
+    std_monthly_fee: pick(row, ["std fee", "standard monthly fee", "monthly fee", "fee"]),
+    payment_method: (pick(row, ["payment method", "pay method", "method"]) || "PAD").trim(),
+    phone: pick(row, ["phone", "mobile"]).trim(),
+    email: pick(row, ["email", "e-mail"]).trim(),
+    siblings: pick(row, ["siblings"]).trim(),
+    notes: pick(row, ["notes", "comments"]).trim(),
+  };
+}
+
+function validateBatchStudent(row, seen) {
+  const errors = [];
+  if (!row.student_name) errors.push("Student name missing");
+  if (!["C", "D"].includes(row.status)) errors.push("Status must be C or D");
+  if (!row.subjects) errors.push("Subject missing");
+  if (row.enrol_date && Number.isNaN(Date.parse(row.enrol_date))) errors.push("Enrol date not valid");
+  if (String(row.std_monthly_fee || "").trim() && normalizeMoney(row.std_monthly_fee) <= 0) errors.push("STD fee not valid");
+  const key = `${row.student_name.toLowerCase()}|${row.parent_guardian.toLowerCase()}`;
+  if (seen.has(key)) errors.push("Duplicate in this CSV");
+  seen.add(key);
+  const existing = state.students.find((student) =>
+    String(student.student_name || "").toLowerCase() === row.student_name.toLowerCase()
+    && String(student.parent_guardian || "").toLowerCase() === row.parent_guardian.toLowerCase()
+  );
+  if (existing) errors.push("Already exists in Student Roster");
+  return errors;
+}
+
+function buildBatchImportPreview(rows) {
+  const seen = new Set();
+  return rows.map((row, index) => {
+    const normalized = normalizeBatchRow(row);
+    const errors = validateBatchStudent(normalized, seen);
+    return {
+      row_number: index + 1,
+      data: normalized,
+      errors,
+      valid: errors.length === 0,
     };
-    Object.entries(values).forEach(([key, value]) => {
-      const control = tr.querySelector(`[name="${key}"]`);
-      if (control) control.value = value;
-    });
-    const rawSubjects = pick(row, ["subjects", "subject"]);
-    const subjects = subjectList(rawSubjects).map((subject) => subject.toLowerCase());
-    const select = tr.querySelector('[name="subjects"]');
-    if (select) {
-      [...select.options].forEach((option) => {
-        option.selected = subjects.includes(option.value.toLowerCase());
-      });
-    }
   });
-  toast(`${Math.min(rows.length, tableRows.length)} CSV student row${rows.length === 1 ? "" : "s"} loaded for review`);
+}
+
+function renderBatchImportPreview() {
+  const panel = qs("#batchImportPanel");
+  if (!panel) return;
+  const rows = state.batchImportPreview || [];
+  if (!rows.length) {
+    panel.classList.add("collapsed");
+    return;
+  }
+  panel.classList.remove("collapsed");
+  const valid = rows.filter((row) => row.valid).length;
+  const invalid = rows.length - valid;
+  qs("#batchImportSummary").textContent = `${state.batchImportFileName || "CSV"}: ${valid} ready, ${invalid} need correction. Valid rows will create Student Roster records and Fee Tracker rows after confirmation.`;
+  qs("#applyBatchImport").disabled = valid === 0;
+  const body = rows.map((row) => [
+    row.row_number,
+    row.valid ? `<span class="confidence high">Ready</span>` : `<span class="confidence low">Fix Required</span>`,
+    escapeHtml(row.data.student_name),
+    escapeHtml(row.data.parent_guardian),
+    escapeHtml(row.data.status),
+    escapeHtml(row.data.enrol_date),
+    escapeHtml(row.data.subjects),
+    escapeHtml(row.data.rate_type),
+    money(normalizeMoney(row.data.std_monthly_fee)),
+    escapeHtml(row.data.payment_method),
+    escapeHtml(row.errors.join("; ") || "Validated"),
+  ]);
+  renderTable(qs("#batchImportTable"), ["Row", "Status", "Student", "Parent / Guardian", "C/D", "Enrol Date", "Subjects", "Rate Type", "STD Fee", "Pay Method", "Validation"], body);
+}
+
+async function applyBatchImport() {
+  const validRows = (state.batchImportPreview || []).filter((row) => row.valid).map((row) => ({
+    ...row.data,
+    std_monthly_fee: normalizeMoney(row.data.std_monthly_fee),
+  }));
+  if (!validRows.length) {
+    toast("No valid student rows are ready to import");
+    return;
+  }
+  if (!confirm(`Import ${validRows.length} validated student record${validRows.length === 1 ? "" : "s"} now? This updates Student Roster, Fee Tracker, and Dashboard.`)) return;
+  const result = await api("/api/batch", { method: "POST", body: JSON.stringify({ rows: validRows }) });
+  state.batchImportRows = [];
+  state.batchImportPreview = [];
+  toast(`${result.saved} student record${result.saved === 1 ? "" : "s"} imported`);
+  await load();
 }
 
 function paymentCsvRows(rows) {
@@ -699,7 +819,11 @@ function formData(form) {
 }
 
 function editStudent(id) {
-  const student = state.students.find((s) => s.id === id);
+  const student = state.students.find((s) => String(s.id) === String(id));
+  if (!student) {
+    toast("Student record was not found");
+    return;
+  }
   const form = qs("#studentForm");
   closeWorkflow();
   form.classList.remove("collapsed");
@@ -757,7 +881,7 @@ function renderModifyResults() {
     .filter((s) => term.length >= 1 && `${s.student_name} ${s.parent_guardian}`.toLowerCase().includes(term))
     .slice(0, 12);
   qs("#modifyResults").innerHTML = matches.length
-    ? matches.map((s) => `<button type="button" class="result-row" data-modify="${s.id}"><strong>${s.student_name}</strong><span>${s.parent_guardian || ""} · ${s.subjects} · ${s.status}</span></button>`).join("")
+    ? matches.map((s) => `<button type="button" class="result-row" data-modify="${s.id}"><strong>${s.student_name}</strong><span>${s.parent_guardian || ""} - ${s.subjects} - ${s.status}</span></button>`).join("")
     : `<p class="muted-note">Type a name to find a student record.</p>`;
   document.querySelectorAll("[data-modify]").forEach((button) => button.addEventListener("click", () => editStudent(button.dataset.modify)));
 }
@@ -850,17 +974,17 @@ async function handleFeeImportCsv(event) {
   state.feeImportRows = rows;
   state.feeImportPreview = result.rows || [];
   renderFeeImportPreview();
-  const matched = state.feeImportPreview.filter((row) => row.matched).length;
-  toast(`${matched} of ${state.feeImportPreview.length} fee rows matched`);
+  const ready = state.feeImportPreview.filter((row) => row.valid).length;
+  toast(`${ready} of ${state.feeImportPreview.length} fee rows validated`);
 }
 
 async function applyFeeImport() {
-  const matched = (state.feeImportPreview || []).filter((row) => row.matched).length;
-  if (!matched) {
+  const ready = (state.feeImportPreview || []).filter((row) => row.valid).length;
+  if (!ready) {
     toast("No matched fee rows are ready to import");
     return;
   }
-  if (!confirm(`Apply monthly payment data for ${matched} matched student row${matched === 1 ? "" : "s"}?`)) return;
+  if (!confirm(`Apply monthly payment data for ${ready} validated student row${ready === 1 ? "" : "s"}?`)) return;
   const result = await api("/api/fee-import/apply", { method: "POST", body: JSON.stringify({ rows: state.feeImportRows }) });
   state.feeImportRows = [];
   state.feeImportPreview = [];
@@ -961,7 +1085,12 @@ async function handleBatchCsv(event) {
     toast("No student rows found in this CSV");
     return;
   }
-  fillBatchFromCsv(rows);
+  state.batchImportFileName = file.name;
+  state.batchImportRows = rows;
+  state.batchImportPreview = buildBatchImportPreview(rows);
+  renderBatchImportPreview();
+  const valid = state.batchImportPreview.filter((row) => row.valid).length;
+  toast(`${valid} of ${state.batchImportPreview.length} student row${state.batchImportPreview.length === 1 ? "" : "s"} validated`);
 }
 
 document.querySelectorAll(".tab").forEach((tab) => {
@@ -1032,10 +1161,14 @@ qs("#feeImportCsv").addEventListener("change", handleFeeImportCsv);
 qs("#applyFeeImport").addEventListener("click", applyFeeImport);
 qs("#paymentCsv").addEventListener("change", handlePaymentUpload);
 qs("#batchCsv").addEventListener("change", handleBatchCsv);
+qs("#applyBatchImport").addEventListener("click", applyBatchImport);
 qs("#applyVerifiedRows").addEventListener("click", applyVerifiedRows);
 qs("#authForm")?.addEventListener("submit", sendMagicLink);
 qs("#googleLogin")?.addEventListener("click", signInWithGoogle);
 qs("#signOut")?.addEventListener("click", signOut);
+qs("#switchAccount")?.addEventListener("click", switchAccount);
+qs("#showLogin")?.addEventListener("click", () => setAuthMode("login"));
+qs("#showSignup")?.addEventListener("click", () => setAuthMode("signup"));
 
 qs("#batchForm").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -1065,8 +1198,8 @@ qs("#clearBatch").addEventListener("click", renderBatch);
   if (supabaseClient) {
     supabaseClient.auth.onAuthStateChange(async (_event, session) => {
       authSession = session;
+      renderAuthState();
       if (session) {
-        qs("#authPanel").classList.add("collapsed");
         await load();
       }
     });

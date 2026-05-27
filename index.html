@@ -16,20 +16,41 @@
     <div class="header-actions">
       <div id="institutionPhone" class="phone-pill"></div>
       <div class="status-pill"><span id="recordCount">0</span> student records</div>
-      <button type="button" id="signOut" class="ghost header-signout">Sign Out</button>
+      <div id="accountStatus" class="account-card collapsed" aria-live="polite">
+        <span>Signed in as</span>
+        <strong id="accountEmail">Not signed in</strong>
+        <em id="accountRole"></em>
+      </div>
+      <div class="auth-actions">
+        <button type="button" id="switchAccount" class="ghost header-signout">Switch Account</button>
+        <button type="button" id="signOut" class="ghost header-signout">Sign Out</button>
+      </div>
     </div>
   </header>
 
   <section id="authPanel" class="auth-panel collapsed">
     <form id="authForm" class="auth-card">
-      <p class="eyebrow">Secure Login</p>
-      <h2>SMP Access</h2>
-      <p class="muted-note">Use your centre email or Google account to continue.</p>
-      <input id="loginEmail" type="email" placeholder="Email address" autocomplete="email">
-      <div class="actions">
-        <button type="submit">Email Login Link</button>
-        <button type="button" id="googleLogin" class="ghost">Continue with Google</button>
+      <p class="eyebrow">Secure Centre Access</p>
+      <h2>Welcome to KUMON SMP Program</h2>
+      <p class="muted-note">Choose whether you are opening SMP for the first time or returning to an existing centre account.</p>
+      <div class="auth-choice-row">
+        <button type="button" id="showLogin" class="auth-choice active">Already Have an Account</button>
+        <button type="button" id="showSignup" class="auth-choice ghost">First-Time User</button>
       </div>
+      <div id="loginPanel" class="auth-step">
+        <h3>Login</h3>
+        <p class="muted-note">Continue with your approved Google account or receive a secure email login link.</p>
+      </div>
+      <div id="signupPanel" class="auth-step collapsed">
+        <h3>Create Your Login</h3>
+        <p class="muted-note">Use Google or enter your email. SMP will send a verification link before access is opened.</p>
+      </div>
+      <input id="loginEmail" type="email" placeholder="Email address" autocomplete="email">
+      <div class="actions auth-submit-row">
+        <button type="button" id="googleLogin">Continue with Google</button>
+        <button type="submit" class="ghost">Send Email Verification</button>
+      </div>
+      <p class="auth-small-note">After login, your name and role are shown in the top-right corner. Admins can manage imports, settings, and user permissions.</p>
       <p id="authMessage" class="muted-note"></p>
     </form>
   </section>
@@ -298,11 +319,29 @@
       <div class="section-title">
         <div>
           <h2>New Enrolment Batch</h2>
-          <span>Add up to 10 students at a time, or upload an onboarding CSV for a new organization setup.</span>
+          <span>Use manual entry for quick additions, or upload a full first-time setup CSV with all students.</span>
         </div>
         <label class="file-button ghost-file">Upload Student CSV<input id="batchCsv" type="file" accept=".csv,text/csv"></label>
       </div>
+      <section id="batchImportPanel" class="surface import-panel collapsed">
+        <div class="section-title">
+          <div>
+            <h2>Student CSV Import Preview</h2>
+            <span id="batchImportSummary">Validate the full file before saving it to Student Roster, Fee Tracker, and Dashboard.</span>
+          </div>
+          <button id="applyBatchImport" type="button">Confirm and Import All Students</button>
+        </div>
+        <div class="table-wrap wide">
+          <table id="batchImportTable"></table>
+        </div>
+      </section>
       <form id="batchForm" class="surface">
+        <div class="section-title">
+          <div>
+            <h2>Quick Manual Entry</h2>
+            <span>Add a small number of students manually.</span>
+          </div>
+        </div>
         <div class="table-wrap wide">
           <table id="batchTable"></table>
         </div>

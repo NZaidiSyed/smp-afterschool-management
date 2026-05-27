@@ -803,6 +803,21 @@ def subject_list(subjects):
     return clean
 
 
+def payment_method_label(value):
+    method = str(value or "").strip()
+    if not method:
+        return "Unspecified"
+    normalized = re.sub(r"[\s_-]+", "", method).lower()
+    labels = {
+        "etransfer": "E-Transfer",
+        "pad": "PAD",
+        "cash": "Cash",
+        "creditcard": "Credit Card",
+        "cheque": "Cheque",
+    }
+    return labels.get(normalized, method)
+
+
 def subjects_text(subjects):
     return ", ".join(subject_list(subjects))
 
@@ -1138,17 +1153,63 @@ def student_lookup_key(student_name, parent_guardian):
     return f"{clean_match_text(student_name)}|{clean_match_text(parent_guardian)}"
 
 
+def student_name_key(student_name):
+    return clean_match_text(student_name)
+
+
+def csv_value(row, *names):
+    normalized = {re.sub(r"[^a-z0-9]", "", str(key).lower()): value for key, value in row.items()}
+    for name in names:
+        key = re.sub(r"[^a-z0-9]", "", str(name).lower())
+        value = normalized.get(key, "")
+        if str(value).strip():
+            return value
+    return ""
+
+
 def preview_fee_import(rows):
     with db() as conn:
+        settings = get_settings(conn)
+        current_month = settings.get("current_month", "May-26")
         students = get_students(conn)
         lookup = {student_lookup_key(row["student_name"], row["parent_guardian"]): row for row in students}
+        name_lookup = {}
+        number_lookup = {}
+        for student in students:
+            name_lookup.setdefault(student_name_key(student["student_name"]), []).append(student)
+            number_lookup[str(student.get("number", "")).strip()] = student
     preview = []
     for index, row in enumerate(rows, start=1):
-        name = str(row.get("student_name") or row.get("Student Name") or "").strip()
-        parent = str(row.get("parent_guardian") or row.get("Parent / Guardian") or "").strip()
+        name = str(csv_value(row, "student_name", "student name", "student", "name")).strip()
+        parent = str(csv_value(row, "parent_guardian", "parent guardian", "parent / guardian", "parent", "guardian")).strip()
+        number_value = str(csv_value(row, "number", "#", "student number")).strip()
         key = student_lookup_key(name, parent)
-        student = lookup.get(key)
-        month_values = {month: money(row.get(month)) for month in MONTHS if str(row.get(month, "")).strip()}
+        student = lookup.get(key) or number_lookup.get(number_value)
+        if not student:
+            candidates = name_lookup.get(student_name_key(name), [])
+            if len(candidates) == 1:
+                student = candidates[0]
+        month_values = {month: money(csv_value(row, month)) for month in MONTHS if str(csv_value(row, month)).strip()}
+        errors = []
+        warnings = []
+        if not name and not number_value:
+            errors.append("Student name or number is required")
+        if not student:
+            errors.append("No matching Student Roster record")
+        if not month_values:
+            warnings.append("No monthly payment cells found")
+        expected_months = []
+        missing_months = []
+        if student and student.get("enrol_date") and current_month in MONTHS:
+            enrol_label = transaction_month_label(student["enrol_date"])
+            if enrol_label in MONTHS:
+                start = MONTHS.index(enrol_label)
+                end = MONTHS.index(current_month)
+                if start <= end:
+                    expected_months = MONTHS[start : end + 1]
+                    missing_months = [month for month in expected_months if month not in month_values]
+                    if missing_months:
+                        warnings.append(f"{len(missing_months)} enrolment-to-current months are blank")
         preview.append(
             {
                 "row_number": index,
@@ -1157,10 +1218,16 @@ def preview_fee_import(rows):
                 "student_id": student["id"] if student else None,
                 "matched_student": student["student_name"] if student else "",
                 "matched_parent": student["parent_guardian"] if student else "",
+                "matched_enrol_date": student["enrol_date"] if student else "",
                 "matched": bool(student),
                 "month_count": len(month_values),
+                "expected_month_count": len(expected_months),
+                "missing_month_count": len(missing_months),
                 "total_amount": sum(month_values.values()),
                 "months": month_values,
+                "errors": errors,
+                "warnings": warnings,
+                "valid": bool(student) and not errors,
             }
         )
     return preview
@@ -1173,7 +1240,7 @@ def apply_fee_import(rows):
     with db() as conn:
         org_id = current_org_id(conn) if PG_MODE else None
         for item in preview:
-            if not item["student_id"]:
+            if not item["student_id"] or not item.get("valid"):
                 skipped += 1
                 continue
             for month, amount in item["months"].items():
@@ -1283,7 +1350,7 @@ def dashboard(conn, current_month="May-26"):
         enrolment_totals.append({"month": month, "count": count})
     by_method = {}
     for row in active:
-        method = row["payment_method"] or "Unspecified"
+        method = payment_method_label(row["payment_method"])
         by_method[method] = by_method.get(method, 0) + row["months"].get(current_month, 0)
     subject_breakdown = {}
     for row in active:
