@@ -87,6 +87,10 @@ h2 { font-size: 20px; }
   backdrop-filter: blur(8px);
 }
 
+.auth-panel.collapsed {
+  display: none;
+}
+
 .auth-card {
   width: min(440px, 100%);
   background: white;
