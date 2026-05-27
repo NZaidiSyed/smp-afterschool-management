@@ -34,6 +34,7 @@ SMP_ORGANIZATION_ID = os.environ.get("SMP_ORGANIZATION_ID", "").strip()
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_ANON_KEY = os.environ.get("SUPABASE_ANON_KEY", "")
 SUPABASE_REQUIRE_AUTH = os.environ.get("SUPABASE_REQUIRE_AUTH", "0").lower() in {"1", "true", "yes", "on"}
+SUPABASE_PROJECT_REF = os.environ.get("SUPABASE_PROJECT_REF", "ccftzopeneykbcwkwizq").strip()
 
 
 def normalized_database_url():
@@ -49,6 +50,8 @@ def normalized_database_url():
     if not project_ref:
         match = re.search(r"postgresql://postgres\.([a-z0-9]+):", raw)
         project_ref = match.group(1) if match else ""
+    if not project_ref:
+        project_ref = SUPABASE_PROJECT_REF
     if not project_ref:
         return raw
     password = quote(unquote(parsed.password or ""), safe="")

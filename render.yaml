@@ -16,6 +16,8 @@ services:
         sync: false
       - key: SUPABASE_REQUIRE_AUTH
         value: "1"
+      - key: SUPABASE_PROJECT_REF
+        value: ccftzopeneykbcwkwizq
       - key: SMP_ORGANIZATION_ID
         sync: false
     disk:
