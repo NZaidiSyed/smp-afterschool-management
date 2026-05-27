@@ -41,12 +41,17 @@ def normalized_database_url():
     raw = os.environ.get("DATABASE_URL") or os.environ.get("SUPABASE_DB_URL") or ""
     if not raw:
         return ""
+    project_ref = SUPABASE_PROJECT_REF
+    if SUPABASE_URL:
+        host = urlparse(SUPABASE_URL).hostname or ""
+        project_ref = host.split(".")[0] or project_ref
+    if project_ref and "pooler.supabase.com" in raw:
+        for prefix in ("postgresql://postgres:", "postgres://postgres:"):
+            if raw.startswith(prefix):
+                return raw.replace(prefix, prefix.replace("postgres:", f"postgres.{project_ref}:"), 1)
     parsed = urlparse(raw)
     if "pooler.supabase.com" not in parsed.hostname or parsed.username != "postgres":
         return raw
-    project_ref = ""
-    if SUPABASE_URL:
-        project_ref = urlparse(SUPABASE_URL).hostname.split(".")[0]
     if not project_ref:
         match = re.search(r"postgresql://postgres\.([a-z0-9]+):", raw)
         project_ref = match.group(1) if match else ""
