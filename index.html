@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Education Centre Tracking</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">SMP - After School Management Program</p>
+      <h1 id="institutionHeading">Learning Centre</h1>
+      <p id="institutionDetails" class="subtitle">Student roster, fee tracking, and monthly collection dashboard.</p>
+    </div>
+    <div class="header-actions">
+      <div id="institutionPhone" class="phone-pill"></div>
+      <div class="status-pill"><span id="recordCount">0</span> student records</div>
+    </div>
+  </header>
+
+  <nav class="tabs" aria-label="Workbook tabs">
+    <button class="tab active" data-tab="dashboard">Dashboard</button>
+    <button class="tab" data-tab="fee">Fee Tracker</button>
+    <button class="tab" data-tab="roster">Student Roster</button>
+    <button class="tab" data-tab="reconciliation">Payment Reconciliation</button>
+    <button class="tab" data-tab="batch">New Enrolment Batch</button>
+    <button class="tab" data-tab="settings">Settings</button>
+  </nav>
+
+  <main>
+    <section id="dashboard" class="panel active">
+      <div class="section-title page-title">
+        <div>
+          <h2>Executive Dashboard</h2>
+          <span>Current month compared with the same month last year</span>
+        </div>
+        <select id="dashboardMonth" class="compact-select"></select>
+      </div>
+      <div class="metrics" id="metrics"></div>
+      <div class="chart-grid">
+        <section class="surface">
+          <div class="section-title">
+            <h2>Monthly Enrolment</h2>
+            <span>Last 13 months</span>
+          </div>
+          <div id="enrolmentChart" class="bar-chart compact-bars"></div>
+        </section>
+        <section class="surface">
+          <div class="section-title">
+            <h2>Monthly Collection</h2>
+            <span>Last 13 months</span>
+          </div>
+          <div id="barChart" class="bar-chart compact-bars"></div>
+        </section>
+      </div>
+      <div class="dashboard-grid lower-grid">
+        <section class="surface">
+          <div class="section-title">
+            <h2>Payment Mix</h2>
+            <span>Current month</span>
+          </div>
+          <div id="paymentMix" class="mix-list"></div>
+        </section>
+        <section class="surface">
+          <div class="section-title">
+            <h2>Current Month Follow-Up</h2>
+            <span>Unpaid after the 5th</span>
+          </div>
+          <div id="unpaidList" class="unpaid-list"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="fee" class="panel">
+      <div class="section-title">
+        <div>
+          <h2>Fee Tracker</h2>
+          <span class="lock">Student information is frozen from Student Roster. Monthly payment cells are editable.</span>
+        </div>
+        <div class="toolbar">
+          <input id="feeSearch" class="search" placeholder="Search students">
+          <label class="inline-control">Status
+            <select id="feeStatusFilter" class="compact-select">
+              <option value="current">Current Only</option>
+              <option value="all">All Students</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="table-wrap wide">
+        <table id="feeTable"></table>
+      </div>
+    </section>
+
+    <section id="reconciliation" class="panel">
+      <div class="section-title page-title">
+        <div>
+          <h2>Payment Reconciliation</h2>
+          <span>Upload bank or credit-card CSV files, review matches, and post payments to Fee Tracker.</span>
+        </div>
+        <label class="file-button">Upload Payment CSV<input id="paymentCsv" type="file" accept=".csv,text/csv"></label>
+      </div>
+      <div class="mini-grid recon-summary" id="reconSummary"></div>
+      <section class="surface">
+        <div class="section-title">
+          <div>
+            <h2>Review Queue</h2>
+            <span>High confidence uses parent or saved alias, amount, month, and last-month payment. New enrolments are allowed as exceptions.</span>
+          </div>
+          <span id="reconReadyCount" class="status-pill subtle">0 verified</span>
+        </div>
+        <div class="table-wrap wide">
+          <table id="reconciliationTable"></table>
+        </div>
+        <div class="actions reconciliation-actions">
+          <button id="applyVerifiedRows" type="button">Data is Verified and Ready to Add</button>
+        </div>
+      </section>
+    </section>
+
+    <section id="roster" class="panel">
+      <div class="split">
+        <section class="surface roster-table">
+          <div class="section-title">
+            <div>
+              <h2>Student Roster</h2>
+              <span>Current students are shown by default</span>
+            </div>
+            <div class="toolbar">
+              <label class="inline-control">Status
+                <select id="rosterStatusFilter" class="compact-select">
+                  <option value="current">Current Only</option>
+                  <option value="all">All Students</option>
+                </select>
+              </label>
+              <input id="search" class="search" placeholder="Search records">
+              <button id="openStudentWorkflow" type="button">Add / Modify Student</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table id="rosterTable"></table>
+          </div>
+        </section>
+        <form id="studentForm" class="surface form-grid collapsed">
+          <div class="section-title full">
+            <h2 id="formTitle">Add Student</h2>
+            <span>Use Add or Edit to activate this form</span>
+          </div>
+          <input type="hidden" name="id">
+          <label>Student Name<input name="student_name" required></label>
+          <label>Parent / Guardian<input name="parent_guardian"></label>
+          <label>Status<select name="status"><option>C</option><option>D</option></select></label>
+          <label>Enrol Date<input type="date" name="enrol_date"></label>
+          <label class="full">Subjects<div id="studentSubjectChoices" class="subject-choices"></div></label>
+          <label>Rate Type<select name="rate_type"><option>Regular</option><option>EL</option></select></label>
+          <label>STD Monthly Fee<input type="number" step="0.01" name="std_monthly_fee"></label>
+          <label>Payment Method<select name="payment_method"><option>PAD</option><option>E-Transfer</option><option>Cash</option><option>Credit Card</option><option>Cheque</option></select></label>
+          <label>Phone<input name="phone"></label>
+          <label>Email<input type="email" name="email"></label>
+          <label>Siblings<input name="siblings"></label>
+          <label>Notes / Discounts<textarea name="notes"></textarea></label>
+          <div class="actions full">
+            <button type="submit">Save Record</button>
+            <button type="button" class="ghost" id="resetForm">Close</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section id="settings" class="panel">
+      <div class="dashboard-grid">
+        <section class="surface">
+          <div class="section-title">
+            <h2>One-Time Centre Setup</h2>
+            <span>Displayed across all pages</span>
+          </div>
+          <form id="settingsForm" class="settings-form">
+            <label>Institution Name<input name="institution_name" required></label>
+            <label>Phone Number<input name="institution_phone"></label>
+            <label class="full">Centre Details<textarea name="institution_details"></textarea></label>
+            <label class="full">Subjects Offered<textarea name="subjects_offered" id="subjectsOffered" placeholder="Math&#10;English"></textarea></label>
+            <label>Dashboard Month<select name="current_month" id="settingsMonth"></select></label>
+            <div class="actions full">
+              <button type="submit">Save Centre Setup</button>
+            </div>
+          </form>
+        </section>
+        <section class="surface">
+          <div class="section-title">
+            <h2>Fee Schedule</h2>
+            <span>Subject and rate selections</span>
+          </div>
+          <table id="ratesTable"></table>
+          <form id="rateForm" class="rate-form">
+            <input name="subject" placeholder="Subject">
+            <input name="rate_type" placeholder="Rate type">
+            <input name="monthly_fee" type="number" step="0.01" placeholder="Monthly fee">
+            <input name="description" placeholder="Description">
+            <button type="submit">Add Rate</button>
+          </form>
+        </section>
+      </div>
+      <div class="dashboard-grid lower-grid">
+        <section class="surface">
+          <div class="section-title">
+            <h2>Subscription & Access Plan</h2>
+            <span>14-day trial, billing, and discounts</span>
+          </div>
+          <div class="roadmap">
+            <p><strong>Authentication:</strong> Google login or email magic-link login.</p>
+            <p><strong>Trial:</strong> 14 days free for each centre.</p>
+            <p><strong>Billing:</strong> $15.99 CAD recurring subscription through Stripe or Google Pay until cancelled.</p>
+            <p><strong>Roles:</strong> Admin can add, edit, and delete. Staff users should not delete records.</p>
+            <p><strong>Backup:</strong> Weekly Sunday SQLite backup to C:/Back/Day after local filesystem permission is granted.</p>
+          </div>
+          <div class="mini-grid" id="subscriptionSummary"></div>
+          <div class="section-title sub-title">
+            <h2>Discount Codes</h2>
+            <span>Admin managed</span>
+          </div>
+          <table id="discountTable"></table>
+          <form id="discountForm" class="discount-form">
+            <input name="code" placeholder="Code">
+            <input name="description" placeholder="Description">
+            <input name="percent_off" type="number" step="0.01" placeholder="% off">
+            <input name="amount_off" type="number" step="0.01" placeholder="$ off">
+            <button type="submit">Add Code</button>
+          </form>
+        </section>
+        <section class="surface">
+          <div class="section-title">
+            <h2>Users & Permissions</h2>
+            <span>Suggested operating model</span>
+          </div>
+          <div class="role-grid">
+            <div><strong>Owner/Admin</strong><span>Billing, users, settings, backup restore, all edits, delete records.</span></div>
+            <div><strong>Manager</strong><span>Add/modify students, edit payments, run reports, no billing or restore.</span></div>
+            <div><strong>Staff</strong><span>View dashboards, find students, add notes, no deletes.</span></div>
+            <div><strong>Read Only</strong><span>Dashboard and roster visibility only.</span></div>
+          </div>
+          <table id="usersTable"></table>
+        </section>
+        <section class="surface">
+          <div class="section-title">
+            <h2>Backup & Restore</h2>
+            <span>Recover from C:/Back/Day</span>
+          </div>
+          <div class="restore-panel">
+            <p>Restore replaces the current local database with a selected weekly backup. Use this only if data is mismatched or damaged.</p>
+            <select id="backupSelect"></select>
+            <input id="restoreConfirm" placeholder="Type RESTORE to enable recovery">
+            <button id="restoreBackup" type="button" class="danger">Restore Backup</button>
+          </div>
+          <table id="backupTable"></table>
+        </section>
+        <section class="surface">
+          <div class="section-title">
+            <h2>Captured Logic</h2>
+            <span>Formula and macro equivalents</span>
+          </div>
+          <pre id="formulaManifest"></pre>
+        </section>
+      </div>
+    </section>
+
+    <section id="batch" class="panel">
+      <div class="section-title">
+        <div>
+          <h2>New Enrolment Batch</h2>
+          <span>Add up to 10 students at a time, or upload an onboarding CSV for a new organization setup.</span>
+        </div>
+        <label class="file-button ghost-file">Upload Student CSV<input id="batchCsv" type="file" accept=".csv,text/csv"></label>
+      </div>
+      <form id="batchForm" class="surface">
+        <div class="table-wrap wide">
+          <table id="batchTable"></table>
+        </div>
+        <div class="actions">
+          <button type="submit">Save Batch</button>
+          <button type="button" class="ghost" id="clearBatch">Clear Batch</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <aside id="studentProfile" class="profile-panel collapsed" aria-live="polite"></aside>
+
+  <div id="studentWorkflow" class="modal-backdrop collapsed">
+    <section class="workflow-modal surface">
+      <div class="section-title">
+        <div>
+          <h2>Add / Modify Student</h2>
+          <span>Choose the action you want to perform</span>
+        </div>
+        <button type="button" class="ghost" id="closeWorkflow">Close</button>
+      </div>
+      <div class="workflow-choices">
+        <button type="button" id="chooseAdd">Add New Student</button>
+        <button type="button" id="chooseModify" class="ghost">Modify Existing Student</button>
+      </div>
+      <div id="modifySearchArea" class="modify-search collapsed">
+        <input id="modifySearch" placeholder="Type student name to search">
+        <div id="modifyResults" class="modify-results"></div>
+      </div>
+    </section>
+  </div>
+
+  <div id="toast" role="status"></div>
+  <script src="app.js"></script>
+</body>
+</html>
