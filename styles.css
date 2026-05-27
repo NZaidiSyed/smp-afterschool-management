@@ -817,6 +817,14 @@ pre {
   display: none;
 }
 
+.import-panel {
+  margin-top: 16px;
+}
+
+.import-panel.collapsed {
+  display: none;
+}
+
 .modify-results {
   display: grid;
   gap: 8px;

@@ -4,6 +4,8 @@ import shutil
 import sqlite3
 import sys
 import zipfile
+import csv
+import io
 from difflib import SequenceMatcher
 from datetime import datetime, timedelta
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -917,6 +919,91 @@ def reconciliation_summary(conn):
     return [rowdict(row) for row in rows]
 
 
+def csv_response(rows, headers):
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=headers, extrasaction="ignore", lineterminator="\n")
+    writer.writeheader()
+    for row in rows:
+        writer.writerow({header: row.get(header, "") for header in headers})
+    return output.getvalue().encode("utf-8-sig")
+
+
+def roster_export_rows(conn):
+    headers = [
+        "number", "student_name", "parent_guardian", "status", "enrol_date", "subjects", "last_modification",
+        "rate_type", "std_monthly_fee", "payment_method", "phone", "email", "siblings", "notes",
+    ]
+    return headers, [{header: row.get(header, "") for header in headers} for row in get_students(conn)]
+
+
+def fee_export_rows(conn):
+    headers = [
+        "number", "student_name", "parent_guardian", "status", "enrol_date", "subjects", "rate_type",
+        "std_monthly_fee", "payment_method", "subject_units", *MONTHS, "total_paid", "balance",
+    ]
+    rows = []
+    for row in fee_tracker(conn):
+        item = {header: row.get(header, "") for header in headers}
+        for month in MONTHS:
+            item[month] = row["months"].get(month, 0)
+        rows.append(item)
+    return headers, rows
+
+
+def student_lookup_key(student_name, parent_guardian):
+    return f"{clean_match_text(student_name)}|{clean_match_text(parent_guardian)}"
+
+
+def preview_fee_import(rows):
+    with db() as conn:
+        students = get_students(conn)
+        lookup = {student_lookup_key(row["student_name"], row["parent_guardian"]): row for row in students}
+    preview = []
+    for index, row in enumerate(rows, start=1):
+        name = str(row.get("student_name") or row.get("Student Name") or "").strip()
+        parent = str(row.get("parent_guardian") or row.get("Parent / Guardian") or "").strip()
+        key = student_lookup_key(name, parent)
+        student = lookup.get(key)
+        month_values = {month: money(row.get(month)) for month in MONTHS if str(row.get(month, "")).strip()}
+        preview.append(
+            {
+                "row_number": index,
+                "student_name": name,
+                "parent_guardian": parent,
+                "student_id": student["id"] if student else None,
+                "matched_student": student["student_name"] if student else "",
+                "matched_parent": student["parent_guardian"] if student else "",
+                "matched": bool(student),
+                "month_count": len(month_values),
+                "total_amount": sum(month_values.values()),
+                "months": month_values,
+            }
+        )
+    return preview
+
+
+def apply_fee_import(rows):
+    preview = preview_fee_import(rows)
+    applied = 0
+    skipped = 0
+    with db() as conn:
+        for item in preview:
+            if not item["student_id"]:
+                skipped += 1
+                continue
+            for month, amount in item["months"].items():
+                conn.execute(
+                    """
+                    INSERT INTO payments(student_id, month_label, amount) VALUES (?,?,?)
+                    ON CONFLICT(student_id, month_label) DO UPDATE SET amount=excluded.amount
+                    """,
+                    (item["student_id"], month, amount),
+                )
+                applied += 1
+        conn.commit()
+    return {"applied": applied, "skipped": skipped, "rows": preview}
+
+
 def recent_months(current_month, count=13):
     if current_month not in MONTHS:
         current_month = "May-26"
@@ -1014,6 +1101,15 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def send_csv(self, filename, rows, headers):
+        data = csv_response(rows, headers)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
     def read_json(self):
         length = int(self.headers.get("Content-Length", 0))
         if not length:
@@ -1046,6 +1142,16 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/export":
             with db() as conn:
                 self.send_json({"students": get_students(conn), "fee_tracker": fee_tracker(conn), "dashboard": dashboard(conn)})
+            return
+        if parsed.path == "/api/export/roster.csv":
+            with db() as conn:
+                headers, rows = roster_export_rows(conn)
+                self.send_csv("smp_student_roster.csv", rows, headers)
+            return
+        if parsed.path == "/api/export/fee-tracker.csv":
+            with db() as conn:
+                headers, rows = fee_export_rows(conn)
+                self.send_csv("smp_fee_tracker.csv", rows, headers)
             return
         return super().do_GET()
 
@@ -1238,6 +1344,20 @@ class Handler(SimpleHTTPRequestHandler):
                     )
                     conn.commit()
                 self.send_json({"ok": True})
+                return
+            if parsed.path == "/api/fee-import/preview":
+                payload = self.read_json()
+                rows = payload.get("rows", [])
+                if not isinstance(rows, list) or not rows:
+                    raise ValueError("Upload at least one fee tracker CSV row")
+                self.send_json({"ok": True, "rows": preview_fee_import(rows[:1000])})
+                return
+            if parsed.path == "/api/fee-import/apply":
+                payload = self.read_json()
+                rows = payload.get("rows", [])
+                if not isinstance(rows, list) or not rows:
+                    raise ValueError("Upload at least one fee tracker CSV row")
+                self.send_json({"ok": True, **apply_fee_import(rows[:1000])})
                 return
         except ValueError as exc:
             self.send_json({"ok": False, "error": str(exc)}, 400)

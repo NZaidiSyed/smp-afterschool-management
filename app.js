@@ -14,6 +14,8 @@ let state = {
   payer_aliases: [],
   reconciliationPreview: [],
   reconciliationFileName: "",
+  feeImportRows: [],
+  feeImportPreview: [],
 };
 
 const money = (value) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(value || 0);
@@ -204,6 +206,29 @@ function renderFeeTracker() {
   document.querySelectorAll(".payment-input").forEach((input) => {
     input.addEventListener("change", () => savePayment(input));
   });
+  renderFeeImportPreview();
+}
+
+function renderFeeImportPreview() {
+  const panel = qs("#feeImportPanel");
+  if (!panel) return;
+  const rows = state.feeImportPreview || [];
+  if (!rows.length) {
+    panel.classList.add("collapsed");
+    return;
+  }
+  panel.classList.remove("collapsed");
+  const body = rows.map((row) => [
+    row.row_number,
+    escapeHtml(row.student_name),
+    escapeHtml(row.parent_guardian),
+    row.matched ? `<span class="confidence high">matched</span>` : `<span class="confidence low">not matched</span>`,
+    escapeHtml(row.matched_student || "-"),
+    escapeHtml(row.matched_parent || "-"),
+    row.month_count,
+    money(row.total_amount),
+  ]);
+  renderTable(qs("#feeImportTable"), ["Row", "CSV Student", "CSV Parent", "Status", "Matched Student", "Matched Parent", "Month Cells", "Total Amount"], body);
 }
 
 function monthDate(monthLabel) {
@@ -757,6 +782,36 @@ async function handlePaymentUpload(event) {
   toast(`${state.reconciliationPreview.length} transaction${state.reconciliationPreview.length === 1 ? "" : "s"} ready for review`);
 }
 
+async function handleFeeImportCsv(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const rows = await readCsvFile(file);
+  if (!rows.length) {
+    toast("No fee tracker rows found in this CSV");
+    return;
+  }
+  const result = await api("/api/fee-import/preview", { method: "POST", body: JSON.stringify({ rows }) });
+  state.feeImportRows = rows;
+  state.feeImportPreview = result.rows || [];
+  renderFeeImportPreview();
+  const matched = state.feeImportPreview.filter((row) => row.matched).length;
+  toast(`${matched} of ${state.feeImportPreview.length} fee rows matched`);
+}
+
+async function applyFeeImport() {
+  const matched = (state.feeImportPreview || []).filter((row) => row.matched).length;
+  if (!matched) {
+    toast("No matched fee rows are ready to import");
+    return;
+  }
+  if (!confirm(`Apply monthly payment data for ${matched} matched student row${matched === 1 ? "" : "s"}?`)) return;
+  const result = await api("/api/fee-import/apply", { method: "POST", body: JSON.stringify({ rows: state.feeImportRows }) });
+  state.feeImportRows = [];
+  state.feeImportPreview = [];
+  toast(`${result.applied} monthly payment cell${result.applied === 1 ? "" : "s"} imported`);
+  await load();
+}
+
 function updateReconSelection(index) {
   const row = state.reconciliationPreview[index];
   if (!row) return;
@@ -917,6 +972,8 @@ qs("#discountForm").addEventListener("submit", async (event) => {
 qs('#settingsForm [name="institution_name"]').addEventListener("change", applyInstitutionDefaults);
 qs('#settingsForm [name="institution_name"]').addEventListener("blur", applyInstitutionDefaults);
 qs("#restoreBackup").addEventListener("click", restoreSelectedBackup);
+qs("#feeImportCsv").addEventListener("change", handleFeeImportCsv);
+qs("#applyFeeImport").addEventListener("click", applyFeeImport);
 qs("#paymentCsv").addEventListener("change", handlePaymentUpload);
 qs("#batchCsv").addEventListener("change", handleBatchCsv);
 qs("#applyVerifiedRows").addEventListener("click", applyVerifiedRows);

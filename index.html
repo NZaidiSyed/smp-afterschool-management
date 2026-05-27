@@ -79,6 +79,8 @@
           <span class="lock">Student information is frozen from Student Roster. Monthly payment cells are editable.</span>
         </div>
         <div class="toolbar">
+          <a class="file-button ghost-file" href="/api/export/fee-tracker.csv">Download Fee CSV</a>
+          <label class="file-button">Upload Fee CSV<input id="feeImportCsv" type="file" accept=".csv,text/csv"></label>
           <input id="feeSearch" class="search" placeholder="Search students">
           <label class="inline-control">Status
             <select id="feeStatusFilter" class="compact-select">
@@ -91,6 +93,18 @@
       <div class="table-wrap wide">
         <table id="feeTable"></table>
       </div>
+      <section id="feeImportPanel" class="surface import-panel collapsed">
+        <div class="section-title">
+          <div>
+            <h2>Fee CSV Import Preview</h2>
+            <span>Matched rows will update monthly payment columns only after confirmation.</span>
+          </div>
+          <button id="applyFeeImport" type="button">Apply Fee CSV Import</button>
+        </div>
+        <div class="table-wrap wide">
+          <table id="feeImportTable"></table>
+        </div>
+      </section>
     </section>
 
     <section id="reconciliation" class="panel">
@@ -128,6 +142,7 @@
               <span>Current students are shown by default</span>
             </div>
             <div class="toolbar">
+              <a class="file-button ghost-file" href="/api/export/roster.csv">Download Roster CSV</a>
               <label class="inline-control">Status
                 <select id="rosterStatusFilter" class="compact-select">
                   <option value="current">Current Only</option>
