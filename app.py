@@ -6,6 +6,7 @@ import sys
 import zipfile
 import csv
 import io
+import os
 from difflib import SequenceMatcher
 from datetime import datetime, timedelta
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -15,9 +16,11 @@ import xml.etree.ElementTree as ET
 
 
 ROOT = Path(__file__).resolve().parent
+DATA_DIR = Path(os.environ.get("SMP_DATA_DIR", ROOT))
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 WORKBOOK = ROOT / "Kumon_Tracking_FINAL-1.xlsm"
-DB = ROOT / "kumon_tracking.sqlite3"
-BACKUP_DIR = Path("C:/Back/Day")
+DB = DATA_DIR / "kumon_tracking.sqlite3"
+BACKUP_DIR = Path(os.environ.get("SMP_BACKUP_DIR", "C:/Back/Day"))
 DEFAULT_SETTINGS = {
     "institution_name": "SMP - After School Management Program",
     "institution_phone": "",
@@ -1492,7 +1495,7 @@ class Handler(SimpleHTTPRequestHandler):
 if __name__ == "__main__":
     init_db(force="--reseed" in sys.argv)
     ensure_meta_defaults()
-    port = 8765
+    port = int(os.environ.get("PORT", "8765"))
     if "--port" in sys.argv:
         port = int(sys.argv[sys.argv.index("--port") + 1])
     print(f"SMP tracking site running at http://0.0.0.0:{port}")

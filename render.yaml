@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: smp-afterschool-management
+    env: python
+    plan: starter
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python app.py"
+    envVars:
+      - key: SMP_DATA_DIR
+        value: /var/data
+    disk:
+      name: smp-data
+      mountPath: /var/data
+      sizeGB: 1

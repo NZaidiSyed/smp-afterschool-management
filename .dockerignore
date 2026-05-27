@@ -1,0 +1,14 @@
+__pycache__/
+.git/
+*.pyc
+*.pyo
+*.log
+*.sqlite3
+*.db
+*.xlsm
+*.xlsx
+*.xls
+.env
+.env.*
+server.out.log
+server.err.log
