@@ -655,6 +655,22 @@ function normalizeMoney(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function normalizeDateInput(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const serial = Number(text);
+  if (Number.isFinite(serial) && serial >= 20000 && serial <= 80000) {
+    const date = new Date(Date.UTC(1899, 11, 30 + serial));
+    return date.toISOString().slice(0, 10);
+  }
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    const utc = new Date(Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()));
+    return utc.toISOString().slice(0, 10);
+  }
+  return text;
+}
+
 const batchColumnAliases = {
   student_name: ["student name", "student", "name"],
   parent_guardian: ["parent guardian", "parent / guardian", "parent", "guardian", "payer"],
@@ -693,7 +709,7 @@ function normalizeBatchRow(row) {
     student_name: pick(row, batchColumnAliases.student_name).trim(),
     parent_guardian: pick(row, batchColumnAliases.parent_guardian).trim(),
     status: (pick(row, batchColumnAliases.status) || "C").trim().toUpperCase().slice(0, 1),
-    enrol_date: pick(row, batchColumnAliases.enrol_date).trim(),
+    enrol_date: normalizeDateInput(pick(row, batchColumnAliases.enrol_date)),
     subjects,
     rate_type: (pick(row, batchColumnAliases.rate_type) || "Regular").trim(),
     std_monthly_fee: feeColumn ? row[feeColumn] : "",
@@ -865,6 +881,7 @@ function deleteBatchImportRow(index) {
 async function applyBatchImport() {
   const validRows = (state.batchImportPreview || []).filter((row) => row.valid).map((row) => ({
     ...row.data,
+    _preview_row: row.row_number,
     std_monthly_fee: normalizeMoney(row.data.std_monthly_fee),
   }));
   if (!validRows.length) {
@@ -875,10 +892,29 @@ async function applyBatchImport() {
   const blocked = totalLines - validRows.length;
   if (!confirm(`CSV lines in preview: ${totalLines}\nRecords to post: ${validRows.length}\nRows not posted: ${blocked}\n\nContinue and update Student Roster, Fee Tracker, and Dashboard?`)) return;
   const result = await api("/api/batch", { method: "POST", body: JSON.stringify({ rows: validRows }) });
-  state.batchImportRows = [];
-  state.batchImportPreview = [];
-  toast(`${result.saved} student record${result.saved === 1 ? "" : "s"} imported`);
+  let rejectedPreview = null;
+  const rejected = result.rejected || [];
+  if (rejected.length) {
+    const rejectedRows = new Set(rejected.map((item) => Number(item.row)));
+    rejectedPreview = state.batchImportPreview
+      .filter((row) => rejectedRows.has(row.row_number))
+      .map((row) => ({
+        ...row,
+        accepted: false,
+        valid: false,
+        errors: [rejected.find((item) => Number(item.row) === row.row_number)?.error || "Server rejected this row"],
+      }));
+    toast(`${result.saved} imported. ${rejected.length} row${rejected.length === 1 ? "" : "s"} still need correction.`);
+  } else {
+    state.batchImportRows = [];
+    state.batchImportPreview = [];
+    toast(`${result.saved} student record${result.saved === 1 ? "" : "s"} imported`);
+  }
   await load();
+  if (rejectedPreview) {
+    state.batchImportPreview = rejectedPreview;
+    renderBatchImportPreview();
+  }
 }
 
 function paymentCsvRows(rows) {

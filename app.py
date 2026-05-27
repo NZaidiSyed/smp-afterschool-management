@@ -150,6 +150,27 @@ def excel_date(value):
     return (datetime(1899, 12, 30) + timedelta(days=serial)).strftime("%Y-%m-%d")
 
 
+def normalize_date(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        serial = float(text)
+        if 20000 <= serial <= 80000:
+            return (datetime(1899, 12, 30) + timedelta(days=serial)).strftime("%Y-%m-%d")
+    except ValueError:
+        pass
+    for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%m/%d/%y", "%d/%m/%y", "%b %d %Y", "%d %b %Y", "%Y/%m/%d"]:
+        try:
+            return datetime.strptime(text[:10] if fmt == "%Y-%m-%d" else text, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%Y-%m-%d")
+    except ValueError:
+        return text
+
+
 def money(value):
     if value in (None, ""):
         return 0.0
@@ -885,7 +906,7 @@ def normalize_student(data):
         "student_name": str(data.get("student_name", "")).strip(),
         "parent_guardian": str(data.get("parent_guardian", "")).strip(),
         "status": status,
-        "enrol_date": str(data.get("enrol_date", "")).strip(),
+        "enrol_date": normalize_date(data.get("enrol_date", "")),
         "subjects": subjects,
         "rate_type": rate_type,
         "std_monthly_fee": fee,
@@ -1638,16 +1659,27 @@ class Handler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/batch":
                 rows = self.read_json().get("rows", [])
                 saved = []
-                for item in rows:
+                rejected = []
+                for index, item in enumerate(rows, start=1):
+                    preview_row = int(item.get("_preview_row") or index)
                     if str(item.get("student_name", "")).strip():
-                        saved.append(normalize_student(item))
+                        try:
+                            saved.append((preview_row, normalize_student(item)))
+                        except ValueError as exc:
+                            rejected.append({"row": preview_row, "student_name": str(item.get("student_name", "")).strip(), "error": str(exc)})
                 with db() as conn:
                     next_number = next_student_number(conn)
-                    for student in saved:
-                        insert_student_record(conn, student, next_number)
-                        next_number += 1
-                    conn.commit()
-                self.send_json({"ok": True, "saved": len(saved)})
+                    saved_count = 0
+                    for index, student in saved:
+                        try:
+                            insert_student_record(conn, student, next_number)
+                            conn.commit()
+                            next_number += 1
+                            saved_count += 1
+                        except Exception as exc:
+                            conn.rollback()
+                            rejected.append({"row": index, "student_name": student["student_name"], "error": str(exc)})
+                self.send_json({"ok": True, "saved": saved_count, "rejected": rejected})
                 return
             if parsed.path == "/api/settings":
                 payload = self.read_json()
