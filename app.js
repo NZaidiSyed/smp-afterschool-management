@@ -24,6 +24,11 @@ let state = {
 let appConfig = { auth_required: false };
 let supabaseClient = null;
 let authSession = null;
+let supabasePersistenceMode = null;
+let feeMonthOffset = 0;
+const FEE_PAST_MONTHS = 1;
+const FEE_FUTURE_MONTHS = 2;
+const FEE_MONTH_WINDOW = FEE_PAST_MONTHS + 1 + FEE_FUTURE_MONTHS;
 
 const money = (value) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(value || 0);
 const number = (value) => new Intl.NumberFormat("en-CA", { maximumFractionDigits: 2 }).format(value || 0);
@@ -60,11 +65,24 @@ async function initAuth() {
     renderAuthState();
     return false;
   }
-  supabaseClient = window.supabase.createClient(appConfig.supabase_url, appConfig.supabase_anon_key);
+  if (qs("#keepSignedIn")) qs("#keepSignedIn").checked = window.localStorage.getItem("smp_keep_signed_in") === "1";
+  supabaseClient = createSupabaseClient(window.localStorage.getItem("smp_keep_signed_in") === "1");
   const { data } = await supabaseClient.auth.getSession();
   authSession = data.session;
   renderAuthState();
   return Boolean(authSession);
+}
+
+function createSupabaseClient(keepSignedIn) {
+  supabasePersistenceMode = keepSignedIn ? "local" : "session";
+  return window.supabase.createClient(appConfig.supabase_url, appConfig.supabase_anon_key, {
+    auth: {
+      persistSession: keepSignedIn,
+      storage: keepSignedIn ? window.localStorage : window.sessionStorage,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  });
 }
 
 function currentUserEmail() {
@@ -104,6 +122,7 @@ async function sendMagicLink(event) {
   event.preventDefault();
   const email = qs("#loginEmail").value.trim();
   if (!email || !supabaseClient) return;
+  updateAuthPersistenceChoice();
   const { error } = await supabaseClient.auth.signInWithOtp({
     email,
     options: { emailRedirectTo: window.location.origin },
@@ -122,8 +141,18 @@ function setAuthMode(mode) {
     : "Login with Google or request a secure email link.";
 }
 
+function updateAuthPersistenceChoice() {
+  const keepSignedIn = Boolean(qs("#keepSignedIn")?.checked);
+  window.localStorage.setItem("smp_keep_signed_in", keepSignedIn ? "1" : "0");
+  const desiredMode = keepSignedIn ? "local" : "session";
+  if (!authSession && supabasePersistenceMode !== desiredMode && window.supabase && appConfig.supabase_url && appConfig.supabase_anon_key) {
+    supabaseClient = createSupabaseClient(keepSignedIn);
+  }
+}
+
 async function signInWithGoogle() {
   if (!supabaseClient) return;
+  updateAuthPersistenceChoice();
   await supabaseClient.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo: window.location.origin },
@@ -132,6 +161,7 @@ async function signInWithGoogle() {
 
 async function signOut() {
   if (supabaseClient) await supabaseClient.auth.signOut();
+  window.sessionStorage.clear();
   authSession = null;
   renderAuthState();
 }
@@ -283,9 +313,41 @@ function filteredFeeRows() {
     .filter((row) => !term || JSON.stringify(row).toLowerCase().includes(term));
 }
 
+function currentMonthIndex() {
+  const currentMonth = state.settings.current_month || "May-26";
+  const index = state.months.indexOf(currentMonth);
+  return index >= 0 ? index : Math.max(0, state.months.length - FEE_FUTURE_MONTHS - 1);
+}
+
+function feeVisibleMonths() {
+  if (!state.months.length) return [];
+  const target = currentMonthIndex() + feeMonthOffset;
+  const maxStart = Math.max(0, state.months.length - FEE_MONTH_WINDOW);
+  const start = Math.max(0, Math.min(maxStart, target - FEE_PAST_MONTHS));
+  return state.months.slice(start, start + FEE_MONTH_WINDOW);
+}
+
+function renderFeeMonthControls(months) {
+  const label = qs("#feeMonthWindowLabel");
+  const historyButton = qs("#feeHistoryMonths");
+  const futureButton = qs("#feeFutureMonths");
+  const currentButton = qs("#feeCurrentMonths");
+  if (!label || !historyButton || !futureButton || !currentButton) return;
+  const current = state.settings.current_month || "May-26";
+  const currentIndex = currentMonthIndex();
+  const firstVisibleIndex = state.months.indexOf(months[0]);
+  const lastVisibleIndex = state.months.indexOf(months[months.length - 1]);
+  label.textContent = months.length ? `Showing ${months[0]} to ${months[months.length - 1]} - Current: ${current}` : "No fee months available";
+  historyButton.disabled = firstVisibleIndex <= 0;
+  futureButton.disabled = lastVisibleIndex >= state.months.length - 1;
+  currentButton.disabled = feeMonthOffset === 0 || (firstVisibleIndex <= currentIndex && lastVisibleIndex >= currentIndex + FEE_FUTURE_MONTHS);
+}
+
 function renderFeeTracker() {
   const rows = filteredFeeRows();
-  const headers = ["#", "Student Name", "Parent / Guardian", "Status", "Enrol Date", "Subjects", "Type", "STD Fee", "Pay Method", "Units", ...state.months, "Total Paid", "Balance"];
+  const visibleMonths = feeVisibleMonths();
+  renderFeeMonthControls(visibleMonths);
+  const headers = ["#", "Student Name", "Parent / Guardian", "Status", "Enrol Date", "Subjects", "Type", "STD Fee", "Pay Method", "Units", ...visibleMonths, "Total Paid", "Balance"];
   const body = rows.map((row) => [
     row.number,
     `<span class="${isCurrentMonthOverdue(row) ? "overdue-name" : ""}">${row.student_name}</span>`,
@@ -297,14 +359,14 @@ function renderFeeTracker() {
     money(row.std_monthly_fee),
     row.payment_method,
     row.subject_units,
-    ...state.months.map((m) => `<input class="payment-input" data-student="${row.id}" data-month="${m}" value="${row.months[m] || ""}" inputmode="decimal">`),
+    ...visibleMonths.map((m) => `<input class="payment-input" data-student="${row.id}" data-month="${m}" value="${row.months[m] || ""}" inputmode="decimal">`),
     money(row.total_paid),
     money(row.balance),
   ]);
   const totals = feeTotals(rows);
   body.push([
     "", "TOTAL", "", "", "", "", "", money(totals.stdFee), "", number(totals.units),
-    ...state.months.map((m) => money(totals.months[m])),
+    ...visibleMonths.map((m) => money(totals.months[m])),
     money(totals.totalPaid),
     money(totals.balance),
   ]);
@@ -1279,6 +1341,18 @@ document.querySelectorAll(".tab").forEach((tab) => {
 qs("#search").addEventListener("input", renderRoster);
 qs("#feeSearch").addEventListener("input", renderFeeTracker);
 qs("#feeStatusFilter").addEventListener("change", renderFeeTracker);
+qs("#feeHistoryMonths").addEventListener("click", () => {
+  feeMonthOffset = Math.max(-(state.months.length || 0), feeMonthOffset - FEE_MONTH_WINDOW);
+  renderFeeTracker();
+});
+qs("#feeFutureMonths").addEventListener("click", () => {
+  feeMonthOffset = Math.min(state.months.length || 0, feeMonthOffset + FEE_MONTH_WINDOW);
+  renderFeeTracker();
+});
+qs("#feeCurrentMonths").addEventListener("click", () => {
+  feeMonthOffset = 0;
+  renderFeeTracker();
+});
 qs("#rosterStatusFilter").addEventListener("change", renderRoster);
 qs("#resetForm").addEventListener("click", clearStudentForm);
 qs("#openStudentWorkflow").addEventListener("click", openStudentWorkflow);
@@ -1289,6 +1363,7 @@ qs("#modifySearch").addEventListener("input", renderModifyResults);
 
 qs("#dashboardMonth").addEventListener("change", async (event) => {
   state.settings.current_month = event.target.value;
+  feeMonthOffset = 0;
   await api("/api/settings", { method: "POST", body: JSON.stringify({ current_month: event.target.value }) });
   await load();
 });

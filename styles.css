@@ -203,6 +203,21 @@ h2 { font-size: 20px; }
   flex: 1 1 180px;
 }
 
+.keep-signed-in {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.keep-signed-in input {
+  width: auto;
+  margin: 0;
+}
+
 .auth-small-note {
   margin: 12px 0 0;
   color: var(--muted);
@@ -577,6 +592,32 @@ input, select, textarea {
 
 textarea { min-height: 78px; resize: vertical; }
 .search { max-width: 260px; margin: 0; }
+
+.month-window-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.month-window-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: white;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.month-nav {
+  padding: 9px 11px;
+  font-size: 12px;
+}
 
 button {
   border: 0;

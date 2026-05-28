@@ -46,6 +46,10 @@
         <p class="muted-note">Use Google or enter your email. SMP will send a verification link before access is opened.</p>
       </div>
       <input id="loginEmail" type="email" placeholder="Email address" autocomplete="email">
+      <label class="keep-signed-in">
+        <input id="keepSignedIn" type="checkbox">
+        <span>Keep me signed in on this device</span>
+      </label>
       <div class="actions auth-submit-row">
         <button type="button" id="googleLogin">Continue with Google</button>
         <button type="submit" class="ghost">Send Email Verification</button>
@@ -115,6 +119,12 @@
           <span class="lock">Student information is frozen from Student Roster. Monthly payment cells are editable.</span>
         </div>
         <div class="toolbar">
+          <div class="month-window-controls" aria-label="Fee Tracker month controls">
+            <button type="button" id="feeHistoryMonths" class="ghost month-nav">&lt; History</button>
+            <span id="feeMonthWindowLabel" class="month-window-label">Showing current months</span>
+            <button type="button" id="feeFutureMonths" class="ghost month-nav">Future &gt;</button>
+            <button type="button" id="feeCurrentMonths" class="ghost month-nav">Current</button>
+          </div>
           <a class="file-button ghost-file" href="/api/export/fee-tracker.csv">Download Fee CSV</a>
           <label class="file-button">Upload Fee CSV<input id="feeImportCsv" type="file" accept=".csv,text/csv"></label>
           <input id="feeSearch" class="search" placeholder="Search students">
