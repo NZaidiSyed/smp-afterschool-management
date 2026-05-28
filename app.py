@@ -91,6 +91,52 @@ MONTHS = [
     "Jul-27", "Aug-27", "Sep-27", "Oct-27", "Nov-27", "Dec-27",
 ]
 
+BASE_MONTHS = MONTHS[:]
+ROLE_OPTIONS = ["Admin", "Office Manager", "Office Assistant"]
+ROLE_PERMISSIONS = {
+    "Admin": {"admin", "manage_students", "manage_payments", "manage_settings", "manage_users", "delete_records"},
+    "Office Manager": {"manage_students", "manage_payments"},
+    "Office Assistant": {"manage_payments"},
+}
+
+
+def month_label(dt):
+    return dt.strftime("%b-%y")
+
+
+def current_month_label():
+    return month_label(date.today().replace(day=1))
+
+
+def month_position(label):
+    try:
+        return MONTHS.index(label)
+    except ValueError:
+        return -1
+
+
+def add_months(dt, months):
+    year = dt.year + (dt.month - 1 + months) // 12
+    month = (dt.month - 1 + months) % 12 + 1
+    return date(year, month, 1)
+
+
+def generated_months():
+    start = datetime.strptime(BASE_MONTHS[0], "%b-%y").date()
+    base_end = datetime.strptime(BASE_MONTHS[-1], "%b-%y").date()
+    today_month = date.today().replace(day=1)
+    end = max(base_end, add_months(today_month, 24))
+    labels = []
+    cursor = start
+    while cursor <= end:
+        labels.append(month_label(cursor))
+        cursor = add_months(cursor, 1)
+    return labels
+
+
+MONTHS = generated_months()
+DEFAULT_SETTINGS["current_month"] = current_month_label()
+
 FORMULA_MANIFEST = {
     "source_workbook_tabs": ["Dashboard", "Fee Tracker", "Student Roster", "Settings", "Batch Entry"],
     "editable_tabs": ["Student Roster", "Batch Entry"],
@@ -719,6 +765,17 @@ def row_value(row, key, default=""):
     return row[key] if key in row.keys() else default
 
 
+def row_get(row, key, default=""):
+    if row is None:
+        return default
+    if isinstance(row, dict):
+        return row.get(key, default)
+    try:
+        return row[key]
+    except Exception:
+        return default
+
+
 def pg_scalar(value):
     if value is None:
         return None
@@ -753,6 +810,144 @@ def current_org_id(conn):
     SMP_ORGANIZATION_ID = row["id"]
     conn.commit()
     return SMP_ORGANIZATION_ID
+
+
+def ensure_access_tables(conn):
+    if PG_MODE:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS public.app_users (
+                id uuid primary key default gen_random_uuid(),
+                organization_id uuid not null references public.organizations(id) on delete cascade,
+                email text not null,
+                display_name text,
+                role text not null default 'Office Assistant',
+                active boolean not null default true,
+                created_at timestamptz not null default now(),
+                updated_at timestamptz not null default now(),
+                unique (organization_id, email)
+            )
+            """
+        )
+    else:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                display_name TEXT,
+                role TEXT NOT NULL DEFAULT 'Office Assistant',
+                auth_provider TEXT NOT NULL DEFAULT 'email',
+                active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "active" not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
+        if "auth_provider" not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'email'")
+
+
+def normalize_role(role):
+    value = str(role or "").strip()
+    aliases = {
+        "admin": "Admin",
+        "owner": "Admin",
+        "office manager": "Office Manager",
+        "manager": "Office Manager",
+        "office assistant": "Office Assistant",
+        "assistant": "Office Assistant",
+        "staff": "Office Assistant",
+    }
+    return aliases.get(value.lower(), value if value in ROLE_OPTIONS else "Office Assistant")
+
+
+def list_app_users(conn):
+    ensure_access_tables(conn)
+    if PG_MODE:
+        org_id = current_org_id(conn)
+        rows = conn.execute(
+            """
+            SELECT id::text AS id, email, display_name, role, active, created_at
+            FROM public.app_users
+            WHERE organization_id=%s
+            ORDER BY role, email
+            """,
+            (org_id,),
+        ).fetchall()
+        return [{**rowdict(row), "role": normalize_role(row_get(row, "role")), "auth_provider": "Google / Email"} for row in rows]
+    rows = conn.execute("SELECT id, email, display_name, role, auth_provider, active, created_at FROM users ORDER BY role, email").fetchall()
+    return [{**rowdict(row), "role": normalize_role(row_get(row, "role"))} for row in rows]
+
+
+def ensure_first_admin(conn, user):
+    if not user or not user.get("email"):
+        return
+    ensure_access_tables(conn)
+    email = user["email"].lower()
+    name = user.get("name") or email
+    if PG_MODE:
+        org_id = current_org_id(conn)
+        count = conn.execute("SELECT count(*) AS c FROM public.app_users WHERE organization_id=%s", (org_id,)).fetchone()["c"]
+        if int(count or 0) == 0:
+            conn.execute(
+                """
+                INSERT INTO public.app_users(organization_id, email, display_name, role, active)
+                VALUES (%s,%s,%s,'Admin',true)
+                ON CONFLICT (organization_id, email) DO NOTHING
+                """,
+                (org_id, email, name),
+            )
+            conn.commit()
+    else:
+        count = conn.execute("SELECT count(*) AS c FROM users").fetchone()["c"]
+        if int(count or 0) == 0:
+            conn.execute(
+                "INSERT OR IGNORE INTO users(email, display_name, role, auth_provider, active) VALUES (?,?,?,?,1)",
+                (email, name, "Admin", "email"),
+            )
+            conn.commit()
+
+
+def get_user_access(conn, user):
+    if not user or not user.get("email"):
+        return None
+    ensure_access_tables(conn)
+    email = user["email"].lower()
+    if PG_MODE:
+        row = conn.execute(
+            """
+            SELECT id::text AS id, email, display_name, role, active
+            FROM public.app_users
+            WHERE organization_id=%s AND lower(email)=lower(%s)
+            """,
+            (current_org_id(conn), email),
+        ).fetchone()
+    else:
+        row = conn.execute("SELECT id, email, display_name, role, active FROM users WHERE lower(email)=lower(?)", (email,)).fetchone()
+    if not row or not row_get(row, "active", True):
+        return None
+    item = rowdict(row)
+    item["role"] = normalize_role(item.get("role"))
+    return item
+
+
+def active_admin_count(conn):
+    ensure_access_tables(conn)
+    if PG_MODE:
+        row = conn.execute(
+            """
+            SELECT count(*) AS c
+            FROM public.app_users
+            WHERE organization_id=%s AND role='Admin' AND active=true
+            """,
+            (current_org_id(conn),),
+        ).fetchone()
+    else:
+        row = conn.execute("SELECT count(*) AS c FROM users WHERE lower(role)='admin' AND active=1").fetchone()
+    return int(row_get(row, "c", 0) or 0)
 
 
 def pg_subjects(value):
@@ -791,11 +986,15 @@ def get_settings(conn):
                     "current_month": row.get("current_month") or DEFAULT_SETTINGS["current_month"],
                 }
             )
+        if month_position(values.get("current_month")) < month_position(current_month_label()):
+            values["current_month"] = current_month_label()
         return values
     rows = conn.execute("SELECT key, value FROM app_meta").fetchall()
     values = {row["key"]: row["value"] for row in rows}
     for key, value in DEFAULT_SETTINGS.items():
         values.setdefault(key, value)
+    if month_position(values.get("current_month")) < month_position(current_month_label()):
+        values["current_month"] = current_month_label()
     return values
 
 
@@ -1501,6 +1700,7 @@ def update_payment_amount(conn, student_id, month_label, amount, source="manual"
 def ensure_pg_defaults():
     with db() as conn:
         org_id = current_org_id(conn)
+        ensure_access_tables(conn)
         for subject in ["Math", "English"]:
             conn.execute(
                 """
@@ -1550,7 +1750,10 @@ class Handler(SimpleHTTPRequestHandler):
         return json.loads(self.rfile.read(length).decode("utf-8"))
 
     def require_auth(self):
+        self.auth_user = None
+        self.auth_access = None
         if not SUPABASE_REQUIRE_AUTH:
+            self.auth_access = {"role": "Admin", "email": "admin@local.smp", "display_name": "Local Admin"}
             return True
         if not SUPABASE_URL or not SUPABASE_ANON_KEY:
             self.send_json({"ok": False, "error": "Supabase auth is not configured on the server"}, 503)
@@ -1565,10 +1768,33 @@ class Handler(SimpleHTTPRequestHandler):
                 headers={"apikey": SUPABASE_ANON_KEY, "Authorization": f"Bearer {token}"},
             )
             with urlopen(request, timeout=8) as response:
-                return response.status == 200
+                if response.status != 200:
+                    return False
+                payload = json.loads(response.read().decode("utf-8"))
+                metadata = payload.get("user_metadata") or {}
+                self.auth_user = {
+                    "id": payload.get("id") or payload.get("sub"),
+                    "email": str(payload.get("email") or metadata.get("email") or "").lower(),
+                    "name": metadata.get("full_name") or metadata.get("name") or payload.get("email") or "",
+                }
+                with db() as conn:
+                    ensure_first_admin(conn, self.auth_user)
+                    access = get_user_access(conn, self.auth_user)
+                    if not access:
+                        self.send_json({"ok": False, "error": "Your email is not authorized for this centre. Ask the Admin to add your user access in Settings."}, 403)
+                        return False
+                    self.auth_access = access
+                return True
         except Exception:
             self.send_json({"ok": False, "error": "Login session could not be verified"}, 401)
             return False
+
+    def require_permission(self, permission):
+        role = normalize_role((self.auth_access or {}).get("role"))
+        if permission not in ROLE_PERMISSIONS.get(role, set()):
+            self.send_json({"ok": False, "error": f"{role or 'This user'} does not have permission for this action"}, 403)
+            return False
+        return True
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -1591,7 +1817,7 @@ class Handler(SimpleHTTPRequestHandler):
                 if PG_MODE:
                     org_id = current_org_id(conn)
                     rates = [rowdict(row) for row in conn.execute("SELECT id::text AS id, subject, rate_type, monthly_fee, description FROM public.rates WHERE organization_id=%s ORDER BY subject, rate_type", (org_id,)).fetchall()]
-                    users = []
+                    users = list_app_users(conn)
                     subscriptions = [
                         {
                             "id": org_id,
@@ -1608,7 +1834,7 @@ class Handler(SimpleHTTPRequestHandler):
                     backups = []
                 else:
                     rates = [rowdict(row) for row in conn.execute("SELECT * FROM rates ORDER BY subject, rate_type")]
-                    users = [rowdict(row) for row in conn.execute("SELECT id, email, display_name, role, auth_provider, created_at FROM users ORDER BY role, email")]
+                    users = list_app_users(conn)
                     subscriptions = [rowdict(row) for row in conn.execute("SELECT * FROM subscriptions ORDER BY id DESC")]
                     discount_codes = [rowdict(row) for row in conn.execute("SELECT * FROM discount_codes ORDER BY active DESC, code")]
                     payer_aliases = [rowdict(row) for row in conn.execute("SELECT * FROM payer_aliases ORDER BY alias")]
@@ -1628,6 +1854,8 @@ class Handler(SimpleHTTPRequestHandler):
                         "backups": backups,
                         "reconciliation": reconciliation_summary(conn),
                         "payer_aliases": payer_aliases,
+                        "current_user": self.auth_access or {},
+                        "role_options": ROLE_OPTIONS,
                     }
                 )
             return
@@ -1653,6 +1881,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
         try:
             if parsed.path == "/api/students":
+                if not self.require_permission("manage_students"):
+                    return
                 student = normalize_student(self.read_json())
                 with db() as conn:
                     new_id = insert_student_record(conn, student, next_student_number(conn))
@@ -1660,6 +1890,8 @@ class Handler(SimpleHTTPRequestHandler):
                     self.send_json({"ok": True, "id": new_id})
                 return
             if parsed.path == "/api/batch":
+                if not self.require_permission("manage_students"):
+                    return
                 rows = self.read_json().get("rows", [])
                 saved = []
                 rejected = []
@@ -1685,6 +1917,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True, "saved": saved_count, "rejected": rejected})
                 return
             if parsed.path == "/api/settings":
+                if not self.require_permission("manage_settings"):
+                    return
                 payload = self.read_json()
                 with db() as conn:
                     if PG_MODE:
@@ -1711,6 +1945,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True})
                 return
             if parsed.path == "/api/rates":
+                if not self.require_permission("manage_settings"):
+                    return
                 payload = self.read_json()
                 subject = str(payload.get("subject", "")).strip()
                 rate_type = str(payload.get("rate_type", "")).strip()
@@ -1736,7 +1972,47 @@ class Handler(SimpleHTTPRequestHandler):
                     conn.commit()
                 self.send_json({"ok": True, "id": new_id})
                 return
+            if parsed.path == "/api/users":
+                if not self.require_permission("manage_users"):
+                    return
+                payload = self.read_json()
+                email = str(payload.get("email", "")).strip().lower()
+                display_name = str(payload.get("display_name", "")).strip()
+                role = normalize_role(payload.get("role"))
+                active = str(payload.get("active", "1")).lower() in {"1", "true", "yes", "on"}
+                if not email or "@" not in email:
+                    raise ValueError("A valid user email is required")
+                with db() as conn:
+                    if PG_MODE:
+                        cur = conn.execute(
+                            """
+                            INSERT INTO public.app_users(organization_id, email, display_name, role, active)
+                            VALUES (%s,%s,%s,%s,%s)
+                            ON CONFLICT (organization_id, email)
+                            DO UPDATE SET display_name=excluded.display_name, role=excluded.role,
+                                          active=excluded.active, updated_at=now()
+                            RETURNING id::text AS id
+                            """,
+                            (current_org_id(conn), email, display_name, role, active),
+                        )
+                        new_id = cur.fetchone()["id"]
+                    else:
+                        cur = conn.execute(
+                            """
+                            INSERT INTO users(email, display_name, role, auth_provider, active)
+                            VALUES (?,?,?,?,?)
+                            ON CONFLICT(email) DO UPDATE SET display_name=excluded.display_name,
+                              role=excluded.role, active=excluded.active
+                            """,
+                            (email, display_name, role, "email", 1 if active else 0),
+                        )
+                        new_id = cur.lastrowid
+                    conn.commit()
+                self.send_json({"ok": True, "id": new_id})
+                return
             if parsed.path == "/api/discounts":
+                if not self.require_permission("manage_settings"):
+                    return
                 payload = self.read_json()
                 code = str(payload.get("code", "")).strip().upper()
                 if not code:
@@ -1772,6 +2048,8 @@ class Handler(SimpleHTTPRequestHandler):
                     self.send_json({"ok": True, "id": new_id})
                 return
             if parsed.path == "/api/restore":
+                if not self.require_permission("admin"):
+                    return
                 payload = self.read_json()
                 if payload.get("confirm") != "RESTORE":
                     raise ValueError("Type RESTORE to confirm database recovery")
@@ -1779,6 +2057,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True})
                 return
             if parsed.path == "/api/reconciliation/preview":
+                if not self.require_permission("manage_payments"):
+                    return
                 payload = self.read_json()
                 rows = payload.get("rows", [])
                 if not isinstance(rows, list) or not rows:
@@ -1786,6 +2066,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True, "rows": preview_reconciliation(rows[:500])})
                 return
             if parsed.path == "/api/reconciliation/apply":
+                if not self.require_permission("manage_payments"):
+                    return
                 payload = self.read_json()
                 student_id = str(payload.get("student_id") or "").strip()
                 month_label = str(payload.get("month_label") or "").strip()
@@ -1879,6 +2161,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True})
                 return
             if parsed.path == "/api/fee-import/preview":
+                if not self.require_permission("manage_payments"):
+                    return
                 payload = self.read_json()
                 rows = payload.get("rows", [])
                 if not isinstance(rows, list) or not rows:
@@ -1886,6 +2170,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True, "rows": preview_fee_import(rows[:1000])})
                 return
             if parsed.path == "/api/fee-import/apply":
+                if not self.require_permission("manage_payments"):
+                    return
                 payload = self.read_json()
                 rows = payload.get("rows", [])
                 if not isinstance(rows, list) or not rows:
@@ -1905,9 +2191,12 @@ class Handler(SimpleHTTPRequestHandler):
         match = re.match(rf"^/api/students/{id_pattern}$", parsed.path)
         rate_match = re.match(rf"^/api/rates/{id_pattern}$", parsed.path)
         discount_match = re.match(rf"^/api/discounts/{id_pattern}$", parsed.path)
+        user_match = re.match(rf"^/api/users/{id_pattern}$", parsed.path)
         payment_match = re.match(rf"^/api/payments/{id_pattern}/([^/]+)$", parsed.path)
         try:
             if payment_match:
+                if not self.require_permission("manage_payments"):
+                    return
                 student_id = payment_match.group(1)
                 month_label = payment_match.group(2)
                 if month_label not in MONTHS:
@@ -1919,6 +2208,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True})
                 return
             if rate_match:
+                if not self.require_permission("manage_settings"):
+                    return
                 payload = self.read_json()
                 subject = str(payload.get("subject", "")).strip()
                 rate_type = str(payload.get("rate_type", "")).strip()
@@ -1943,6 +2234,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True})
                 return
             if discount_match:
+                if not self.require_permission("manage_settings"):
+                    return
                 payload = self.read_json()
                 code = str(payload.get("code", "")).strip().upper()
                 if not code:
@@ -1977,8 +2270,46 @@ class Handler(SimpleHTTPRequestHandler):
                     conn.commit()
                 self.send_json({"ok": True})
                 return
+            if user_match:
+                if not self.require_permission("manage_users"):
+                    return
+                payload = self.read_json()
+                email = str(payload.get("email", "")).strip().lower()
+                display_name = str(payload.get("display_name", "")).strip()
+                role = normalize_role(payload.get("role"))
+                active = str(payload.get("active", "1")).lower() in {"1", "true", "yes", "on"}
+                if not email or "@" not in email:
+                    raise ValueError("A valid user email is required")
+                with db() as conn:
+                    existing = None
+                    if PG_MODE:
+                        existing = conn.execute("SELECT role, active FROM public.app_users WHERE id=%s AND organization_id=%s", (user_match.group(1), current_org_id(conn))).fetchone()
+                    else:
+                        existing = conn.execute("SELECT role, active FROM users WHERE id=?", (int(user_match.group(1)),)).fetchone()
+                    if existing and normalize_role(row_get(existing, "role")) == "Admin" and row_get(existing, "active", True):
+                        if (role != "Admin" or not active) and active_admin_count(conn) <= 1:
+                            raise ValueError("At least one active Admin user is required")
+                    if PG_MODE:
+                        conn.execute(
+                            """
+                            UPDATE public.app_users
+                            SET email=%s, display_name=%s, role=%s, active=%s, updated_at=now()
+                            WHERE id=%s AND organization_id=%s
+                            """,
+                            (email, display_name, role, active, user_match.group(1), current_org_id(conn)),
+                        )
+                    else:
+                        conn.execute(
+                            "UPDATE users SET email=?, display_name=?, role=?, active=? WHERE id=?",
+                            (email, display_name, role, 1 if active else 0, int(user_match.group(1))),
+                        )
+                    conn.commit()
+                self.send_json({"ok": True})
+                return
             if not match:
                 self.send_json({"ok": False, "error": "Not found"}, 404)
+                return
+            if not self.require_permission("manage_students"):
                 return
             student = normalize_student(self.read_json())
             with db() as conn:
@@ -2055,7 +2386,10 @@ class Handler(SimpleHTTPRequestHandler):
         match = re.match(rf"^/api/students/{id_pattern}$", parsed.path)
         rate_match = re.match(rf"^/api/rates/{id_pattern}$", parsed.path)
         discount_match = re.match(rf"^/api/discounts/{id_pattern}$", parsed.path)
+        user_match = re.match(rf"^/api/users/{id_pattern}$", parsed.path)
         if rate_match:
+            if not self.require_permission("manage_settings"):
+                return
             with db() as conn:
                 if PG_MODE:
                     conn.execute("DELETE FROM public.rates WHERE id=%s AND organization_id=%s", (rate_match.group(1), current_org_id(conn)))
@@ -2065,6 +2399,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True})
             return
         if discount_match:
+            if not self.require_permission("manage_settings"):
+                return
             with db() as conn:
                 if PG_MODE:
                     conn.execute("DELETE FROM public.discount_codes WHERE id=%s AND (organization_id=%s OR organization_id IS NULL)", (discount_match.group(1), current_org_id(conn)))
@@ -2073,8 +2409,28 @@ class Handler(SimpleHTTPRequestHandler):
                 conn.commit()
             self.send_json({"ok": True})
             return
+        if user_match:
+            if not self.require_permission("manage_users"):
+                return
+            with db() as conn:
+                if PG_MODE:
+                    existing = conn.execute("SELECT role, active FROM public.app_users WHERE id=%s AND organization_id=%s", (user_match.group(1), current_org_id(conn))).fetchone()
+                else:
+                    existing = conn.execute("SELECT role, active FROM users WHERE id=?", (int(user_match.group(1)),)).fetchone()
+                if existing and normalize_role(row_get(existing, "role")) == "Admin" and row_get(existing, "active", True) and active_admin_count(conn) <= 1:
+                    self.send_json({"ok": False, "error": "At least one active Admin user is required"}, 400)
+                    return
+                if PG_MODE:
+                    conn.execute("DELETE FROM public.app_users WHERE id=%s AND organization_id=%s", (user_match.group(1), current_org_id(conn)))
+                else:
+                    conn.execute("DELETE FROM users WHERE id=?", (int(user_match.group(1)),))
+                conn.commit()
+            self.send_json({"ok": True})
+            return
         if not match:
             self.send_json({"ok": False, "error": "Not found"}, 404)
+            return
+        if not self.require_permission("delete_records"):
             return
         with db() as conn:
             if PG_MODE:

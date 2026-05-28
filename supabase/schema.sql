@@ -31,6 +31,18 @@ create table if not exists public.organization_members (
   unique (organization_id, user_id)
 );
 
+create table if not exists public.app_users (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  email text not null,
+  display_name text,
+  role text not null default 'Office Assistant' check (role in ('Admin', 'Office Manager', 'Office Assistant')),
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (organization_id, email)
+);
+
 create table if not exists public.students (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -127,9 +139,11 @@ create table if not exists public.discount_codes (
 create index if not exists students_org_status_idx on public.students(organization_id, status);
 create index if not exists payments_org_month_idx on public.payments(organization_id, month_label);
 create index if not exists members_user_idx on public.organization_members(user_id);
+create index if not exists app_users_org_email_idx on public.app_users(organization_id, lower(email));
 
 alter table public.organizations enable row level security;
 alter table public.organization_members enable row level security;
+alter table public.app_users enable row level security;
 alter table public.students enable row level security;
 alter table public.payments enable row level security;
 alter table public.rates enable row level security;
@@ -181,6 +195,15 @@ create policy "members can view organization membership"
 
 create policy "admins can manage organization membership"
   on public.organization_members for all
+  using (public.has_org_role(organization_id, array['owner', 'admin']))
+  with check (public.has_org_role(organization_id, array['owner', 'admin']));
+
+create policy "admins can view app users"
+  on public.app_users for select
+  using (public.has_org_role(organization_id, array['owner', 'admin']));
+
+create policy "admins can manage app users"
+  on public.app_users for all
   using (public.has_org_role(organization_id, array['owner', 'admin']))
   with check (public.has_org_role(organization_id, array['owner', 'admin']));
 

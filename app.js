@@ -12,6 +12,8 @@ let state = {
   backups: [],
   reconciliation: [],
   payer_aliases: [],
+  current_user: {},
+  role_options: ["Admin", "Office Manager", "Office Assistant"],
   reconciliationPreview: [],
   reconciliationFileName: "",
   feeImportRows: [],
@@ -94,10 +96,11 @@ function currentUserName() {
 }
 
 function currentUserRole() {
+  if (state.current_user?.role) return state.current_user.role;
   const email = currentUserEmail().toLowerCase();
   const user = (state.users || []).find((item) => String(item.email || "").toLowerCase() === email);
   if (user?.role) return user.role;
-  return authSession ? "Admin" : "";
+  return authSession ? "Pending access" : "";
 }
 
 function renderAuthState() {
@@ -572,6 +575,10 @@ function setSelectedSubjects(value) {
 
 function renderBillingAndAccess() {
   const subscription = state.subscriptions[0] || {};
+  const roleOptions = state.role_options?.length ? state.role_options : ["Admin", "Office Manager", "Office Assistant"];
+  const roleSelectOptions = (selected) => roleOptions
+    .map((role) => `<option value="${escapeAttr(role)}" ${role === selected ? "selected" : ""}>${role}</option>`)
+    .join("");
   qs("#subscriptionSummary").innerHTML = [
     `<div class="info-tile"><span>Status</span><strong>${subscription.status || "trialing"}</strong></div>`,
     `<div class="info-tile"><span>Trial Ends</span><strong>${subscription.trial_end || "Not set"}</strong></div>`,
@@ -579,11 +586,24 @@ function renderBillingAndAccess() {
     `<div class="info-tile"><span>Payments</span><strong>Stripe / Google Pay</strong></div>`,
   ].join("");
 
-  renderTable(
-    qs("#usersTable"),
-    ["User", "Display Name", "Role", "Provider"],
-    state.users.map((u) => [u.email, u.display_name || "", u.role, u.auth_provider])
-  );
+  const userRoleSelect = qs('#userForm [name="role"]');
+  if (userRoleSelect) userRoleSelect.innerHTML = roleSelectOptions("Office Assistant");
+
+  qs("#usersTable").innerHTML = `
+    <thead><tr><th>Email</th><th>Display Name</th><th>Role</th><th>Status</th><th>Provider</th><th>Actions</th></tr></thead>
+    <tbody>
+      ${(state.users || []).map((u) => `
+        <tr data-user="${u.id}">
+          <td><input name="email" type="email" value="${escapeAttr(u.email)}"></td>
+          <td><input name="display_name" value="${escapeAttr(u.display_name || "")}"></td>
+          <td><select name="role">${roleSelectOptions(u.role)}</select></td>
+          <td><select name="active"><option value="1" ${u.active ? "selected" : ""}>Active</option><option value="0" ${!u.active ? "selected" : ""}>Disabled</option></select></td>
+          <td>${escapeHtml(u.auth_provider || "Email")}</td>
+          <td><div class="row-actions"><button class="small" data-save-user="${u.id}">Save</button><button class="small danger" data-delete-user="${u.id}">Delete</button></div></td>
+        </tr>
+      `).join("") || `<tr><td colspan="6" class="empty-state">No users have been added yet.</td></tr>`}
+    </tbody>
+  `;
 
   qs("#discountTable").innerHTML = `
     <thead><tr><th>Code</th><th>Description</th><th>% Off</th><th>$ Off</th><th>Active</th><th>Actions</th></tr></thead>
@@ -612,6 +632,8 @@ function renderBillingAndAccess() {
 
   document.querySelectorAll("[data-save-discount]").forEach((button) => button.addEventListener("click", () => saveDiscount(button.dataset.saveDiscount)));
   document.querySelectorAll("[data-delete-discount]").forEach((button) => button.addEventListener("click", () => deleteDiscount(button.dataset.deleteDiscount)));
+  document.querySelectorAll("[data-save-user]").forEach((button) => button.addEventListener("click", () => saveUser(button.dataset.saveUser)));
+  document.querySelectorAll("[data-delete-user]").forEach((button) => button.addEventListener("click", () => deleteUser(button.dataset.deleteUser)));
 }
 
 function applyInstitutionDefaults() {
@@ -1154,6 +1176,33 @@ async function deleteDiscount(id) {
   await load();
 }
 
+async function addUser(event) {
+  event.preventDefault();
+  const data = formData(event.currentTarget);
+  await api("/api/users", { method: "POST", body: JSON.stringify(data) });
+  event.currentTarget.reset();
+  const roleSelect = qs('#userForm [name="role"]');
+  if (roleSelect) roleSelect.value = "Office Assistant";
+  toast("User access saved");
+  await load();
+}
+
+async function saveUser(id) {
+  const row = qs(`tr[data-user="${id}"]`);
+  const controls = [...row.querySelectorAll("input,select")];
+  const data = Object.fromEntries(controls.map((el) => [el.name, el.value]));
+  await api(`/api/users/${id}`, { method: "PUT", body: JSON.stringify(data) });
+  toast("User access updated");
+  await load();
+}
+
+async function deleteUser(id) {
+  if (!confirm("Delete this user access? They will no longer be able to open this centre.")) return;
+  await api(`/api/users/${id}`, { method: "DELETE" });
+  toast("User access deleted");
+  await load();
+}
+
 async function restoreSelectedBackup() {
   const name = qs("#backupSelect").value;
   const confirmText = qs("#restoreConfirm").value;
@@ -1404,6 +1453,7 @@ qs("#discountForm").addEventListener("submit", async (event) => {
   await load();
 });
 
+qs("#userForm").addEventListener("submit", addUser);
 qs('#settingsForm [name="institution_name"]').addEventListener("change", applyInstitutionDefaults);
 qs('#settingsForm [name="institution_name"]').addEventListener("blur", applyInstitutionDefaults);
 qs("#restoreBackup").addEventListener("click", restoreSelectedBackup);

@@ -295,12 +295,22 @@
             <span>Suggested operating model</span>
           </div>
           <div class="role-grid">
-            <div><strong>Owner/Admin</strong><span>Billing, users, settings, backup restore, all edits, delete records.</span></div>
-            <div><strong>Manager</strong><span>Add/modify students, edit payments, run reports, no billing or restore.</span></div>
-            <div><strong>Staff</strong><span>View dashboards, find students, add notes, no deletes.</span></div>
-            <div><strong>Read Only</strong><span>Dashboard and roster visibility only.</span></div>
+            <div><strong>Admin</strong><span>Billing, users, settings, backup restore, all edits, delete records.</span></div>
+            <div><strong>Office Manager</strong><span>Add/modify students, edit payments, import CSV data, run reports.</span></div>
+            <div><strong>Office Assistant</strong><span>View dashboards and update monthly payment work only.</span></div>
+            <div><strong>Security</strong><span>Only emails added by Admin can open centre data after login.</span></div>
           </div>
           <table id="usersTable"></table>
+          <form id="userForm" class="user-form">
+            <input name="email" type="email" placeholder="User email" required>
+            <input name="display_name" placeholder="Display name">
+            <select name="role"></select>
+            <select name="active">
+              <option value="1">Active</option>
+              <option value="0">Disabled</option>
+            </select>
+            <button type="submit">Add User</button>
+          </form>
         </section>
         <section class="surface">
           <div class="section-title">

@@ -861,12 +861,17 @@ pre {
   margin-top: 18px;
 }
 
-.discount-form {
+.discount-form,
+.user-form {
   display: grid;
   grid-template-columns: 1fr 1.4fr 100px 100px auto;
   gap: 8px;
   margin-top: 12px;
   align-items: start;
+}
+
+.user-form {
+  grid-template-columns: 1.3fr 1fr 180px 130px auto;
 }
 
 .role-grid {
@@ -1070,6 +1075,6 @@ pre {
   .account-card { text-align: left; }
   .auth-actions { justify-content: flex-start; }
   .form-grid { grid-template-columns: 1fr; }
-  .settings-form, .rate-form, .discount-form, .mini-grid, .role-grid, .restore-panel, .workflow-choices { grid-template-columns: 1fr; }
+  .settings-form, .rate-form, .discount-form, .user-form, .mini-grid, .role-grid, .restore-panel, .workflow-choices { grid-template-columns: 1fr; }
   .wide { max-width: calc(100vw - 36px); }
 }
