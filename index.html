@@ -63,6 +63,7 @@
     <button class="tab active" data-tab="dashboard">Dashboard</button>
     <button class="tab" data-tab="fee">Fee Tracker</button>
     <button class="tab" data-tab="roster">Student Roster</button>
+    <button class="tab" data-tab="reporting">Reporting</button>
     <button class="tab" data-tab="reconciliation">Payment Reconciliation</button>
     <button class="tab" data-tab="batch">New Enrolment Batch</button>
     <button class="tab" data-tab="settings">Settings</button>
@@ -150,6 +151,53 @@
         <div class="table-wrap wide">
           <table id="feeImportTable"></table>
         </div>
+      </section>
+    </section>
+
+    <section id="reporting" class="panel">
+      <div class="section-title page-title">
+        <div>
+          <h2>Reporting</h2>
+          <span>Operational reports for Admin and Office Manager review</span>
+        </div>
+        <div class="toolbar">
+          <button id="reportCurrentMonth" type="button" class="ghost">Current Month</button>
+          <button id="reportLast13Months" type="button" class="ghost">Last 13 Months</button>
+        </div>
+      </div>
+      <div class="report-layout">
+        <section class="surface">
+          <div class="section-title">
+            <div>
+              <h2>Enrolments by Month</h2>
+              <span>Select one or more months to show enrolment details from Fee Tracker.</span>
+            </div>
+          </div>
+          <div class="report-controls">
+            <label>Months<select id="reportMonths" multiple></select></label>
+          </div>
+          <div class="mini-grid report-summary" id="enrolmentReportSummary"></div>
+          <div class="table-wrap wide">
+            <table id="enrolmentReportTable"></table>
+          </div>
+        </section>
+        <section class="surface">
+          <div class="section-title">
+            <h2>Data Quality</h2>
+            <span>Active duplicate names require correction</span>
+          </div>
+          <div id="duplicateSummary" class="alert-list"></div>
+          <div class="table-wrap">
+            <table id="duplicateReportTable"></table>
+          </div>
+        </section>
+      </div>
+      <section class="surface report-ideas">
+        <div class="section-title">
+          <h2>Recommended Manager Reports</h2>
+          <span>Useful regular reviews</span>
+        </div>
+        <div id="managerReportIdeas" class="idea-grid"></div>
       </section>
     </section>
 

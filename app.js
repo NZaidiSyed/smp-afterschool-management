@@ -28,6 +28,7 @@ let supabaseClient = null;
 let authSession = null;
 let supabasePersistenceMode = null;
 let feeMonthOffset = 0;
+let reportSelectedMonths = [];
 const FEE_PAST_MONTHS = 1;
 const FEE_FUTURE_MONTHS = 2;
 const FEE_MONTH_WINDOW = FEE_PAST_MONTHS + 1 + FEE_FUTURE_MONTHS;
@@ -191,6 +192,7 @@ function renderAll() {
   renderDashboard();
   renderFeeTracker();
   renderRoster();
+  renderReporting();
   renderSettings();
   renderBatch();
   renderReconciliation();
@@ -211,6 +213,16 @@ function hydrateMonthSelectors() {
     const node = qs(selector);
     if (node && node.options.length !== state.months.length) node.innerHTML = options;
     if (node) node.value = state.settings.current_month || "May-26";
+  }
+  const reportMonths = qs("#reportMonths");
+  if (reportMonths && reportMonths.options.length !== state.months.length) {
+    reportMonths.innerHTML = options;
+  }
+  if (!reportSelectedMonths.length) reportSelectedMonths = [state.settings.current_month || "May-26"];
+  if (reportMonths) {
+    [...reportMonths.options].forEach((option) => {
+      option.selected = reportSelectedMonths.includes(option.value);
+    });
   }
 }
 
@@ -250,6 +262,26 @@ function activeRows() {
   return state.fee_tracker.filter((row) => row.status.toUpperCase() === "C" && row.subjects);
 }
 
+function normalizedStudentName(name) {
+  return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function activeDuplicateNameMap() {
+  const counts = {};
+  for (const row of state.students || []) {
+    if (String(row.status || "").toUpperCase() !== "C") continue;
+    const key = normalizedStudentName(row.student_name);
+    if (!key) continue;
+    counts[key] = (counts[key] || 0) + 1;
+  }
+  return counts;
+}
+
+function isActiveDuplicateName(row) {
+  if (String(row.status || "").toUpperCase() !== "C") return false;
+  return (activeDuplicateNameMap()[normalizedStudentName(row.student_name)] || 0) > 1;
+}
+
 function renderDashboard() {
   const d = state.dashboard;
   const rows = activeRows();
@@ -257,6 +289,7 @@ function renderDashboard() {
   const currentRevenue = rows.reduce((sum, row) => sum + (row.months[currentMonth] || 0), 0);
   const currentUnpaid = rows.filter((row) => isCurrentMonthOverdue(row));
   const currentUnpaidTotal = currentUnpaid.reduce((sum, row) => sum + (row.std_monthly_fee || 0), 0);
+  const duplicateActiveCount = (state.students || []).filter((row) => isActiveDuplicateName(row)).length;
   const subjectMetrics = Object.entries(d.subject_breakdown || {}).slice(0, 4).map(([subject, count]) => metric(`${subject} Students`, count));
   qs("#metrics").innerHTML = [
     metric("Active Students", d.active_students, "accent"),
@@ -267,6 +300,7 @@ function renderDashboard() {
     ...subjectMetrics,
     metric(`Unpaid - ${currentMonth}`, currentUnpaid.length, currentUnpaid.length ? "warning" : "success"),
     metric("Current Month Outstanding", money(currentUnpaidTotal), currentUnpaid.length ? "warning" : "success"),
+    metric("Active Duplicate Names", duplicateActiveCount, duplicateActiveCount ? "warning" : "success"),
   ].join("");
 
   const enrolmentMax = Math.max(...d.enrolment_totals.map((m) => m.count), 1);
@@ -306,6 +340,106 @@ function renderDashboard() {
         `)
         .join("")
     : `<div class="empty-state">No current-month unpaid students after the 5th.</div>`;
+}
+
+function monthLabelFromDate(value) {
+  if (!value) return "";
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleString("en-US", { month: "short" }) + "-" + String(parsed.getFullYear()).slice(-2);
+}
+
+function selectedReportMonths() {
+  const selected = [...(qs("#reportMonths")?.selectedOptions || [])].map((option) => option.value);
+  return selected.length ? selected : [state.settings.current_month || "May-26"];
+}
+
+function reportEnrolmentRows() {
+  const selected = new Set(selectedReportMonths());
+  return (state.fee_tracker || [])
+    .filter((row) => selected.has(monthLabelFromDate(row.enrol_date)))
+    .sort((a, b) => String(a.enrol_date || "").localeCompare(String(b.enrol_date || "")) || String(a.student_name || "").localeCompare(String(b.student_name || "")));
+}
+
+function duplicateGroups() {
+  const groups = {};
+  for (const row of state.students || []) {
+    if (String(row.status || "").toUpperCase() !== "C") continue;
+    const key = normalizedStudentName(row.student_name);
+    if (!key) continue;
+    groups[key] = groups[key] || [];
+    groups[key].push(row);
+  }
+  return Object.values(groups)
+    .filter((items) => items.length > 1)
+    .sort((a, b) => a[0].student_name.localeCompare(b[0].student_name));
+}
+
+function renderReporting() {
+  if (!qs("#reporting")) return;
+  const rows = reportEnrolmentRows();
+  const selected = selectedReportMonths();
+  const active = rows.filter((row) => String(row.status || "").toUpperCase() === "C");
+  const units = rows.reduce((sum, row) => sum + (row.subject_units || 0), 0);
+  const monthlyFee = rows.reduce((sum, row) => sum + (row.std_monthly_fee || 0), 0);
+  qs("#enrolmentReportSummary").innerHTML = [
+    `<div class="info-tile"><span>Selected Months</span><strong>${selected.length}</strong></div>`,
+    `<div class="info-tile"><span>Enrolments</span><strong>${rows.length}</strong></div>`,
+    `<div class="info-tile"><span>Current Students</span><strong>${active.length}</strong></div>`,
+    `<div class="info-tile"><span>Subject Units</span><strong>${number(units)}</strong></div>`,
+    `<div class="info-tile"><span>Monthly Fee Added</span><strong>${money(monthlyFee)}</strong></div>`,
+  ].join("");
+
+  renderTable(
+    qs("#enrolmentReportTable"),
+    ["Month", "#", "Student Name", "Parent / Guardian", "Status", "Enrol Date", "Subjects", "STD Fee", "Pay Method", "Total Paid"],
+    rows.map((row) => [
+      monthLabelFromDate(row.enrol_date),
+      row.number,
+      `<span class="${isActiveDuplicateName(row) ? "duplicate-name" : ""}">${escapeHtml(row.student_name)}</span>`,
+      escapeHtml(row.parent_guardian || ""),
+      `<span class="status-badge ${row.status.toUpperCase() === "C" ? "current" : "inactive"}">${row.status}</span>`,
+      row.enrol_date || "",
+      row.subjects_display || subjectText(row.subjects),
+      money(row.std_monthly_fee),
+      row.payment_method || "",
+      money(row.total_paid),
+    ])
+  );
+
+  const duplicates = duplicateGroups();
+  qs("#duplicateSummary").innerHTML = duplicates.length
+    ? duplicates.map((group) => `<div class="alert-item danger-alert"><strong>${escapeHtml(group[0].student_name)}</strong><span>${group.length} active records. Correct in Student Roster.</span></div>`).join("")
+    : `<div class="empty-state">No active duplicate student names found.</div>`;
+  renderTable(
+    qs("#duplicateReportTable"),
+    ["Student Name", "Records", "Roster Numbers", "Parents", "Subjects"],
+    duplicates.map((group) => [
+      `<span class="duplicate-name">${escapeHtml(group[0].student_name)}</span>`,
+      group.length,
+      group.map((row) => row.number).join(", "),
+      group.map((row) => escapeHtml(row.parent_guardian || "-")).join("<br>"),
+      group.map((row) => escapeHtml(subjectText(row.subjects) || "-")).join("<br>"),
+    ])
+  );
+
+  const currentMonth = state.settings.current_month || "May-26";
+  const unpaidCount = activeRows().filter((row) => isCurrentMonthOverdue(row)).length;
+  const currentRevenue = activeRows().reduce((sum, row) => sum + (row.months[currentMonth] || 0), 0);
+  qs("#managerReportIdeas").innerHTML = [
+    ["Outstanding Fees", `${unpaidCount} current-month follow-up${unpaidCount === 1 ? "" : "s"}`, "Run this after the 5th to review students still missing payment."],
+    ["Payment Method Summary", "PAD, E-Transfer, Cash, Credit Card", "Compare monthly collections with bank and credit-card deposits."],
+    ["Active Duplicate Records", `${duplicates.reduce((sum, group) => sum + group.length, 0)} record${duplicates.length === 1 ? "" : "s"} flagged`, "Clean duplicated active names before billing or reporting."],
+    ["Discontinued Students", `${state.dashboard.discontinued_students || 0} inactive records`, "Review lost enrolments and possible reactivation opportunities."],
+    ["Subject Mix", `${configuredSubjects().join(", ")}`, "See which subjects are growing and where staffing demand is increasing."],
+    ["Current Month Revenue", `${currentMonth}: ${money(currentRevenue)}`, "Quick check for monthly collection trend and expected deposits."],
+  ].map(([title, value, detail]) => `
+    <div class="idea-card">
+      <span>${title}</span>
+      <strong>${value}</strong>
+      <p>${detail}</p>
+    </div>
+  `).join("");
 }
 
 function filteredFeeRows() {
@@ -353,7 +487,7 @@ function renderFeeTracker() {
   const headers = ["#", "Student Name", "Parent / Guardian", "Status", "Enrol Date", "Subjects", "Type", "STD Fee", "Pay Method", "Units", ...visibleMonths, "Total Paid", "Balance"];
   const body = rows.map((row) => [
     row.number,
-    `<span class="${isCurrentMonthOverdue(row) ? "overdue-name" : ""}">${row.student_name}</span>`,
+    `<span class="${[isCurrentMonthOverdue(row) ? "overdue-name" : "", isActiveDuplicateName(row) ? "duplicate-name" : ""].filter(Boolean).join(" ")}">${row.student_name}</span>`,
     row.parent_guardian,
     `<span class="status-badge ${row.status.toUpperCase() === "C" ? "current" : "inactive"}">${row.status}</span>`,
     row.enrol_date,
@@ -461,7 +595,7 @@ function renderRoster() {
     .filter((s) => JSON.stringify(s).toLowerCase().includes(term))
     .map((s) => [
       s.number,
-      `<button class="link-button ${isStudentOverdue(s.id) ? "overdue-name" : ""}" data-profile="${s.id}">${s.student_name}</button>`,
+      `<button class="link-button ${[isStudentOverdue(s.id) ? "overdue-name" : "", isActiveDuplicateName(s) ? "duplicate-name" : ""].filter(Boolean).join(" ")}" data-profile="${s.id}">${s.student_name}</button>`,
       s.parent_guardian,
       `<span class="status-badge ${s.status.toUpperCase() === "C" ? "current" : "inactive"}">${s.status}</span>`,
       s.enrol_date,
@@ -1413,8 +1547,28 @@ qs("#modifySearch").addEventListener("input", renderModifyResults);
 qs("#dashboardMonth").addEventListener("change", async (event) => {
   state.settings.current_month = event.target.value;
   feeMonthOffset = 0;
+  reportSelectedMonths = [event.target.value];
   await api("/api/settings", { method: "POST", body: JSON.stringify({ current_month: event.target.value }) });
   await load();
+});
+
+qs("#reportMonths").addEventListener("change", (event) => {
+  reportSelectedMonths = [...event.currentTarget.selectedOptions].map((option) => option.value);
+  renderReporting();
+});
+
+qs("#reportCurrentMonth").addEventListener("click", () => {
+  reportSelectedMonths = [state.settings.current_month || "May-26"];
+  hydrateMonthSelectors();
+  renderReporting();
+});
+
+qs("#reportLast13Months").addEventListener("click", () => {
+  const currentIndex = currentMonthIndex();
+  const start = Math.max(0, currentIndex - 12);
+  reportSelectedMonths = state.months.slice(start, currentIndex + 1);
+  hydrateMonthSelectors();
+  renderReporting();
 });
 
 qs("#studentForm").addEventListener("submit", async (event) => {
