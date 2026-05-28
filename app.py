@@ -704,7 +704,10 @@ def execute(conn, sql, params=()):
 
 def execute_many(conn, sql, rows):
     if PG_MODE:
-        return conn.executemany(sql.replace("?", "%s"), rows)
+        prepared = sql.replace("?", "%s")
+        for row in rows:
+            conn.execute(prepared, row)
+        return None
     return conn.executemany(sql, rows)
 
 
