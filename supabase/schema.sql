@@ -78,6 +78,17 @@ create table if not exists public.payments (
   unique (student_id, month_label)
 );
 
+create table if not exists public.student_status_changes (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  student_id uuid not null references public.students(id) on delete cascade,
+  previous_status text not null,
+  new_status text not null,
+  changed_at timestamptz not null default now(),
+  changed_month text not null,
+  notes text
+);
+
 create table if not exists public.rates (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -138,6 +149,7 @@ create table if not exists public.discount_codes (
 
 create index if not exists students_org_status_idx on public.students(organization_id, status);
 create index if not exists payments_org_month_idx on public.payments(organization_id, month_label);
+create index if not exists status_changes_org_month_idx on public.student_status_changes(organization_id, changed_month);
 create index if not exists members_user_idx on public.organization_members(user_id);
 create index if not exists app_users_org_email_idx on public.app_users(organization_id, lower(email));
 
@@ -146,6 +158,7 @@ alter table public.organization_members enable row level security;
 alter table public.app_users enable row level security;
 alter table public.students enable row level security;
 alter table public.payments enable row level security;
+alter table public.student_status_changes enable row level security;
 alter table public.rates enable row level security;
 alter table public.payer_aliases enable row level security;
 alter table public.payment_imports enable row level security;
@@ -222,6 +235,15 @@ create policy "members can view payments"
 
 create policy "managers can manage payments"
   on public.payments for all
+  using (public.has_org_role(organization_id, array['owner', 'admin', 'manager']))
+  with check (public.has_org_role(organization_id, array['owner', 'admin', 'manager']));
+
+create policy "members can view status changes"
+  on public.student_status_changes for select
+  using (public.is_org_member(organization_id));
+
+create policy "managers can manage status changes"
+  on public.student_status_changes for all
   using (public.has_org_role(organization_id, array['owner', 'admin', 'manager']))
   with check (public.has_org_role(organization_id, array['owner', 'admin', 'manager']));
 

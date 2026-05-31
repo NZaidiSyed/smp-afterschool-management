@@ -308,6 +308,15 @@ def create_empty_db():
             amount REAL NOT NULL DEFAULT 0,
             UNIQUE(student_id, month_label)
         );
+        CREATE TABLE student_status_changes (
+            id INTEGER PRIMARY KEY,
+            student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+            previous_status TEXT NOT NULL,
+            new_status TEXT NOT NULL,
+            changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            changed_month TEXT NOT NULL,
+            notes TEXT
+        );
         CREATE TABLE rates (
             id INTEGER PRIMARY KEY,
             subject TEXT NOT NULL,
@@ -451,6 +460,15 @@ def init_db(force=False):
             month_label TEXT NOT NULL,
             amount REAL NOT NULL DEFAULT 0,
             UNIQUE(student_id, month_label)
+        );
+        CREATE TABLE student_status_changes (
+            id INTEGER PRIMARY KEY,
+            student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+            previous_status TEXT NOT NULL,
+            new_status TEXT NOT NULL,
+            changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            changed_month TEXT NOT NULL,
+            notes TEXT
         );
         CREATE TABLE rates (
             id INTEGER PRIMARY KEY,
@@ -668,6 +686,15 @@ def ensure_meta_defaults():
                 notes TEXT,
                 applied_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS student_status_changes (
+                id INTEGER PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                previous_status TEXT NOT NULL,
+                new_status TEXT NOT NULL,
+                changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                changed_month TEXT NOT NULL,
+                notes TEXT
+            );
             """
         )
         student_columns = [row["name"] for row in conn.execute("PRAGMA table_info(students)").fetchall()]
@@ -848,6 +875,38 @@ def ensure_access_tables(conn):
             conn.execute("ALTER TABLE users ADD COLUMN active INTEGER NOT NULL DEFAULT 1")
         if "auth_provider" not in columns:
             conn.execute("ALTER TABLE users ADD COLUMN auth_provider TEXT NOT NULL DEFAULT 'email'")
+
+
+def ensure_status_change_table(conn):
+    if PG_MODE:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS public.student_status_changes (
+                id uuid primary key default gen_random_uuid(),
+                organization_id uuid not null references public.organizations(id) on delete cascade,
+                student_id uuid not null references public.students(id) on delete cascade,
+                previous_status text not null,
+                new_status text not null,
+                changed_at timestamptz not null default now(),
+                changed_month text not null,
+                notes text
+            )
+            """
+        )
+    else:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS student_status_changes (
+                id INTEGER PRIMARY KEY,
+                student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+                previous_status TEXT NOT NULL,
+                new_status TEXT NOT NULL,
+                changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                changed_month TEXT NOT NULL,
+                notes TEXT
+            )
+            """
+        )
 
 
 def normalize_role(role):
@@ -1536,6 +1595,67 @@ def get_payments(conn):
     return by_student
 
 
+def get_status_changes(conn):
+    ensure_status_change_table(conn)
+    if PG_MODE:
+        rows = conn.execute(
+            """
+            SELECT c.id::text AS id, c.student_id::text AS student_id, c.previous_status,
+                   c.new_status, c.changed_at, c.changed_month, c.notes,
+                   s.number, s.student_name, s.parent_guardian, s.subjects, s.std_monthly_fee
+            FROM public.student_status_changes c
+            JOIN public.students s ON s.id=c.student_id AND s.organization_id=c.organization_id
+            WHERE c.organization_id=%s
+            ORDER BY c.changed_at DESC
+            """,
+            (current_org_id(conn),),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT c.id, c.student_id, c.previous_status, c.new_status, c.changed_at,
+                   c.changed_month, c.notes, s.number, s.student_name, s.parent_guardian,
+                   s.subjects, s.std_monthly_fee
+            FROM student_status_changes c
+            JOIN students s ON s.id=c.student_id
+            ORDER BY c.changed_at DESC
+            """
+        ).fetchall()
+    changes = []
+    for row in rows:
+        item = rowdict(row)
+        item["subjects"] = subjects_text(item.get("subjects"))
+        item["std_monthly_fee"] = float(item.get("std_monthly_fee") or 0)
+        changes.append(item)
+    return changes
+
+
+def record_status_change(conn, student_id, old_status, new_status, notes=""):
+    old_value = str(old_status or "").strip().upper()[:1]
+    new_value = str(new_status or "").strip().upper()[:1]
+    if old_value == new_value:
+        return
+    ensure_status_change_table(conn)
+    changed_month = current_month_label()
+    if PG_MODE:
+        conn.execute(
+            """
+            INSERT INTO public.student_status_changes(
+                organization_id, student_id, previous_status, new_status, changed_month, notes
+            ) VALUES (%s,%s,%s,%s,%s,%s)
+            """,
+            (current_org_id(conn), student_id, old_value, new_value, changed_month, notes),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO student_status_changes(student_id, previous_status, new_status, changed_month, notes)
+            VALUES (?,?,?,?,?)
+            """,
+            (student_id, old_value, new_value, changed_month, notes),
+        )
+
+
 def fee_tracker(conn):
     payments = get_payments(conn)
     rows = []
@@ -1701,6 +1821,7 @@ def ensure_pg_defaults():
     with db() as conn:
         org_id = current_org_id(conn)
         ensure_access_tables(conn)
+        ensure_status_change_table(conn)
         for subject in ["Math", "English"]:
             conn.execute(
                 """
@@ -1854,6 +1975,7 @@ class Handler(SimpleHTTPRequestHandler):
                         "backups": backups,
                         "reconciliation": reconciliation_summary(conn),
                         "payer_aliases": payer_aliases,
+                        "status_changes": get_status_changes(conn),
                         "current_user": self.auth_access or {},
                         "role_options": ROLE_OPTIONS,
                     }
@@ -2320,6 +2442,7 @@ class Handler(SimpleHTTPRequestHandler):
                 else:
                     old_student = conn.execute("SELECT * FROM students WHERE id=?", (int(match.group(1)),)).fetchone()
                 modification_note = student_modification_note(old_student, student)
+                old_status = row_get(old_student, "status", "")
                 if PG_MODE:
                     conn.execute(
                         """
@@ -2347,6 +2470,7 @@ class Handler(SimpleHTTPRequestHandler):
                             current_org_id(conn),
                         ),
                     )
+                    record_status_change(conn, match.group(1), old_status, student["status"], modification_note)
                 else:
                     conn.execute(
                         """
@@ -2373,6 +2497,7 @@ class Handler(SimpleHTTPRequestHandler):
                             int(match.group(1)),
                         ),
                     )
+                    record_status_change(conn, int(match.group(1)), old_status, student["status"], modification_note)
                 conn.commit()
             self.send_json({"ok": True})
         except ValueError as exc:

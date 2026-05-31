@@ -12,6 +12,7 @@ let state = {
   backups: [],
   reconciliation: [],
   payer_aliases: [],
+  status_changes: [],
   current_user: {},
   role_options: ["Admin", "Office Manager", "Office Assistant"],
   reconciliationPreview: [],
@@ -266,12 +267,16 @@ function normalizedStudentName(name) {
   return String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function normalizedDuplicateKey(row) {
+  return `${normalizedStudentName(row.student_name)}|${normalizedStudentName(row.parent_guardian)}`;
+}
+
 function activeDuplicateNameMap() {
   const counts = {};
   for (const row of state.students || []) {
     if (String(row.status || "").toUpperCase() !== "C") continue;
-    const key = normalizedStudentName(row.student_name);
-    if (!key) continue;
+    const key = normalizedDuplicateKey(row);
+    if (!normalizedStudentName(row.student_name)) continue;
     counts[key] = (counts[key] || 0) + 1;
   }
   return counts;
@@ -279,7 +284,7 @@ function activeDuplicateNameMap() {
 
 function isActiveDuplicateName(row) {
   if (String(row.status || "").toUpperCase() !== "C") return false;
-  return (activeDuplicateNameMap()[normalizedStudentName(row.student_name)] || 0) > 1;
+  return (activeDuplicateNameMap()[normalizedDuplicateKey(row)] || 0) > 1;
 }
 
 function renderDashboard() {
@@ -300,7 +305,7 @@ function renderDashboard() {
     ...subjectMetrics,
     metric(`Unpaid - ${currentMonth}`, currentUnpaid.length, currentUnpaid.length ? "warning" : "success"),
     metric("Current Month Outstanding", money(currentUnpaidTotal), currentUnpaid.length ? "warning" : "success"),
-    metric("Active Duplicate Names", duplicateActiveCount, duplicateActiveCount ? "warning" : "success"),
+    metric("Active Student/Parent Duplicates", duplicateActiveCount, duplicateActiveCount ? "warning" : "success"),
   ].join("");
 
   const enrolmentMax = Math.max(...d.enrolment_totals.map((m) => m.count), 1);
@@ -365,8 +370,8 @@ function duplicateGroups() {
   const groups = {};
   for (const row of state.students || []) {
     if (String(row.status || "").toUpperCase() !== "C") continue;
-    const key = normalizedStudentName(row.student_name);
-    if (!key) continue;
+    const key = normalizedDuplicateKey(row);
+    if (!normalizedStudentName(row.student_name)) continue;
     groups[key] = groups[key] || [];
     groups[key].push(row);
   }
@@ -375,9 +380,18 @@ function duplicateGroups() {
     .sort((a, b) => a[0].student_name.localeCompare(b[0].student_name));
 }
 
+function reportStatusChangeRows() {
+  const selected = new Set(selectedReportMonths());
+  return (state.status_changes || [])
+    .filter((row) => selected.has(row.changed_month))
+    .filter((row) => String(row.previous_status || "").toUpperCase() === "C" && String(row.new_status || "").toUpperCase() === "D")
+    .sort((a, b) => String(b.changed_at || "").localeCompare(String(a.changed_at || "")));
+}
+
 function renderReporting() {
   if (!qs("#reporting")) return;
   const rows = reportEnrolmentRows();
+  const statusRows = reportStatusChangeRows();
   const selected = selectedReportMonths();
   const active = rows.filter((row) => String(row.status || "").toUpperCase() === "C");
   const units = rows.reduce((sum, row) => sum + (row.subject_units || 0), 0);
@@ -386,6 +400,7 @@ function renderReporting() {
     `<div class="info-tile"><span>Selected Months</span><strong>${selected.length}</strong></div>`,
     `<div class="info-tile"><span>Enrolments</span><strong>${rows.length}</strong></div>`,
     `<div class="info-tile"><span>Current Students</span><strong>${active.length}</strong></div>`,
+    `<div class="info-tile"><span>C to D Changes</span><strong>${statusRows.length}</strong></div>`,
     `<div class="info-tile"><span>Subject Units</span><strong>${number(units)}</strong></div>`,
     `<div class="info-tile"><span>Monthly Fee Added</span><strong>${money(monthlyFee)}</strong></div>`,
   ].join("");
@@ -407,10 +422,26 @@ function renderReporting() {
     ])
   );
 
+  renderTable(
+    qs("#statusChangeReportTable"),
+    ["Month", "Changed Date", "#", "Student Name", "Parent / Guardian", "Status Change", "Subjects", "STD Fee", "Notes"],
+    statusRows.map((row) => [
+      row.changed_month,
+      String(row.changed_at || "").slice(0, 10),
+      row.number || "",
+      escapeHtml(row.student_name || ""),
+      escapeHtml(row.parent_guardian || ""),
+      `<span class="status-badge inactive">${row.previous_status} to ${row.new_status}</span>`,
+      subjectText(row.subjects),
+      money(row.std_monthly_fee),
+      escapeHtml(row.notes || ""),
+    ])
+  );
+
   const duplicates = duplicateGroups();
   qs("#duplicateSummary").innerHTML = duplicates.length
-    ? duplicates.map((group) => `<div class="alert-item danger-alert"><strong>${escapeHtml(group[0].student_name)}</strong><span>${group.length} active records. Correct in Student Roster.</span></div>`).join("")
-    : `<div class="empty-state">No active duplicate student names found.</div>`;
+    ? duplicates.map((group) => `<div class="alert-item danger-alert"><strong>${escapeHtml(group[0].student_name)}</strong><span>${escapeHtml(group[0].parent_guardian || "No parent listed")} - ${group.length} active records. Correct in Student Roster.</span></div>`).join("")
+    : `<div class="empty-state">No active duplicate student and parent matches found.</div>`;
   renderTable(
     qs("#duplicateReportTable"),
     ["Student Name", "Records", "Roster Numbers", "Parents", "Subjects"],
@@ -429,7 +460,7 @@ function renderReporting() {
   qs("#managerReportIdeas").innerHTML = [
     ["Outstanding Fees", `${unpaidCount} current-month follow-up${unpaidCount === 1 ? "" : "s"}`, "Run this after the 5th to review students still missing payment."],
     ["Payment Method Summary", "PAD, E-Transfer, Cash, Credit Card", "Compare monthly collections with bank and credit-card deposits."],
-    ["Active Duplicate Records", `${duplicates.reduce((sum, group) => sum + group.length, 0)} record${duplicates.length === 1 ? "" : "s"} flagged`, "Clean duplicated active names before billing or reporting."],
+    ["Active Duplicate Records", `${duplicates.reduce((sum, group) => sum + group.length, 0)} record${duplicates.length === 1 ? "" : "s"} flagged`, "Clean duplicated student and parent matches before billing or reporting."],
     ["Discontinued Students", `${state.dashboard.discontinued_students || 0} inactive records`, "Review lost enrolments and possible reactivation opportunities."],
     ["Subject Mix", `${configuredSubjects().join(", ")}`, "See which subjects are growing and where staffing demand is increasing."],
     ["Current Month Revenue", `${currentMonth}: ${money(currentRevenue)}`, "Quick check for monthly collection trend and expected deposits."],
