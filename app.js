@@ -863,162 +863,311 @@ function staffWeekdays() {
   return state.staff?.weekdays?.length ? state.staff.weekdays : ["Mon", "Tue", "Wed", "Thu", "Fri"];
 }
 
-function renderStaffAdministration() {
-  if (!qs("#staffAdministration")) return;
-  qs("#staffLockedState")?.classList.toggle("collapsed", Boolean(state.can_access_staff));
-  qs("#staffWorkspace")?.classList.toggle("collapsed", !state.can_access_staff);
-  if (!state.can_access_staff) return;
-  document.querySelectorAll("[data-staff-view]").forEach((button) => button.classList.toggle("active", button.dataset.staffView === activeStaffView));
-  document.querySelectorAll(".staff-view").forEach((view) => view.classList.toggle("active", view.id === activeStaffView));
-  renderStaffDashboard();
-  renderStaffRoster();
-  renderStaffSchedule();
-  renderStaffClock();
-  hydrateStaffForms();
+const STAFFBASE_SAMPLE_USERS = [
+  { id: "sample-1", staff_name: "Dr. Sarah Mitchell", email: "s.mitchell@greenfield.edu", role_title: "Principal", subject: "Administration", pin: "0000", phone: "416-555-0001", hourly_rate: 42, active: true },
+  { id: "sample-2", staff_name: "James Harrington", email: "j.harrington@greenfield.edu", role_title: "Vice Principal", subject: "Administration", pin: "1111", phone: "416-555-0002", hourly_rate: 38, active: true },
+  { id: "sample-3", staff_name: "Rachel Torres", email: "r.torres@greenfield.edu", role_title: "Office Manager", subject: "Administration", pin: "2222", phone: "416-555-0003", hourly_rate: 32, active: true },
+  { id: "sample-4", staff_name: "Emily Chen", email: "e.chen@greenfield.edu", role_title: "Math Teacher", subject: "Mathematics", pin: "3333", phone: "416-555-0011", hourly_rate: 28, active: true },
+  { id: "sample-5", staff_name: "Marcus Williams", email: "m.williams@greenfield.edu", role_title: "Science Teacher", subject: "Science", pin: "4444", phone: "416-555-0012", hourly_rate: 28, active: true },
+  { id: "sample-6", staff_name: "Priya Sharma", email: "p.sharma@greenfield.edu", role_title: "English Teacher", subject: "English", pin: "5555", phone: "416-555-0013", hourly_rate: 28, active: true },
+  { id: "sample-7", staff_name: "David O'Brien", email: "d.obrien@greenfield.edu", role_title: "History Teacher", subject: "History", pin: "6666", phone: "416-555-0014", hourly_rate: 27, active: true },
+  { id: "sample-8", staff_name: "Aisha Patel", email: "a.patel@greenfield.edu", role_title: "Art Teacher", subject: "Arts", pin: "7777", phone: "416-555-0015", hourly_rate: 27, active: true },
+  { id: "sample-9", staff_name: "Tom Nakamura", email: "t.nakamura@greenfield.edu", role_title: "PE Teacher", subject: "PE", pin: "8888", phone: "416-555-0016", hourly_rate: 27, active: true },
+  { id: "sample-10", staff_name: "Lisa Kowalski", email: "l.kowalski@greenfield.edu", role_title: "Counselor", subject: "Support", pin: "9999", phone: "416-555-0017", hourly_rate: 30, active: true },
+];
+
+const STAFFBASE_SHIFT_TYPES = {
+  Teaching: ["Teaching", "#1a65d4", "#e6effe"],
+  Planning: ["Planning", "#5b3fc4", "#eeeafe"],
+  Supervision: ["Supervision", "#c97d10", "#fef3dc"],
+  Meeting: ["Meeting", "#0a8c6a", "#dcf5ee"],
+  "Prof Dev": ["Prof. Dev.", "#c42b1c", "#fde8e6"],
+  Off: ["Day Off", "#8fa5bc", "#f0f4f8"],
+};
+
+function staffbaseMembers() {
+  return staffMembers().length ? staffMembers() : STAFFBASE_SAMPLE_USERS;
 }
 
-function renderStaffDashboard() {
-  const summary = state.staff?.summary || {};
-  qs("#staffMetrics").innerHTML = [
-    metric("Active Staff", summary.active_staff || 0, "accent"),
-    metric("Clocked In Now", summary.clocked_in || 0, summary.clocked_in ? "success" : ""),
-    metric("Scheduled Shifts", summary.scheduled_shifts || 0),
-    metric("Labor Hours Logged", number(summary.labor_hours || 0)),
-    metric("Estimated Labor Cost", money(summary.labor_cost || 0), "success"),
-    metric("Inactive Staff", summary.inactive_staff || 0, summary.inactive_staff ? "warning" : ""),
-  ].join("");
-  const activePunches = staffPunches().filter((punch) => !punch.clock_out);
-  qs("#staffLiveAttendance").innerHTML = activePunches.length
-    ? activePunches.map((punch) => `<div class="unpaid-item"><strong>${escapeHtml(punch.staff_name)}</strong><span>${escapeHtml(punch.role_title || "Staff")} - clocked in ${escapeHtml(punch.clock_in || "")}</span></div>`).join("")
-    : `<div class="empty-state">No staff currently clocked in.</div>`;
+function staffbaseIsSample() {
+  return !staffMembers().length;
 }
 
-function renderStaffRoster() {
-  renderTable(
-    qs("#staffRosterTable"),
-    ["Staff Name", "Role", "Subject", "Phone", "Email", "Rate", "PIN", "Status", "Actions"],
-    staffMembers().map((member) => [
-      escapeHtml(member.staff_name),
-      escapeHtml(member.role_title || ""),
-      escapeHtml(member.subject || ""),
-      escapeHtml(member.phone || ""),
-      escapeHtml(member.email || ""),
-      money(member.hourly_rate || 0),
-      escapeHtml(member.pin || ""),
-      `<span class="status-badge ${member.active ? "current" : "inactive"}">${member.active ? "Active" : "Inactive"}</span>`,
-      `<div class="row-actions"><button class="small" data-edit-staff="${member.id}">Edit</button><button class="small danger" data-delete-staff="${member.id}">Delete</button></div>`,
-    ])
+function staffbaseInitials(name) {
+  return String(name || "?")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase() || "?";
+}
+
+function staffbaseAvatar(member, size = 34) {
+  const colors = ["#0c1e35", "#0a8c6a", "#1a65d4", "#5b3fc4", "#c97d10", "#c42b1c", "#0a7c9e"];
+  const name = member.staff_name || "";
+  const index = [...name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % colors.length;
+  return `<span class="staffbase-avatar" style="width:${size}px;height:${size}px;background:${colors[index]}">${staffbaseInitials(name)}</span>`;
+}
+
+function staffbaseShiftTag(type) {
+  const [label, color, bg] = STAFFBASE_SHIFT_TYPES[type] || STAFFBASE_SHIFT_TYPES.Off;
+  return `<span class="staffbase-shift-tag" style="background:${bg};color:${color};border-color:${color}22">${label}</span>`;
+}
+
+function staffbaseDefaultSchedules() {
+  const patterns = {
+    "sample-3": ["Meeting", "Teaching", "Planning", "Teaching", "Supervision"],
+    "sample-4": ["Teaching", "Planning", "Teaching", "Teaching", "Teaching"],
+    "sample-5": ["Teaching", "Teaching", "Supervision", "Teaching", "Meeting"],
+    "sample-6": ["Planning", "Teaching", "Teaching", "Teaching", "Teaching"],
+    "sample-7": ["Teaching", "Teaching", "Meeting", "Teaching", "Supervision"],
+    "sample-8": ["Teaching", "Supervision", "Teaching", "Teaching", "Teaching"],
+    "sample-9": ["Prof Dev", "Teaching", "Teaching", "Teaching", "Planning"],
+    "sample-10": ["Teaching", "Teaching", "Planning", "Meeting", "Teaching"],
+  };
+  return Object.entries(patterns).flatMap(([staffId, shifts]) =>
+    staffWeekdays().map((weekday, index) => {
+      const shiftType = shifts[index] || "Off";
+      return {
+        id: `${staffId}-${weekday}`,
+        staff_id: staffId,
+        weekday,
+        shift_type: shiftType,
+        start_time: shiftType === "Off" ? "" : "15:30",
+        end_time: shiftType === "Off" ? "" : "18:30",
+        location: shiftType === "Teaching" ? `Room ${100 + Number(staffId.replace("sample-", ""))}` : shiftType === "Meeting" ? "Staff Room" : shiftType === "Supervision" ? "Main Hallway" : "Office",
+        published: true,
+      };
+    })
   );
-  document.querySelectorAll("[data-edit-staff]").forEach((button) => button.addEventListener("click", () => editStaffMember(button.dataset.editStaff)));
-  document.querySelectorAll("[data-delete-staff]").forEach((button) => button.addEventListener("click", () => deleteStaffMember(button.dataset.deleteStaff)));
 }
 
-function renderStaffSchedule() {
+function staffbaseSchedules() {
+  return staffSchedules().length ? staffSchedules() : staffbaseDefaultSchedules();
+}
+
+function staffbasePunches() {
+  if (staffPunches().length) return staffPunches();
+  return [
+    { id: "sample-p1", staff_id: "sample-4", staff_name: "Emily Chen", role_title: "Math Teacher", punch_date: "2026-05-31", clock_in: "03:25 PM", clock_out: "", duration_hours: 0, source: "GPS verified", notes: "On site" },
+    { id: "sample-p2", staff_id: "sample-5", staff_name: "Marcus Williams", role_title: "Science Teacher", punch_date: "2026-05-31", clock_in: "03:31 PM", clock_out: "", duration_hours: 0, source: "GPS verified", notes: "On site" },
+    { id: "sample-p3", staff_id: "sample-6", staff_name: "Priya Sharma", role_title: "English Teacher", punch_date: "2026-05-30", clock_in: "03:30 PM", clock_out: "06:32 PM", duration_hours: 3.03, source: "Manual", notes: "" },
+  ];
+}
+
+function staffbaseHours(row) {
+  if (row.duration_hours) return Number(row.duration_hours) || 0;
+  if (!row.start_time || !row.end_time || row.shift_type === "Off") return 0;
+  const [sh, sm] = row.start_time.split(":").map(Number);
+  const [eh, em] = row.end_time.split(":").map(Number);
+  return Math.max(0, ((eh * 60 + em) - (sh * 60 + sm)) / 60);
+}
+
+function renderStaffAdministration() {
+  const workspace = qs("#staffWorkspace");
+  if (!workspace) return;
+  qs("#staffLockedState")?.classList.toggle("collapsed", Boolean(state.can_access_staff));
+  workspace.classList.toggle("collapsed", !state.can_access_staff);
+  if (!state.can_access_staff) return;
+  const sampleNote = staffbaseIsSample() ? `<span class="staffbase-sample">Sample data from tested StaffBase code</span>` : `<span class="staffbase-sample live">Live database</span>`;
+  workspace.innerHTML = `
+    <aside class="staffbase-sidebar">
+      <div class="staffbase-logo">
+        <div class="staffbase-logo-mark">S</div>
+        <div><strong>StaffBase</strong><span>${escapeHtml(state.settings?.institution_name || "After School Centre")}</span></div>
+      </div>
+      <div class="staffbase-user">
+        ${staffbaseAvatar({ staff_name: state.current_user?.name || "SMP Admin" }, 34)}
+        <div><strong>${escapeHtml(state.current_user?.name || "SMP Admin")}</strong><span>${escapeHtml(state.current_user?.role || "Admin / Manager")}</span></div>
+      </div>
+      <nav class="staffbase-nav">
+        ${[
+          ["staff-dashboard", "Dashboard"],
+          ["staff-schedule", "Weekly Schedule"],
+          ["staff-timesheets", "Timesheets"],
+          ["staff-roster", "Staff Roster"],
+          ["staff-clock", "Time Clock"],
+        ].map(([view, label]) => `<button type="button" data-staff-view="${view}" class="${activeStaffView === view ? "active" : ""}">${label}</button>`).join("")}
+      </nav>
+    </aside>
+    <div class="staffbase-main">
+      <header class="staffbase-topbar">
+        <div><h2>${staffbaseTitle()}</h2>${sampleNote}</div>
+        <div class="staffbase-live-clock">${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
+      </header>
+      <main class="staffbase-content">${staffbaseContent()}</main>
+    </div>`;
+  workspace.querySelectorAll("[data-staff-view]").forEach((button) => {
+    button.addEventListener("click", () => {
+      activeStaffView = button.dataset.staffView;
+      renderStaffAdministration();
+    });
+  });
+  workspace.querySelector("#staffbaseSearch")?.addEventListener("input", () => renderStaffbaseRoster());
+  renderStaffbaseRoster();
+}
+
+function staffbaseTitle() {
+  return {
+    "staff-dashboard": "Live Attendance & Labor Overview",
+    "staff-schedule": "Weekly Class & Duty Schedule",
+    "staff-timesheets": "Timesheets",
+    "staff-roster": "Staff Roster",
+    "staff-clock": "Time Clock",
+  }[activeStaffView] || "Staff Administration";
+}
+
+function staffbaseContent() {
+  if (activeStaffView === "staff-schedule") return staffbaseScheduleView();
+  if (activeStaffView === "staff-timesheets") return staffbaseTimesheetsView();
+  if (activeStaffView === "staff-roster") return staffbaseRosterView();
+  if (activeStaffView === "staff-clock") return staffbaseClockView();
+  return staffbaseDashboardView();
+}
+
+function staffbaseDashboardView() {
+  const members = staffbaseMembers().filter((member) => member.active);
+  const punches = staffbasePunches();
+  const activePunches = punches.filter((punch) => !punch.clock_out);
+  const schedules = staffbaseSchedules();
+  const laborHours = schedules.reduce((sum, row) => sum + staffbaseHours(row), 0);
+  const laborCost = schedules.reduce((sum, row) => {
+    const member = members.find((item) => String(item.id) === String(row.staff_id));
+    return sum + staffbaseHours(row) * Number(member?.hourly_rate || 0);
+  }, 0);
+  return `
+    <div class="staffbase-banner">
+      <div><strong>Good ${new Date().getHours() < 12 ? "morning" : new Date().getHours() < 17 ? "afternoon" : "evening"}.</strong><span>Schedule published for May 26 - 30, 2026</span></div>
+      <span class="staffbase-badge gold">Published</span>
+    </div>
+    <div class="staffbase-metrics">
+      <div><span>Total Staff</span><strong>${members.length}</strong><small>active employees</small></div>
+      <div><span>Clocked In</span><strong>${activePunches.length}</strong><small>on-site right now</small></div>
+      <div><span>Labor Hours</span><strong>${number(laborHours)}h</strong><small>scheduled this week</small></div>
+      <div><span>Est. Labor Cost</span><strong>${money(laborCost)}</strong><small>this week</small></div>
+    </div>
+    <div class="staffbase-grid two">
+      <section class="staffbase-card">
+        <div class="staffbase-section-head"><h3>Today's attendance</h3><button type="button" data-staff-view="staff-clock">Time Clock</button></div>
+        ${members.map((member) => {
+          const punch = activePunches.find((row) => String(row.staff_id) === String(member.id));
+          return `<div class="staffbase-attendance ${punch ? "active" : ""}">
+            <div>${staffbaseAvatar(member, 30)}<span><strong>${escapeHtml(member.staff_name)}</strong><small>${escapeHtml(member.role_title || "Staff")}</small></span></div>
+            <span class="staffbase-badge ${punch ? "green" : "gray"}">${punch ? `In ${escapeHtml(punch.clock_in || "")}` : "Away"}</span>
+          </div>`;
+        }).join("")}
+      </section>
+      <section class="staffbase-card">
+        <div class="staffbase-section-head"><h3>Schedule exceptions</h3><span class="staffbase-badge gold">2 waiting</span></div>
+        <div class="staffbase-request"><strong>Emily Chen</strong><span>Vacation request - Jun 3 to Jun 5</span></div>
+        <div class="staffbase-request"><strong>Priya Sharma</strong><span>Professional development - Jun 5</span></div>
+        <div class="staffbase-section-head lower"><h3>Announcements</h3></div>
+        <div class="staffbase-request priority"><strong>End-of-year assembly</strong><span>All staff required on Friday June 14 at 9:00 AM.</span></div>
+      </section>
+    </div>`;
+}
+
+function staffbaseScheduleView() {
   const members = staffMembers().filter((member) => member.active);
+  const displayMembers = members.length ? members : staffbaseMembers().filter((member) => member.active && !["Principal", "Vice Principal"].includes(member.role_title));
   const scheduleByStaff = {};
-  for (const row of staffSchedules()) {
+  for (const row of staffbaseSchedules()) {
     scheduleByStaff[row.staff_id] = scheduleByStaff[row.staff_id] || {};
     scheduleByStaff[row.staff_id][row.weekday] = row;
   }
-  renderTable(
-    qs("#staffScheduleTable"),
-    ["Staff", ...staffWeekdays()],
-    members.map((member) => [
-      `<strong>${escapeHtml(member.staff_name)}</strong><br><span class="muted-note">${escapeHtml(member.role_title || "")}</span>`,
-      ...staffWeekdays().map((day) => {
+  return `
+    <section class="staffbase-card">
+      <div class="staffbase-section-head"><div><h3>Week: May 26 - 30, 2026</h3><span>Clicking live database cells can be added next; this view restores the tested layout first.</span></div><span class="staffbase-badge green">Published</span></div>
+      <div class="staffbase-schedule-grid" style="grid-template-columns:190px repeat(${staffWeekdays().length}, 1fr)">
+        <div class="staffbase-schedule-head staff">Staff Member</div>
+        ${staffWeekdays().map((day) => `<div class="staffbase-schedule-head">${day}</div>`).join("")}
+        ${displayMembers.map((member) => `
+          <div class="staffbase-schedule-employee">${staffbaseAvatar(member, 30)}<span><strong>${escapeHtml(member.staff_name)}</strong><small>${escapeHtml(member.subject || "")}</small></span></div>
+          ${staffWeekdays().map((day) => {
         const shift = scheduleByStaff[member.id]?.[day];
-        if (!shift || String(shift.shift_type || "").toLowerCase() === "off") return `<span class="muted-note">Off</span>`;
-        return `<strong>${escapeHtml(shift.start_time || "")} - ${escapeHtml(shift.end_time || "")}</strong><br><span class="muted-note">${escapeHtml(shift.location || "Centre")}</span>`;
-      }),
-    ])
-  );
+        if (!shift || String(shift.shift_type || "").toLowerCase() === "off") return `<div class="staffbase-schedule-cell muted">${staffbaseShiftTag("Off")}</div>`;
+        return `<div class="staffbase-schedule-cell">${staffbaseShiftTag(shift.shift_type || "Teaching")}<strong>${escapeHtml(shift.start_time || "")} - ${escapeHtml(shift.end_time || "")}</strong><small>${escapeHtml(shift.location || "Centre")}</small></div>`;
+      }).join("")}
+        `).join("")}
+      </div>
+    </section>`;
 }
 
-function renderStaffClock() {
-  renderTable(
-    qs("#staffClockTable"),
-    ["Date", "Staff", "Clock In", "Clock Out", "Hours", "Source", "Notes"],
-    staffPunches().map((punch) => [
-      String(punch.punch_date || "").slice(0, 10),
-      escapeHtml(punch.staff_name || ""),
-      escapeHtml(punch.clock_in || ""),
-      escapeHtml(punch.clock_out || "Active"),
-      number(punch.duration_hours || 0),
-      escapeHtml(punch.source || ""),
-      escapeHtml(punch.notes || ""),
-    ])
-  );
+function staffbaseTimesheetsView() {
+  const members = staffbaseMembers().filter((member) => member.active && !["Principal", "Vice Principal"].includes(member.role_title));
+  const schedules = staffbaseSchedules();
+  return `
+    <section class="staffbase-card">
+      <div class="staffbase-section-head"><h3>Weekly labor summary</h3><button type="button">Export CSV</button></div>
+      <table class="staffbase-table">
+        <thead><tr><th>Employee</th>${staffWeekdays().map((day) => `<th>${day}</th>`).join("")}<th>Total</th><th>Status</th></tr></thead>
+        <tbody>${members.map((member) => {
+          const rows = schedules.filter((row) => String(row.staff_id) === String(member.id));
+          const total = rows.reduce((sum, row) => sum + staffbaseHours(row), 0);
+          return `<tr><td>${staffbaseAvatar(member, 30)}<strong>${escapeHtml(member.staff_name)}</strong><small>${escapeHtml(member.subject || "")}</small></td>
+            ${staffWeekdays().map((day) => {
+              const row = rows.find((item) => item.weekday === day);
+              return `<td>${row && row.shift_type !== "Off" ? `${number(staffbaseHours(row))}h` : "-"}</td>`;
+            }).join("")}
+            <td><strong>${number(total)}h</strong></td><td><span class="staffbase-badge ${total >= 12 ? "green" : "gold"}">${total >= 12 ? "Complete" : "Partial"}</span></td></tr>`;
+        }).join("")}</tbody>
+      </table>
+    </section>`;
 }
 
-function hydrateStaffForms() {
-  const staffSignature = staffMembers()
-    .map((member) => `${member.id}:${member.staff_name}:${member.active}`)
-    .join("|");
-  const staffOptions = staffMembers()
-    .filter((member) => member.active)
-    .map((member) => `<option value="${escapeAttr(member.id)}">${escapeHtml(member.staff_name)}</option>`)
+function staffbaseRosterView() {
+  return `
+    <section class="staffbase-card">
+      <div class="staffbase-section-head"><h3>Staff directory</h3><input id="staffbaseSearch" class="staffbase-search" placeholder="Search by name, role, department"></div>
+      <table class="staffbase-table">
+        <thead><tr><th>Name & Email</th><th>Role</th><th>Department</th><th>PIN</th><th>Phone</th><th>Status</th></tr></thead>
+        <tbody id="staffbaseRosterBody"></tbody>
+      </table>
+    </section>`;
+}
+
+function renderStaffbaseRoster() {
+  const body = qs("#staffbaseRosterBody");
+  if (!body) return;
+  const query = qs("#staffbaseSearch")?.value?.toLowerCase() || "";
+  body.innerHTML = staffbaseMembers()
+    .filter((member) => !query || [member.staff_name, member.role_title, member.subject, member.email].some((value) => String(value || "").toLowerCase().includes(query)))
+    .map((member) => `<tr>
+      <td>${staffbaseAvatar(member, 32)}<strong>${escapeHtml(member.staff_name)}</strong><small>${escapeHtml(member.email || "")}</small></td>
+      <td><span class="staffbase-badge blue">${escapeHtml(member.role_title || "Staff")}</span></td>
+      <td>${escapeHtml(member.subject || "Administration")}</td>
+      <td><code>${escapeHtml(member.pin || "0000")}</code></td>
+      <td>${escapeHtml(member.phone || "")}</td>
+      <td><span class="staffbase-badge ${member.active ? "green" : "gray"}">${member.active ? "Active" : "Inactive"}</span></td>
+    </tr>`)
     .join("");
-  ["#staffScheduleForm [name='staff_id']", "#staffPunchForm [name='staff_id']"].forEach((selector) => {
-    const node = qs(selector);
-    if (node && node.dataset.staffSignature !== staffSignature) {
-      node.innerHTML = `<option value="">Select staff</option>${staffOptions}`;
-      node.dataset.staffSignature = staffSignature;
-    }
-  });
-  const weekdaySelect = qs("#staffScheduleForm [name='weekday']");
-  if (weekdaySelect && !weekdaySelect.options.length) {
-    weekdaySelect.innerHTML = staffWeekdays().map((day) => `<option value="${day}">${day}</option>`).join("");
-  }
 }
 
-function editStaffMember(id) {
-  const member = staffMembers().find((item) => String(item.id) === String(id));
-  if (!member) return;
-  const form = qs("#staffMemberForm");
-  Object.entries(member).forEach(([key, value]) => {
-    if (form.elements[key]) form.elements[key].value = key === "active" ? (value ? "1" : "0") : value ?? "";
-  });
-  qs("#staffFormTitle").textContent = "Update Staff Member";
-}
-
-function clearStaffMemberForm() {
-  qs("#staffMemberForm").reset();
-  qs("#staffMemberForm [name='id']").value = "";
-  qs("#staffFormTitle").textContent = "Add Staff Member";
-}
-
-async function saveStaffMember(event) {
-  event.preventDefault();
-  const data = formData(event.currentTarget);
-  const id = data.id;
-  delete data.id;
-  await api(id ? `/api/staff/members/${id}` : "/api/staff/members", { method: id ? "PUT" : "POST", body: JSON.stringify(data) });
-  toast(id ? "Staff member updated" : "Staff member added");
-  clearStaffMemberForm();
-  await load();
-}
-
-async function deleteStaffMember(id) {
-  if (!confirm("Delete this staff member and related staff records?")) return;
-  await api(`/api/staff/members/${id}`, { method: "DELETE" });
-  toast("Staff member deleted");
-  await load();
-}
-
-async function saveStaffSchedule(event) {
-  event.preventDefault();
-  await api("/api/staff/schedules", { method: "POST", body: JSON.stringify(formData(event.currentTarget)) });
-  toast("Staff schedule saved");
-  event.currentTarget.reset();
-  await load();
-}
-
-async function saveStaffPunch(event) {
-  event.preventDefault();
-  await api("/api/staff/punches", { method: "POST", body: JSON.stringify(formData(event.currentTarget)) });
-  toast("Staff clock record saved");
-  event.currentTarget.reset();
-  await load();
+function staffbaseClockView() {
+  const punches = staffbasePunches();
+  const activePunches = punches.filter((punch) => !punch.clock_out);
+  return `
+    <div class="staffbase-grid two">
+      <section class="staffbase-card">
+        <div class="staffbase-phone">
+          <div class="staffbase-phone-head"><span>StaffBase Time Clock</span><strong>${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</strong></div>
+          <div class="staffbase-phone-body">
+            ${staffbaseMembers().filter((member) => member.active && member.role_title.includes("Teacher")).map((member) => {
+              const active = activePunches.some((punch) => String(punch.staff_id) === String(member.id));
+              return `<div class="staffbase-mobile-row ${active ? "selected" : ""}">${staffbaseAvatar(member, 30)}<span><strong>${escapeHtml(member.staff_name)}</strong><small>${escapeHtml(member.role_title)}</small></span><span class="staffbase-badge ${active ? "green" : "gold"}">${active ? "Clocked In" : "Away"}</span></div>`;
+            }).join("")}
+          </div>
+        </div>
+      </section>
+      <section class="staffbase-card">
+        <div class="staffbase-section-head"><h3>Check-in log</h3><span class="staffbase-badge green">GPS active</span></div>
+        ${punches.map((punch) => `<div class="staffbase-attendance ${!punch.clock_out ? "active" : ""}">
+          <div>${staffbaseAvatar({ staff_name: punch.staff_name }, 30)}<span><strong>${escapeHtml(punch.staff_name)}</strong><small>${escapeHtml(punch.clock_in || "")}${punch.clock_out ? ` - ${escapeHtml(punch.clock_out)}` : " - Active"}</small></span></div>
+          <span class="staffbase-badge ${!punch.clock_out ? "green" : "gray"}">${escapeHtml(punch.source || "Manual")}</span>
+        </div>`).join("")}
+      </section>
+    </div>`;
 }
 
 function escapeAttr(value) {
@@ -1861,10 +2010,6 @@ qs("#discountForm").addEventListener("submit", async (event) => {
 });
 
 qs("#userForm").addEventListener("submit", addUser);
-qs("#staffMemberForm")?.addEventListener("submit", saveStaffMember);
-qs("#clearStaffMemberForm")?.addEventListener("click", clearStaffMemberForm);
-qs("#staffScheduleForm")?.addEventListener("submit", saveStaffSchedule);
-qs("#staffPunchForm")?.addEventListener("submit", saveStaffPunch);
 qs('#settingsForm [name="institution_name"]').addEventListener("change", applyInstitutionDefaults);
 qs('#settingsForm [name="institution_name"]').addEventListener("blur", applyInstitutionDefaults);
 qs("#restoreBackup").addEventListener("click", restoreSelectedBackup);
