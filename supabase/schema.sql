@@ -89,6 +89,51 @@ create table if not exists public.student_status_changes (
   notes text
 );
 
+create table if not exists public.staff_members (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  staff_name text not null,
+  role_title text,
+  subject text,
+  phone text,
+  email text,
+  hourly_rate numeric(10, 2) not null default 0,
+  pin text,
+  active boolean not null default true,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.staff_schedules (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  staff_id uuid not null references public.staff_members(id) on delete cascade,
+  weekday text not null,
+  shift_type text not null default 'Work',
+  start_time text,
+  end_time text,
+  location text,
+  notes text,
+  published boolean not null default false,
+  updated_at timestamptz not null default now(),
+  unique (staff_id, weekday)
+);
+
+create table if not exists public.staff_shift_punches (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  staff_id uuid not null references public.staff_members(id) on delete cascade,
+  punch_date date not null default current_date,
+  clock_in text,
+  clock_out text,
+  duration_hours numeric(10, 2) not null default 0,
+  source text,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.rates (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid not null references public.organizations(id) on delete cascade,
@@ -150,6 +195,9 @@ create table if not exists public.discount_codes (
 create index if not exists students_org_status_idx on public.students(organization_id, status);
 create index if not exists payments_org_month_idx on public.payments(organization_id, month_label);
 create index if not exists status_changes_org_month_idx on public.student_status_changes(organization_id, changed_month);
+create index if not exists staff_members_org_active_idx on public.staff_members(organization_id, active);
+create index if not exists staff_schedules_org_staff_idx on public.staff_schedules(organization_id, staff_id);
+create index if not exists staff_punches_org_date_idx on public.staff_shift_punches(organization_id, punch_date);
 create index if not exists members_user_idx on public.organization_members(user_id);
 create index if not exists app_users_org_email_idx on public.app_users(organization_id, lower(email));
 
@@ -159,6 +207,9 @@ alter table public.app_users enable row level security;
 alter table public.students enable row level security;
 alter table public.payments enable row level security;
 alter table public.student_status_changes enable row level security;
+alter table public.staff_members enable row level security;
+alter table public.staff_schedules enable row level security;
+alter table public.staff_shift_punches enable row level security;
 alter table public.rates enable row level security;
 alter table public.payer_aliases enable row level security;
 alter table public.payment_imports enable row level security;
@@ -244,6 +295,33 @@ create policy "members can view status changes"
 
 create policy "managers can manage status changes"
   on public.student_status_changes for all
+  using (public.has_org_role(organization_id, array['owner', 'admin', 'manager']))
+  with check (public.has_org_role(organization_id, array['owner', 'admin', 'manager']));
+
+create policy "managers can view staff members"
+  on public.staff_members for select
+  using (public.has_org_role(organization_id, array['owner', 'admin', 'manager']));
+
+create policy "managers can manage staff members"
+  on public.staff_members for all
+  using (public.has_org_role(organization_id, array['owner', 'admin', 'manager']))
+  with check (public.has_org_role(organization_id, array['owner', 'admin', 'manager']));
+
+create policy "managers can view staff schedules"
+  on public.staff_schedules for select
+  using (public.has_org_role(organization_id, array['owner', 'admin', 'manager']));
+
+create policy "managers can manage staff schedules"
+  on public.staff_schedules for all
+  using (public.has_org_role(organization_id, array['owner', 'admin', 'manager']))
+  with check (public.has_org_role(organization_id, array['owner', 'admin', 'manager']));
+
+create policy "managers can view staff punches"
+  on public.staff_shift_punches for select
+  using (public.has_org_role(organization_id, array['owner', 'admin', 'manager']));
+
+create policy "managers can manage staff punches"
+  on public.staff_shift_punches for all
   using (public.has_org_role(organization_id, array['owner', 'admin', 'manager']))
   with check (public.has_org_role(organization_id, array['owner', 'admin', 'manager']));
 

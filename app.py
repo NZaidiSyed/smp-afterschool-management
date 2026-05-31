@@ -94,8 +94,8 @@ MONTHS = [
 BASE_MONTHS = MONTHS[:]
 ROLE_OPTIONS = ["Admin", "Office Manager", "Office Assistant"]
 ROLE_PERMISSIONS = {
-    "Admin": {"admin", "manage_students", "manage_payments", "manage_settings", "manage_users", "delete_records"},
-    "Office Manager": {"manage_students", "manage_payments"},
+    "Admin": {"admin", "manage_students", "manage_payments", "manage_settings", "manage_users", "manage_staff", "delete_records"},
+    "Office Manager": {"manage_students", "manage_payments", "manage_staff"},
     "Office Assistant": {"manage_payments"},
 }
 
@@ -909,6 +909,116 @@ def ensure_status_change_table(conn):
         )
 
 
+def ensure_staff_tables(conn):
+    if PG_MODE:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS public.staff_members (
+                id uuid primary key default gen_random_uuid(),
+                organization_id uuid not null references public.organizations(id) on delete cascade,
+                staff_name text not null,
+                role_title text,
+                subject text,
+                phone text,
+                email text,
+                hourly_rate numeric(10,2) not null default 0,
+                pin text,
+                active boolean not null default true,
+                notes text,
+                created_at timestamptz not null default now(),
+                updated_at timestamptz not null default now()
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS public.staff_schedules (
+                id uuid primary key default gen_random_uuid(),
+                organization_id uuid not null references public.organizations(id) on delete cascade,
+                staff_id uuid not null references public.staff_members(id) on delete cascade,
+                weekday text not null,
+                shift_type text not null default 'Work',
+                start_time text,
+                end_time text,
+                location text,
+                notes text,
+                published boolean not null default false,
+                updated_at timestamptz not null default now(),
+                unique (staff_id, weekday)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS public.staff_shift_punches (
+                id uuid primary key default gen_random_uuid(),
+                organization_id uuid not null references public.organizations(id) on delete cascade,
+                staff_id uuid not null references public.staff_members(id) on delete cascade,
+                punch_date date not null default current_date,
+                clock_in text,
+                clock_out text,
+                duration_hours numeric(10,2) not null default 0,
+                source text,
+                notes text,
+                created_at timestamptz not null default now(),
+                updated_at timestamptz not null default now()
+            )
+            """
+        )
+    else:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS staff_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                staff_name TEXT NOT NULL,
+                role_title TEXT,
+                subject TEXT,
+                phone TEXT,
+                email TEXT,
+                hourly_rate REAL NOT NULL DEFAULT 0,
+                pin TEXT,
+                active INTEGER NOT NULL DEFAULT 1,
+                notes TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS staff_schedules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                staff_id INTEGER NOT NULL REFERENCES staff_members(id) ON DELETE CASCADE,
+                weekday TEXT NOT NULL,
+                shift_type TEXT NOT NULL DEFAULT 'Work',
+                start_time TEXT,
+                end_time TEXT,
+                location TEXT,
+                notes TEXT,
+                published INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(staff_id, weekday)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS staff_shift_punches (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                staff_id INTEGER NOT NULL REFERENCES staff_members(id) ON DELETE CASCADE,
+                punch_date TEXT NOT NULL DEFAULT CURRENT_DATE,
+                clock_in TEXT,
+                clock_out TEXT,
+                duration_hours REAL NOT NULL DEFAULT 0,
+                source TEXT,
+                notes TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+
+
 def normalize_role(role):
     value = str(role or "").strip()
     aliases = {
@@ -1656,6 +1766,240 @@ def record_status_change(conn, student_id, old_status, new_status, notes=""):
         )
 
 
+WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri"]
+
+
+def normalize_staff_member(data):
+    name = str(data.get("staff_name") or data.get("name") or "").strip()
+    if not name:
+        raise ValueError("Staff name is required")
+    active = str(data.get("active", "1")).lower() in {"1", "true", "yes", "on"}
+    return {
+        "staff_name": name,
+        "role_title": str(data.get("role_title") or data.get("role") or "Staff").strip(),
+        "subject": str(data.get("subject") or "").strip(),
+        "phone": str(data.get("phone") or "").strip(),
+        "email": str(data.get("email") or "").strip(),
+        "hourly_rate": money(data.get("hourly_rate")),
+        "pin": str(data.get("pin") or "").strip(),
+        "active": active,
+        "notes": str(data.get("notes") or "").strip(),
+    }
+
+
+def display_staff_member(row):
+    item = rowdict(row)
+    item["id"] = str(item["id"])
+    item["hourly_rate"] = float(item.get("hourly_rate") or 0)
+    item["active"] = bool(item.get("active"))
+    return item
+
+
+def get_staff_members(conn):
+    ensure_staff_tables(conn)
+    if PG_MODE:
+        rows = conn.execute(
+            """
+            SELECT id::text AS id, staff_name, role_title, subject, phone, email, hourly_rate,
+                   pin, active, notes, created_at, updated_at
+            FROM public.staff_members
+            WHERE organization_id=%s
+            ORDER BY active DESC, staff_name
+            """,
+            (current_org_id(conn),),
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM staff_members ORDER BY active DESC, staff_name").fetchall()
+    return [display_staff_member(row) for row in rows]
+
+
+def get_staff_schedules(conn):
+    ensure_staff_tables(conn)
+    if PG_MODE:
+        rows = conn.execute(
+            """
+            SELECT id::text AS id, staff_id::text AS staff_id, weekday, shift_type, start_time,
+                   end_time, location, notes, published, updated_at
+            FROM public.staff_schedules
+            WHERE organization_id=%s
+            ORDER BY staff_id, weekday
+            """,
+            (current_org_id(conn),),
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM staff_schedules ORDER BY staff_id, weekday").fetchall()
+    return [rowdict(row) for row in rows]
+
+
+def get_staff_punches(conn):
+    ensure_staff_tables(conn)
+    if PG_MODE:
+        rows = conn.execute(
+            """
+            SELECT p.id::text AS id, p.staff_id::text AS staff_id, p.punch_date, p.clock_in,
+                   p.clock_out, p.duration_hours, p.source, p.notes, p.created_at,
+                   s.staff_name, s.role_title
+            FROM public.staff_shift_punches p
+            JOIN public.staff_members s ON s.id=p.staff_id AND s.organization_id=p.organization_id
+            WHERE p.organization_id=%s
+            ORDER BY p.punch_date DESC, p.created_at DESC
+            LIMIT 200
+            """,
+            (current_org_id(conn),),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT p.*, s.staff_name, s.role_title
+            FROM staff_shift_punches p
+            JOIN staff_members s ON s.id=p.staff_id
+            ORDER BY p.punch_date DESC, p.created_at DESC
+            LIMIT 200
+            """
+        ).fetchall()
+    return [rowdict(row) for row in rows]
+
+
+def staff_bundle(conn):
+    members = get_staff_members(conn)
+    schedules = get_staff_schedules(conn)
+    punches = get_staff_punches(conn)
+    active_members = [member for member in members if member.get("active")]
+    current_punches = [punch for punch in punches if not punch.get("clock_out")]
+    week_hours = sum(float(punch.get("duration_hours") or 0) for punch in punches)
+    labor_cost = sum(float(punch.get("duration_hours") or 0) * next((m["hourly_rate"] for m in members if str(m["id"]) == str(punch.get("staff_id"))), 0) for punch in punches)
+    return {
+        "members": members,
+        "schedules": schedules,
+        "punches": punches,
+        "weekdays": WEEKDAYS,
+        "summary": {
+            "active_staff": len(active_members),
+            "inactive_staff": len(members) - len(active_members),
+            "clocked_in": len(current_punches),
+            "scheduled_shifts": len([row for row in schedules if str(row.get("shift_type", "")).lower() != "off"]),
+            "labor_hours": round(week_hours, 2),
+            "labor_cost": round(labor_cost, 2),
+        },
+    }
+
+
+def save_staff_member(conn, data, staff_id=None):
+    staff = normalize_staff_member(data)
+    ensure_staff_tables(conn)
+    if PG_MODE:
+        if staff_id:
+            conn.execute(
+                """
+                UPDATE public.staff_members
+                SET staff_name=%s, role_title=%s, subject=%s, phone=%s, email=%s,
+                    hourly_rate=%s, pin=%s, active=%s, notes=%s, updated_at=now()
+                WHERE id=%s AND organization_id=%s
+                """,
+                (staff["staff_name"], staff["role_title"], staff["subject"], staff["phone"], staff["email"], staff["hourly_rate"], staff["pin"], staff["active"], staff["notes"], staff_id, current_org_id(conn)),
+            )
+            return staff_id
+        row = conn.execute(
+            """
+            INSERT INTO public.staff_members(organization_id, staff_name, role_title, subject, phone, email, hourly_rate, pin, active, notes)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id::text AS id
+            """,
+            (current_org_id(conn), staff["staff_name"], staff["role_title"], staff["subject"], staff["phone"], staff["email"], staff["hourly_rate"], staff["pin"], staff["active"], staff["notes"]),
+        ).fetchone()
+        return row["id"]
+    if staff_id:
+        conn.execute(
+            """
+            UPDATE staff_members
+            SET staff_name=?, role_title=?, subject=?, phone=?, email=?, hourly_rate=?,
+                pin=?, active=?, notes=?, updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+            """,
+            (staff["staff_name"], staff["role_title"], staff["subject"], staff["phone"], staff["email"], staff["hourly_rate"], staff["pin"], 1 if staff["active"] else 0, staff["notes"], int(staff_id)),
+        )
+        return staff_id
+    cur = conn.execute(
+        """
+        INSERT INTO staff_members(staff_name, role_title, subject, phone, email, hourly_rate, pin, active, notes)
+        VALUES (?,?,?,?,?,?,?,?,?)
+        """,
+        (staff["staff_name"], staff["role_title"], staff["subject"], staff["phone"], staff["email"], staff["hourly_rate"], staff["pin"], 1 if staff["active"] else 0, staff["notes"]),
+    )
+    return cur.lastrowid
+
+
+def save_staff_schedule(conn, data):
+    ensure_staff_tables(conn)
+    staff_id = str(data.get("staff_id") or "").strip()
+    weekday = str(data.get("weekday") or "").strip()
+    if weekday not in WEEKDAYS:
+        raise ValueError("Select a valid weekday")
+    if not staff_id:
+        raise ValueError("Select a staff member")
+    shift_type = str(data.get("shift_type") or "Work").strip()
+    start_time = str(data.get("start_time") or "").strip()
+    end_time = str(data.get("end_time") or "").strip()
+    location = str(data.get("location") or "Centre").strip()
+    notes = str(data.get("notes") or "").strip()
+    published = str(data.get("published", "0")).lower() in {"1", "true", "yes", "on"}
+    if PG_MODE:
+        conn.execute(
+            """
+            INSERT INTO public.staff_schedules(organization_id, staff_id, weekday, shift_type, start_time, end_time, location, notes, published)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            ON CONFLICT(staff_id, weekday)
+            DO UPDATE SET shift_type=excluded.shift_type, start_time=excluded.start_time,
+                          end_time=excluded.end_time, location=excluded.location, notes=excluded.notes,
+                          published=excluded.published, updated_at=now()
+            """,
+            (current_org_id(conn), staff_id, weekday, shift_type, start_time, end_time, location, notes, published),
+        )
+    else:
+        conn.execute(
+            """
+            INSERT INTO staff_schedules(staff_id, weekday, shift_type, start_time, end_time, location, notes, published)
+            VALUES (?,?,?,?,?,?,?,?)
+            ON CONFLICT(staff_id, weekday)
+            DO UPDATE SET shift_type=excluded.shift_type, start_time=excluded.start_time,
+                          end_time=excluded.end_time, location=excluded.location, notes=excluded.notes,
+                          published=excluded.published, updated_at=CURRENT_TIMESTAMP
+            """,
+            (int(staff_id), weekday, shift_type, start_time, end_time, location, notes, 1 if published else 0),
+        )
+
+
+def save_staff_punch(conn, data):
+    ensure_staff_tables(conn)
+    staff_id = str(data.get("staff_id") or "").strip()
+    if not staff_id:
+        raise ValueError("Select a staff member")
+    punch_date = normalize_date(data.get("punch_date") or date.today().isoformat())[:10]
+    clock_in = str(data.get("clock_in") or "").strip()
+    clock_out = str(data.get("clock_out") or "").strip()
+    duration_hours = money(data.get("duration_hours"))
+    source = str(data.get("source") or "manual").strip()
+    notes = str(data.get("notes") or "").strip()
+    if PG_MODE:
+        row = conn.execute(
+            """
+            INSERT INTO public.staff_shift_punches(organization_id, staff_id, punch_date, clock_in, clock_out, duration_hours, source, notes)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            RETURNING id::text AS id
+            """,
+            (current_org_id(conn), staff_id, punch_date, clock_in, clock_out, duration_hours, source, notes),
+        ).fetchone()
+        return row["id"]
+    cur = conn.execute(
+        """
+        INSERT INTO staff_shift_punches(staff_id, punch_date, clock_in, clock_out, duration_hours, source, notes)
+        VALUES (?,?,?,?,?,?,?)
+        """,
+        (int(staff_id), punch_date, clock_in, clock_out, duration_hours, source, notes),
+    )
+    return cur.lastrowid
+
+
 def fee_tracker(conn):
     payments = get_payments(conn)
     rows = []
@@ -1822,6 +2166,7 @@ def ensure_pg_defaults():
         org_id = current_org_id(conn)
         ensure_access_tables(conn)
         ensure_status_change_table(conn)
+        ensure_staff_tables(conn)
         for subject in ["Math", "English"]:
             conn.execute(
                 """
@@ -1910,10 +2255,11 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "error": "Login session could not be verified"}, 401)
             return False
 
-    def require_permission(self, permission):
+    def require_permission(self, permission, send_error=True):
         role = normalize_role((self.auth_access or {}).get("role"))
         if permission not in ROLE_PERMISSIONS.get(role, set()):
-            self.send_json({"ok": False, "error": f"{role or 'This user'} does not have permission for this action"}, 403)
+            if send_error:
+                self.send_json({"ok": False, "error": f"{role or 'This user'} does not have permission for this action"}, 403)
             return False
         return True
 
@@ -1960,8 +2306,8 @@ class Handler(SimpleHTTPRequestHandler):
                     discount_codes = [rowdict(row) for row in conn.execute("SELECT * FROM discount_codes ORDER BY active DESC, code")]
                     payer_aliases = [rowdict(row) for row in conn.execute("SELECT * FROM payer_aliases ORDER BY alias")]
                     backups = list_backups()
-                self.send_json(
-                    {
+                can_access_staff = self.require_permission("manage_staff", send_error=False)
+                payload = {
                         "students": get_students(conn),
                         "fee_tracker": fee_tracker(conn),
                         "dashboard": dashboard(conn, settings.get("current_month", "May-26")),
@@ -1976,10 +2322,19 @@ class Handler(SimpleHTTPRequestHandler):
                         "reconciliation": reconciliation_summary(conn),
                         "payer_aliases": payer_aliases,
                         "status_changes": get_status_changes(conn),
+                        "can_access_staff": can_access_staff,
                         "current_user": self.auth_access or {},
                         "role_options": ROLE_OPTIONS,
-                    }
-                )
+                }
+                if can_access_staff:
+                    payload["staff"] = staff_bundle(conn)
+                self.send_json(payload)
+            return
+        if parsed.path == "/api/staff/bootstrap":
+            if not self.require_permission("manage_staff"):
+                return
+            with db() as conn:
+                self.send_json({"ok": True, "staff": staff_bundle(conn)})
             return
         if parsed.path == "/api/export":
             with db() as conn:
@@ -2008,6 +2363,33 @@ class Handler(SimpleHTTPRequestHandler):
                 student = normalize_student(self.read_json())
                 with db() as conn:
                     new_id = insert_student_record(conn, student, next_student_number(conn))
+                    conn.commit()
+                    self.send_json({"ok": True, "id": new_id})
+                return
+            if parsed.path == "/api/staff/members":
+                if not self.require_permission("manage_staff"):
+                    return
+                payload = self.read_json()
+                with db() as conn:
+                    new_id = save_staff_member(conn, payload)
+                    conn.commit()
+                    self.send_json({"ok": True, "id": new_id})
+                return
+            if parsed.path == "/api/staff/schedules":
+                if not self.require_permission("manage_staff"):
+                    return
+                payload = self.read_json()
+                with db() as conn:
+                    save_staff_schedule(conn, payload)
+                    conn.commit()
+                    self.send_json({"ok": True})
+                return
+            if parsed.path == "/api/staff/punches":
+                if not self.require_permission("manage_staff"):
+                    return
+                payload = self.read_json()
+                with db() as conn:
+                    new_id = save_staff_punch(conn, payload)
                     conn.commit()
                     self.send_json({"ok": True, "id": new_id})
                 return
@@ -2314,8 +2696,18 @@ class Handler(SimpleHTTPRequestHandler):
         rate_match = re.match(rf"^/api/rates/{id_pattern}$", parsed.path)
         discount_match = re.match(rf"^/api/discounts/{id_pattern}$", parsed.path)
         user_match = re.match(rf"^/api/users/{id_pattern}$", parsed.path)
+        staff_member_match = re.match(rf"^/api/staff/members/{id_pattern}$", parsed.path)
         payment_match = re.match(rf"^/api/payments/{id_pattern}/([^/]+)$", parsed.path)
         try:
+            if staff_member_match:
+                if not self.require_permission("manage_staff"):
+                    return
+                payload = self.read_json()
+                with db() as conn:
+                    save_staff_member(conn, payload, staff_member_match.group(1))
+                    conn.commit()
+                    self.send_json({"ok": True})
+                return
             if payment_match:
                 if not self.require_permission("manage_payments"):
                     return
@@ -2512,6 +2904,7 @@ class Handler(SimpleHTTPRequestHandler):
         rate_match = re.match(rf"^/api/rates/{id_pattern}$", parsed.path)
         discount_match = re.match(rf"^/api/discounts/{id_pattern}$", parsed.path)
         user_match = re.match(rf"^/api/users/{id_pattern}$", parsed.path)
+        staff_member_match = re.match(rf"^/api/staff/members/{id_pattern}$", parsed.path)
         if rate_match:
             if not self.require_permission("manage_settings"):
                 return
@@ -2549,6 +2942,17 @@ class Handler(SimpleHTTPRequestHandler):
                     conn.execute("DELETE FROM public.app_users WHERE id=%s AND organization_id=%s", (user_match.group(1), current_org_id(conn)))
                 else:
                     conn.execute("DELETE FROM users WHERE id=?", (int(user_match.group(1)),))
+                conn.commit()
+            self.send_json({"ok": True})
+            return
+        if staff_member_match:
+            if not self.require_permission("manage_staff"):
+                return
+            with db() as conn:
+                if PG_MODE:
+                    conn.execute("DELETE FROM public.staff_members WHERE id=%s AND organization_id=%s", (staff_member_match.group(1), current_org_id(conn)))
+                else:
+                    conn.execute("DELETE FROM staff_members WHERE id=?", (int(staff_member_match.group(1)),))
                 conn.commit()
             self.send_json({"ok": True})
             return

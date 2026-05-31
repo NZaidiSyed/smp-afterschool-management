@@ -59,7 +59,18 @@
     </form>
   </section>
 
-  <nav class="tabs" aria-label="Workbook tabs">
+  <div class="admin-area-switch" aria-label="Administration areas">
+    <button id="studentAdminArea" type="button" class="area-button active">
+      <span>Student Administration</span>
+      <strong>Students, fees, reporting, reconciliation</strong>
+    </button>
+    <button id="staffAdminArea" type="button" class="area-button">
+      <span>Staff Administration</span>
+      <strong>Staff roster, schedule, time clock</strong>
+    </button>
+  </div>
+
+  <nav id="studentTabs" class="tabs" aria-label="Student administration tabs">
     <button class="tab active" data-tab="dashboard">Dashboard</button>
     <button class="tab" data-tab="fee">Fee Tracker</button>
     <button class="tab" data-tab="roster">Student Roster</button>
@@ -152,6 +163,132 @@
           <table id="feeImportTable"></table>
         </div>
       </section>
+    </section>
+
+    <section id="staffAdministration" class="panel collapsed">
+      <div class="section-title page-title">
+        <div>
+          <h2>Staff Administration</h2>
+          <span>Staff roster, weekly schedule, time clock, and labor overview</span>
+        </div>
+      </div>
+      <section id="staffLockedState" class="surface collapsed">
+        <div class="empty-state">Staff Administration is limited to Admin and Office Manager.</div>
+      </section>
+      <div id="staffWorkspace">
+        <div class="staff-nav">
+          <button type="button" data-staff-view="staff-dashboard" class="active">Dashboard</button>
+          <button type="button" data-staff-view="staff-roster">Staff Roster</button>
+          <button type="button" data-staff-view="staff-schedule">Weekly Schedule</button>
+          <button type="button" data-staff-view="staff-clock">Time Clock</button>
+        </div>
+
+        <section id="staff-dashboard" class="staff-view active">
+          <div class="metrics" id="staffMetrics"></div>
+          <section class="surface">
+            <div class="section-title">
+              <h2>Live Attendance</h2>
+              <span>Current clock-in status</span>
+            </div>
+            <div id="staffLiveAttendance" class="unpaid-list"></div>
+          </section>
+        </section>
+
+        <section id="staff-roster" class="staff-view">
+          <div class="dashboard-grid">
+            <section class="surface">
+              <div class="section-title">
+                <h2>Staff Roster</h2>
+                <span>Admin and Office Manager managed</span>
+              </div>
+              <div class="table-wrap wide">
+                <table id="staffRosterTable"></table>
+              </div>
+            </section>
+            <form id="staffMemberForm" class="surface settings-form">
+              <div class="section-title full">
+                <h2 id="staffFormTitle">Add Staff Member</h2>
+                <span>Stored in the SMP database</span>
+              </div>
+              <input type="hidden" name="id">
+              <label>Staff Name<input name="staff_name" required></label>
+              <label>Role / Position<input name="role_title" placeholder="Teacher, Assistant, Office"></label>
+              <label>Subject / Department<input name="subject" placeholder="Math, English, Office"></label>
+              <label>Phone<input name="phone"></label>
+              <label>Email<input name="email" type="email"></label>
+              <label>Hourly Rate<input name="hourly_rate" type="number" step="0.01"></label>
+              <label>Clock PIN<input name="pin" inputmode="numeric"></label>
+              <label>Status<select name="active"><option value="1">Active</option><option value="0">Inactive</option></select></label>
+              <label class="full">Notes<textarea name="notes"></textarea></label>
+              <div class="actions full">
+                <button type="submit">Save Staff</button>
+                <button type="button" class="ghost" id="clearStaffMemberForm">Clear</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section id="staff-schedule" class="staff-view">
+          <div class="dashboard-grid">
+            <section class="surface">
+              <div class="section-title">
+                <h2>Weekly Schedule</h2>
+                <span>Core schedule view</span>
+              </div>
+              <div class="table-wrap wide">
+                <table id="staffScheduleTable"></table>
+              </div>
+            </section>
+            <form id="staffScheduleForm" class="surface settings-form">
+              <div class="section-title full">
+                <h2>Edit Shift</h2>
+                <span>One staff member and day at a time</span>
+              </div>
+              <label>Staff<select name="staff_id" required></select></label>
+              <label>Weekday<select name="weekday" required></select></label>
+              <label>Shift Type<select name="shift_type"><option>Work</option><option>Training</option><option>Office</option><option>Off</option></select></label>
+              <label>Start Time<input name="start_time" type="time"></label>
+              <label>End Time<input name="end_time" type="time"></label>
+              <label>Location<input name="location" value="Centre"></label>
+              <label>Status<select name="published"><option value="0">Draft</option><option value="1">Published</option></select></label>
+              <label class="full">Notes<textarea name="notes"></textarea></label>
+              <div class="actions full">
+                <button type="submit">Save Shift</button>
+              </div>
+            </form>
+          </div>
+        </section>
+
+        <section id="staff-clock" class="staff-view">
+          <div class="dashboard-grid">
+            <section class="surface">
+              <div class="section-title">
+                <h2>Time Clock Records</h2>
+                <span>Manual/admin-entered records</span>
+              </div>
+              <div class="table-wrap wide">
+                <table id="staffClockTable"></table>
+              </div>
+            </section>
+            <form id="staffPunchForm" class="surface settings-form">
+              <div class="section-title full">
+                <h2>Add Clock Record</h2>
+                <span>For correction or manual time entry</span>
+              </div>
+              <label>Staff<select name="staff_id" required></select></label>
+              <label>Date<input name="punch_date" type="date" required></label>
+              <label>Clock In<input name="clock_in" type="time"></label>
+              <label>Clock Out<input name="clock_out" type="time"></label>
+              <label>Hours<input name="duration_hours" type="number" step="0.01"></label>
+              <label>Source<input name="source" value="manual"></label>
+              <label class="full">Notes<textarea name="notes"></textarea></label>
+              <div class="actions full">
+                <button type="submit">Save Clock Record</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </div>
     </section>
 
     <section id="reporting" class="panel">

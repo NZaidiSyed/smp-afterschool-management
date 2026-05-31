@@ -13,6 +13,8 @@ let state = {
   reconciliation: [],
   payer_aliases: [],
   status_changes: [],
+  can_access_staff: false,
+  staff: { members: [], schedules: [], punches: [], weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri"], summary: {} },
   current_user: {},
   role_options: ["Admin", "Office Manager", "Office Assistant"],
   reconciliationPreview: [],
@@ -30,6 +32,8 @@ let authSession = null;
 let supabasePersistenceMode = null;
 let feeMonthOffset = 0;
 let reportSelectedMonths = [];
+let activeAdminArea = "student";
+let activeStaffView = "staff-dashboard";
 const FEE_PAST_MONTHS = 1;
 const FEE_FUTURE_MONTHS = 2;
 const FEE_MONTH_WINDOW = FEE_PAST_MONTHS + 1 + FEE_FUTURE_MONTHS;
@@ -189,6 +193,7 @@ function renderAll() {
   renderBrand();
   renderAuthState();
   qs("#recordCount").textContent = state.students.length;
+  renderAdminAreas();
   renderSubjectChoices();
   renderDashboard();
   renderFeeTracker();
@@ -197,6 +202,38 @@ function renderAll() {
   renderSettings();
   renderBatch();
   renderReconciliation();
+  renderStaffAdministration();
+}
+
+function renderAdminAreas() {
+  const staffButton = qs("#staffAdminArea");
+  if (staffButton) {
+    staffButton.disabled = !state.can_access_staff;
+    staffButton.title = state.can_access_staff ? "Open Staff Administration" : "Staff Administration is limited to Admin and Office Manager";
+  }
+  if (!state.can_access_staff && activeAdminArea === "staff") activeAdminArea = "student";
+  document.body.dataset.adminArea = activeAdminArea;
+  qs("#studentTabs")?.classList.toggle("collapsed", activeAdminArea !== "student");
+  qs("#staffAdministration")?.classList.toggle("active", activeAdminArea === "staff");
+  qs("#staffAdministration")?.classList.toggle("collapsed", activeAdminArea !== "staff");
+  document.querySelectorAll("main > section.panel:not(#staffAdministration)").forEach((panel) => {
+    panel.classList.toggle("area-hidden", activeAdminArea !== "student");
+  });
+  qs("#studentAdminArea")?.classList.toggle("active", activeAdminArea === "student");
+  qs("#staffAdminArea")?.classList.toggle("active", activeAdminArea === "staff");
+}
+
+function switchAdminArea(area) {
+  if (area === "staff" && !state.can_access_staff) {
+    toast("Staff Administration is limited to Admin and Office Manager");
+    return;
+  }
+  activeAdminArea = area;
+  if (area === "student" && !document.querySelector("main > section.panel.active:not(#staffAdministration)")) {
+    qs("#dashboard")?.classList.add("active");
+    document.querySelector('[data-tab="dashboard"]')?.classList.add("active");
+  }
+  renderAdminAreas();
 }
 
 function renderBrand() {
@@ -808,6 +845,180 @@ function applyInstitutionDefaults() {
     form.elements.subjects_offered.value = "Math\nEnglish";
     toast("Kumon default subjects selected");
   }
+}
+
+function staffMembers() {
+  return state.staff?.members || [];
+}
+
+function staffSchedules() {
+  return state.staff?.schedules || [];
+}
+
+function staffPunches() {
+  return state.staff?.punches || [];
+}
+
+function staffWeekdays() {
+  return state.staff?.weekdays?.length ? state.staff.weekdays : ["Mon", "Tue", "Wed", "Thu", "Fri"];
+}
+
+function renderStaffAdministration() {
+  if (!qs("#staffAdministration")) return;
+  qs("#staffLockedState")?.classList.toggle("collapsed", Boolean(state.can_access_staff));
+  qs("#staffWorkspace")?.classList.toggle("collapsed", !state.can_access_staff);
+  if (!state.can_access_staff) return;
+  document.querySelectorAll("[data-staff-view]").forEach((button) => button.classList.toggle("active", button.dataset.staffView === activeStaffView));
+  document.querySelectorAll(".staff-view").forEach((view) => view.classList.toggle("active", view.id === activeStaffView));
+  renderStaffDashboard();
+  renderStaffRoster();
+  renderStaffSchedule();
+  renderStaffClock();
+  hydrateStaffForms();
+}
+
+function renderStaffDashboard() {
+  const summary = state.staff?.summary || {};
+  qs("#staffMetrics").innerHTML = [
+    metric("Active Staff", summary.active_staff || 0, "accent"),
+    metric("Clocked In Now", summary.clocked_in || 0, summary.clocked_in ? "success" : ""),
+    metric("Scheduled Shifts", summary.scheduled_shifts || 0),
+    metric("Labor Hours Logged", number(summary.labor_hours || 0)),
+    metric("Estimated Labor Cost", money(summary.labor_cost || 0), "success"),
+    metric("Inactive Staff", summary.inactive_staff || 0, summary.inactive_staff ? "warning" : ""),
+  ].join("");
+  const activePunches = staffPunches().filter((punch) => !punch.clock_out);
+  qs("#staffLiveAttendance").innerHTML = activePunches.length
+    ? activePunches.map((punch) => `<div class="unpaid-item"><strong>${escapeHtml(punch.staff_name)}</strong><span>${escapeHtml(punch.role_title || "Staff")} - clocked in ${escapeHtml(punch.clock_in || "")}</span></div>`).join("")
+    : `<div class="empty-state">No staff currently clocked in.</div>`;
+}
+
+function renderStaffRoster() {
+  renderTable(
+    qs("#staffRosterTable"),
+    ["Staff Name", "Role", "Subject", "Phone", "Email", "Rate", "PIN", "Status", "Actions"],
+    staffMembers().map((member) => [
+      escapeHtml(member.staff_name),
+      escapeHtml(member.role_title || ""),
+      escapeHtml(member.subject || ""),
+      escapeHtml(member.phone || ""),
+      escapeHtml(member.email || ""),
+      money(member.hourly_rate || 0),
+      escapeHtml(member.pin || ""),
+      `<span class="status-badge ${member.active ? "current" : "inactive"}">${member.active ? "Active" : "Inactive"}</span>`,
+      `<div class="row-actions"><button class="small" data-edit-staff="${member.id}">Edit</button><button class="small danger" data-delete-staff="${member.id}">Delete</button></div>`,
+    ])
+  );
+  document.querySelectorAll("[data-edit-staff]").forEach((button) => button.addEventListener("click", () => editStaffMember(button.dataset.editStaff)));
+  document.querySelectorAll("[data-delete-staff]").forEach((button) => button.addEventListener("click", () => deleteStaffMember(button.dataset.deleteStaff)));
+}
+
+function renderStaffSchedule() {
+  const members = staffMembers().filter((member) => member.active);
+  const scheduleByStaff = {};
+  for (const row of staffSchedules()) {
+    scheduleByStaff[row.staff_id] = scheduleByStaff[row.staff_id] || {};
+    scheduleByStaff[row.staff_id][row.weekday] = row;
+  }
+  renderTable(
+    qs("#staffScheduleTable"),
+    ["Staff", ...staffWeekdays()],
+    members.map((member) => [
+      `<strong>${escapeHtml(member.staff_name)}</strong><br><span class="muted-note">${escapeHtml(member.role_title || "")}</span>`,
+      ...staffWeekdays().map((day) => {
+        const shift = scheduleByStaff[member.id]?.[day];
+        if (!shift || String(shift.shift_type || "").toLowerCase() === "off") return `<span class="muted-note">Off</span>`;
+        return `<strong>${escapeHtml(shift.start_time || "")} - ${escapeHtml(shift.end_time || "")}</strong><br><span class="muted-note">${escapeHtml(shift.location || "Centre")}</span>`;
+      }),
+    ])
+  );
+}
+
+function renderStaffClock() {
+  renderTable(
+    qs("#staffClockTable"),
+    ["Date", "Staff", "Clock In", "Clock Out", "Hours", "Source", "Notes"],
+    staffPunches().map((punch) => [
+      String(punch.punch_date || "").slice(0, 10),
+      escapeHtml(punch.staff_name || ""),
+      escapeHtml(punch.clock_in || ""),
+      escapeHtml(punch.clock_out || "Active"),
+      number(punch.duration_hours || 0),
+      escapeHtml(punch.source || ""),
+      escapeHtml(punch.notes || ""),
+    ])
+  );
+}
+
+function hydrateStaffForms() {
+  const staffSignature = staffMembers()
+    .map((member) => `${member.id}:${member.staff_name}:${member.active}`)
+    .join("|");
+  const staffOptions = staffMembers()
+    .filter((member) => member.active)
+    .map((member) => `<option value="${escapeAttr(member.id)}">${escapeHtml(member.staff_name)}</option>`)
+    .join("");
+  ["#staffScheduleForm [name='staff_id']", "#staffPunchForm [name='staff_id']"].forEach((selector) => {
+    const node = qs(selector);
+    if (node && node.dataset.staffSignature !== staffSignature) {
+      node.innerHTML = `<option value="">Select staff</option>${staffOptions}`;
+      node.dataset.staffSignature = staffSignature;
+    }
+  });
+  const weekdaySelect = qs("#staffScheduleForm [name='weekday']");
+  if (weekdaySelect && !weekdaySelect.options.length) {
+    weekdaySelect.innerHTML = staffWeekdays().map((day) => `<option value="${day}">${day}</option>`).join("");
+  }
+}
+
+function editStaffMember(id) {
+  const member = staffMembers().find((item) => String(item.id) === String(id));
+  if (!member) return;
+  const form = qs("#staffMemberForm");
+  Object.entries(member).forEach(([key, value]) => {
+    if (form.elements[key]) form.elements[key].value = key === "active" ? (value ? "1" : "0") : value ?? "";
+  });
+  qs("#staffFormTitle").textContent = "Update Staff Member";
+}
+
+function clearStaffMemberForm() {
+  qs("#staffMemberForm").reset();
+  qs("#staffMemberForm [name='id']").value = "";
+  qs("#staffFormTitle").textContent = "Add Staff Member";
+}
+
+async function saveStaffMember(event) {
+  event.preventDefault();
+  const data = formData(event.currentTarget);
+  const id = data.id;
+  delete data.id;
+  await api(id ? `/api/staff/members/${id}` : "/api/staff/members", { method: id ? "PUT" : "POST", body: JSON.stringify(data) });
+  toast(id ? "Staff member updated" : "Staff member added");
+  clearStaffMemberForm();
+  await load();
+}
+
+async function deleteStaffMember(id) {
+  if (!confirm("Delete this staff member and related staff records?")) return;
+  await api(`/api/staff/members/${id}`, { method: "DELETE" });
+  toast("Staff member deleted");
+  await load();
+}
+
+async function saveStaffSchedule(event) {
+  event.preventDefault();
+  await api("/api/staff/schedules", { method: "POST", body: JSON.stringify(formData(event.currentTarget)) });
+  toast("Staff schedule saved");
+  event.currentTarget.reset();
+  await load();
+}
+
+async function saveStaffPunch(event) {
+  event.preventDefault();
+  await api("/api/staff/punches", { method: "POST", body: JSON.stringify(formData(event.currentTarget)) });
+  toast("Staff clock record saved");
+  event.currentTarget.reset();
+  await load();
 }
 
 function escapeAttr(value) {
@@ -1546,9 +1757,20 @@ async function handleBatchCsv(event) {
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
+    activeAdminArea = "student";
     document.querySelectorAll(".tab, .panel").forEach((node) => node.classList.remove("active"));
     tab.classList.add("active");
     qs(`#${tab.dataset.tab}`).classList.add("active");
+    renderAdminAreas();
+  });
+});
+
+qs("#studentAdminArea")?.addEventListener("click", () => switchAdminArea("student"));
+qs("#staffAdminArea")?.addEventListener("click", () => switchAdminArea("staff"));
+document.querySelectorAll("[data-staff-view]").forEach((button) => {
+  button.addEventListener("click", () => {
+    activeStaffView = button.dataset.staffView;
+    renderStaffAdministration();
   });
 });
 
@@ -1639,6 +1861,10 @@ qs("#discountForm").addEventListener("submit", async (event) => {
 });
 
 qs("#userForm").addEventListener("submit", addUser);
+qs("#staffMemberForm")?.addEventListener("submit", saveStaffMember);
+qs("#clearStaffMemberForm")?.addEventListener("click", clearStaffMemberForm);
+qs("#staffScheduleForm")?.addEventListener("submit", saveStaffSchedule);
+qs("#staffPunchForm")?.addEventListener("submit", saveStaffPunch);
 qs('#settingsForm [name="institution_name"]').addEventListener("change", applyInstitutionDefaults);
 qs('#settingsForm [name="institution_name"]').addEventListener("blur", applyInstitutionDefaults);
 qs("#restoreBackup").addEventListener("click", restoreSelectedBackup);
