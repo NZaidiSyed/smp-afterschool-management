@@ -1,0 +1,2661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>StaffBase — Greenfield Academy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.10.0/dist/tabler-icons.min.css">
+<style>
+/* ═══ DESIGN TOKENS ═════════════════════════════════════════════════════════ */
+:root {
+  --navy:   #0c1e35; --navy-1: #122540; --navy-2: #1a3454; --navy-3: #24466e;
+  --gold:   #e08820; --gold-1: #f5a535; --gold-pale: #fef5e7; --gold-lt: #fde8bc;
+  --green:  #0a8c6a; --green-lt: #dcf5ee; --green-dk: #065c46;
+  --red:    #c42b1c; --red-lt: #fde8e6;
+  --blue:   #1a65d4; --blue-lt: #e6effe;
+  --amber:  #c97d10; --amber-lt: #fef3dc;
+  --purple: #5b3fc4; --purple-lt: #eeeafe;
+  --teal:   #0a7c9e; --teal-lt: #e0f4fa;
+  --bg:     #f3f5f8; --sfc: #ffffff; --sfc-2: #f8fafb;
+  --bdr:    #e3e8ef; --bdr-2: #c8d3e0;
+  --tx:     #0c1e35; --tx-2: #4a5e78; --tx-3: #8fa5bc; --tx-4: #c2d0de;
+  --font:   'Plus Jakarta Sans', sans-serif;
+  --serif:  'Playfair Display', serif;
+  --sh-sm:  0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+  --sh:     0 4px 12px rgba(0,0,0,.08), 0 2px 4px rgba(0,0,0,.04);
+  --sh-lg:  0 16px 48px rgba(0,0,0,.14), 0 4px 12px rgba(0,0,0,.06);
+  --r4:4px; --r8:8px; --r10:10px; --r12:12px; --r16:16px; --r20:20px; --r24:24px;
+}
+/* ═══ RESET ══════════════════════════════════════════════════════════════════ */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:var(--font);background:var(--bg);color:var(--tx);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+button{font-family:var(--font);cursor:pointer;border:none;outline:none}
+input,select,textarea{font-family:var(--font);font-size:13px;outline:none}
+a{text-decoration:none;color:inherit}
+img{display:block;max-width:100%}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--bdr-2);border-radius:3px}
+/* ═══ LAYOUT ═════════════════════════════════════════════════════════════════ */
+.app-shell{display:flex;height:100vh;overflow:hidden;position:relative}
+.sidebar{width:232px;min-width:232px;background:var(--navy);display:flex;flex-direction:column;overflow:hidden;z-index:10;transition:width .25s}
+.sidebar-logo{padding:18px 16px 16px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:10px;flex-shrink:0}
+.logo-mark{width:38px;height:38px;border-radius:11px;background:rgba(224,136,32,.18);border:1.5px solid rgba(224,136,32,.45);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.logo-text{display:flex;flex-direction:column}
+.logo-name{font-family:var(--serif);font-size:14px;color:#fff;line-height:1.2;letter-spacing:-.01em}
+.logo-sub{font-size:10px;color:rgba(255,255,255,.35);margin-top:1px}
+.sidebar-user{padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:10px;flex-shrink:0}
+.user-info{flex:1;min-width:0}
+.user-name{font-size:12px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-nav{flex:1;overflow-y:auto;padding:8px 8px}
+.nav-section{padding:10px 8px 4px;font-size:10px;font-weight:700;color:rgba(255,255,255,.25);letter-spacing:.08em;text-transform:uppercase}
+.nav-item{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:9px;border:1.5px solid transparent;background:transparent;color:rgba(255,255,255,.55);font-size:12.5px;font-weight:400;cursor:pointer;text-align:left;margin-bottom:2px;transition:all .15s;position:relative;white-space:nowrap;overflow:hidden}
+.nav-item i{font-size:16px;width:18px;text-align:center;flex-shrink:0}
+.nav-item:hover{background:rgba(255,255,255,.07);color:rgba(255,255,255,.85)}
+.nav-item.active{background:rgba(224,136,32,.16);border-color:rgba(224,136,32,.35);color:#f5c97a;font-weight:600}
+.nav-badge{position:absolute;right:10px;background:var(--red);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;line-height:1.4}
+.sidebar-footer{padding:10px 8px;border-top:1px solid rgba(255,255,255,.07);flex-shrink:0}
+/* ═══ MAIN ════════════════════════════════════════════════════════════════════ */
+.main-area{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.topbar{background:var(--sfc);border-bottom:1px solid var(--bdr);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;z-index:5;box-shadow:var(--sh-sm)}
+.page-title{font-size:18px;font-weight:700;color:var(--tx);letter-spacing:-.01em}
+.topbar-school{font-size:12px;font-weight:600;color:var(--tx-3);padding:3px 10px;background:var(--bg);border-radius:var(--r8);border:1px solid var(--bdr);letter-spacing:.01em;display:inline-flex;align-items:center;gap:5px}
+.topbar-right{display:flex;align-items:center;gap:12px}
+.live-clock{font-size:13px;font-weight:600;color:var(--tx-2);font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.content-area{flex:1;overflow-y:auto;padding:22px 26px}
+/* ═══ COMPONENTS ════════════════════════════════════════════════════════════ */
+/* Buttons */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:var(--r8);font-size:13px;font-weight:500;cursor:pointer;border:1.5px solid var(--bdr-2);background:var(--sfc);color:var(--tx);transition:all .15s;white-space:nowrap}
+.btn:hover{background:var(--bg);border-color:var(--bdr-2)}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-primary{background:var(--navy);border-color:var(--navy);color:#fff}
+.btn-primary:hover{background:var(--navy-2)}
+.btn-gold{background:var(--gold);border-color:var(--gold);color:#fff}
+.btn-gold:hover{background:var(--gold-1)}
+.btn-green{background:var(--green);border-color:var(--green);color:#fff}
+.btn-green:hover{background:var(--green-dk)}
+.btn-red{background:var(--red);border-color:var(--red);color:#fff}
+.btn-red:hover{background:#a32215}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--tx-2)}
+.btn-ghost:hover{background:var(--bg)}
+.btn-sm{padding:5px 12px;font-size:12px;border-radius:var(--r8)}
+.btn-lg{padding:12px 24px;font-size:15px;border-radius:var(--r10)}
+.btn-xl{padding:15px 28px;font-size:16px;border-radius:var(--r12);font-weight:600}
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.02em}
+.badge-green{background:var(--green-lt);color:var(--green-dk)}
+.badge-red{background:var(--red-lt);color:#9a2215}
+.badge-gold{background:var(--gold-lt);color:#7a4d08}
+.badge-blue{background:var(--blue-lt);color:#144fb0}
+.badge-purple{background:var(--purple-lt);color:#3e2a9a}
+.badge-teal{background:var(--teal-lt);color:#065e7c}
+.badge-gray{background:#f0f4f8;color:var(--tx-2)}
+.badge-navy{background:#e4eaf2;color:var(--navy-2)}
+/* Cards */
+.card{background:var(--sfc);border:1px solid var(--bdr);border-radius:var(--r16);padding:18px 22px;box-shadow:var(--sh-sm)}
+.card-sm{background:var(--sfc);border:1px solid var(--bdr);border-radius:var(--r12);padding:14px 18px;box-shadow:var(--sh-sm)}
+/* Grid */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+/* Metric */
+.metric{background:var(--sfc);border:1px solid var(--bdr);border-radius:var(--r12);padding:16px 18px;box-shadow:var(--sh-sm)}
+.metric-label{font-size:11px;font-weight:600;color:var(--tx-3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px}
+.metric-val{font-size:28px;font-weight:700;line-height:1}
+.metric-sub{font-size:11px;color:var(--tx-3);margin-top:5px}
+/* Form */
+.fl{font-size:11px;font-weight:700;color:var(--tx-2);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:5px}
+.fc{width:100%;padding:9px 11px;border:1.5px solid var(--bdr-2);border-radius:var(--r8);font-size:13px;background:var(--sfc-2);color:var(--tx);transition:border-color .15s}
+.fc:focus{border-color:var(--navy);background:var(--sfc)}
+.fg{margin-bottom:14px}
+/* Table */
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+.tbl th{text-align:left;padding:10px 14px;font-size:10.5px;font-weight:700;color:var(--tx-3);border-bottom:1.5px solid var(--bdr);text-transform:uppercase;letter-spacing:.05em;background:var(--sfc-2);white-space:nowrap}
+.tbl td{padding:11px 14px;border-bottom:1px solid var(--bdr);color:var(--tx);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tbody tr:hover td{background:#f7f9fc}
+/* Avatar */
+.av{border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:700;color:#fff;flex-shrink:0;font-size:11px;letter-spacing:.02em}
+/* Toast */
+.toast-wrap{position:fixed;top:18px;right:18px;z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{padding:11px 18px;border-radius:var(--r10);font-size:13px;font-weight:500;color:#fff;box-shadow:var(--sh-lg);animation:toastIn .25s ease;pointer-events:all;display:flex;align-items:center;gap:8px;min-width:260px;max-width:360px}
+@keyframes toastIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:translateX(0)}}
+.toast-ok{background:var(--green)}
+.toast-info{background:var(--blue)}
+.toast-warn{background:var(--amber)}
+.toast-err{background:var(--red)}
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(12,30,53,.5);display:flex;align-items:center;justify-content:center;z-index:9000;padding:16px;backdrop-filter:blur(2px)}
+.modal{background:var(--sfc);border-radius:var(--r20);box-shadow:var(--sh-lg);width:100%;animation:modalIn .2s ease}
+@keyframes modalIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+.modal-hd{padding:20px 24px 16px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between}
+.modal-title{font-size:16px;font-weight:700}
+.modal-close{width:30px;height:30px;border-radius:var(--r8);border:1.5px solid var(--bdr);background:var(--sfc);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--tx-3);font-size:16px;transition:all .15s}
+.modal-close:hover{background:var(--bg);border-color:var(--bdr-2)}
+.modal-bd{padding:20px 24px}
+.modal-ft{padding:14px 24px 20px;border-top:1px solid var(--bdr);display:flex;gap:8px}
+/* Shift badge */
+.shift-tag{display:inline-block;padding:3px 8px;border-radius:5px;font-size:10.5px;font-weight:600}
+/* Progress bar */
+.progress-wrap{height:7px;background:var(--bg);border-radius:4px;overflow:hidden;margin-top:6px}
+.progress-fill{height:100%;border-radius:4px;transition:width .4s ease}
+/* Section header */
+.sec-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.sec-title{font-size:14px;font-weight:700;color:var(--tx)}
+/* GPS indicator */
+.gps-ring-outer{width:100px;height:100px;border-radius:50%;border:2px solid var(--green-lt);display:flex;align-items:center;justify-content:center;position:relative;margin:0 auto}
+.gps-pulse{position:absolute;inset:-10px;border-radius:50%;border:2px solid rgba(10,140,106,.25);animation:gpsPulse 2s ease-out infinite}
+.gps-pulse-2{position:absolute;inset:-22px;border-radius:50%;border:2px solid rgba(10,140,106,.12);animation:gpsPulse 2s ease-out infinite .4s}
+@keyframes gpsPulse{0%{opacity:1;transform:scale(1)}100%{opacity:0;transform:scale(1.3)}}
+.gps-core{width:34px;height:34px;background:var(--green);border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid #fff;box-shadow:var(--sh)}
+/* Banner */
+.banner{background:linear-gradient(130deg,var(--navy) 0%,var(--navy-2) 60%,var(--navy-3) 100%);border-radius:var(--r20);padding:24px 28px;margin-bottom:22px;position:relative;overflow:hidden}
+.banner::after{content:'';position:absolute;top:-40px;right:-40px;width:200px;height:200px;border-radius:50%;background:rgba(224,136,32,.08);pointer-events:none}
+/* Phone frame */
+.phone-outer{background:var(--navy);border-radius:36px;padding:14px;box-shadow:var(--sh-lg);width:280px;flex-shrink:0}
+.phone-screen{background:var(--bg);border-radius:24px;overflow:hidden;min-height:520px;display:flex;flex-direction:column}
+.phone-notch{background:var(--navy);height:32px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.phone-notch-pill{width:70px;height:5px;background:rgba(255,255,255,.25);border-radius:3px}
+.phone-header{padding:14px 16px;background:var(--navy);flex-shrink:0}
+.phone-body{flex:1;overflow-y:auto;padding:14px;-webkit-overflow-scrolling:touch}
+/* Schedule grid */
+.sched-grid{display:grid;grid-template-columns:180px repeat(5,1fr);border-radius:var(--r12);overflow:hidden;border:1px solid var(--bdr)}
+.sched-cell{padding:9px 8px;border-right:1px solid var(--bdr);border-bottom:1px solid var(--bdr);background:var(--sfc)}
+.sched-cell:last-child{border-right:none}
+.sched-head{background:var(--navy);color:rgba(255,255,255,.75);font-size:11px;font-weight:700;text-align:center;text-transform:uppercase;letter-spacing:.04em;padding:10px 8px;border-right:1px solid rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.08)}
+.sched-head:last-child{border-right:none}
+.sched-emp{display:flex;align-items:center;gap:9px;padding:9px 12px;border-right:1px solid var(--bdr);border-bottom:1px solid var(--bdr);background:var(--sfc)}
+/* Status dot */
+.sdot{width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0}
+/* Announcement card priority */
+.ann-card{border-left:4px solid var(--gold);border-radius:0 var(--r12) var(--r12) 0}
+.ann-card.high{border-left-color:var(--red)}
+/* Tab bar */
+.tab-bar{display:flex;border-bottom:2px solid var(--bdr);margin-bottom:20px}
+.tab{padding:10px 16px;font-size:13px;font-weight:500;color:var(--tx-3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+.tab.active{color:var(--navy);border-bottom-color:var(--navy);font-weight:600}
+.tab:hover:not(.active){color:var(--tx-2)}
+/* Divider */
+.divider{height:1px;background:var(--bdr);margin:14px 0}
+/* ═══ LOGIN ══════════════════════════════════════════════════════════════════ */
+#login-screen{position:fixed;inset:0;background:linear-gradient(140deg,#071424 0%,#0f2540 50%,#1a3558 100%);display:flex;align-items:center;justify-content:center;z-index:9999;padding:20px}
+.login-card{width:100%;max-width:460px}
+.login-panel{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:var(--r20);overflow:hidden;backdrop-filter:blur(16px)}
+.login-tab-bar{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid rgba(255,255,255,.1)}
+.login-tab{padding:14px;border:none;border-bottom:2px solid transparent;background:transparent;font-family:var(--font);font-size:13px;cursor:pointer;transition:all .2s;color:rgba(255,255,255,.4)}
+.login-tab.active{color:#f5c97a;border-bottom-color:var(--gold);background:rgba(224,136,32,.1)}
+.login-body{padding:26px}
+.pin-display{font-size:34px;letter-spacing:14px;color:#fff;text-align:center;min-height:46px;margin:12px 0;font-weight:300}
+.numpad{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;max-width:230px;margin:0 auto 14px}
+.numpad-btn{padding:13px;border-radius:var(--r10);border:1.5px solid rgba(255,255,255,.14);background:rgba(255,255,255,.07);color:#fff;font-size:16px;font-weight:500;cursor:pointer;font-family:var(--font);transition:all .12s;text-align:center}
+.numpad-btn:hover{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25)}
+.numpad-btn:active{transform:scale(.94)}
+.numpad-btn.clr{background:rgba(192,43,28,.25);border-color:rgba(192,43,28,.35)}
+/* ═══ MOBILE APP SPECIFIC ════════════════════════════════════════════════════ */
+.mob-emp-row{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-radius:var(--r10);border:1.5px solid var(--bdr);background:var(--sfc);margin-bottom:8px;cursor:pointer;transition:all .15s}
+.mob-emp-row:hover{border-color:var(--bdr-2);background:var(--sfc-2)}
+.mob-emp-row.selected{border-color:var(--navy);background:var(--blue-lt)}
+.gps-status-box{border-radius:var(--r12);padding:16px;text-align:center;margin-top:14px}
+.gps-status-box.success{background:var(--green-lt);border:1.5px solid rgba(10,140,106,.2)}
+.gps-status-box.warning{background:var(--amber-lt);border:1.5px solid rgba(201,125,16,.2)}
+.gps-status-box.error{background:var(--red-lt);border:1.5px solid rgba(196,43,28,.2)}
+/* ═══ RESPONSIVE ═════════════════════════════════════════════════════════════ */
+@media(max-width:768px){
+  .sidebar{position:absolute;left:0;top:0;height:100%;z-index:50;transform:translateX(-100%);transition:transform .25s}
+  .sidebar.open{transform:translateX(0)}
+  .g2,.g3,.g4{grid-template-columns:1fr}
+  .content-area{padding:14px 16px}
+}
+</style>
+</head>
+<body>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="width:78px;height:78px;border-radius:22px;background:rgba(224,136,32,.15);border:2px solid rgba(224,136,32,.4);display:flex;align-items:center;justify-content:center;font-size:40px;margin:0 auto 16px">🏫</div>
+      <div style="font-family:var(--serif);font-size:28px;color:#fff;letter-spacing:-.02em;margin-bottom:4px">Greenfield Academy</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.4)">Staff Scheduling & HR Management Portal</div>
+    </div>
+    <div class="login-panel">
+      <div class="login-tab-bar">
+        <button class="login-tab active" id="lt-staff" onclick="setLoginTab('staff')"><i class="ti ti-id-badge-2"></i> Staff (PIN)</button>
+        <button class="login-tab" id="lt-admin" onclick="setLoginTab('admin')"><i class="ti ti-shield-lock"></i> Admin / Manager</button>
+      </div>
+      <div class="login-body">
+        <!-- Staff PIN tab -->
+        <div id="tab-staff-panel">
+          <div class="fg">
+            <label class="fl" style="color:rgba(255,255,255,.4)">Your name</label>
+            <select class="fc" id="ln-sel" onchange="onEmpSelect()" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);color:#fff">
+              <option value="">— Select your name —</option>
+            </select>
+          </div>
+          <div id="pin-section" style="display:none">
+            <div id="selected-emp-info" style="display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.07);border-radius:var(--r10);padding:10px 13px;margin-bottom:16px"></div>
+            <div style="font-size:12px;color:rgba(255,255,255,.5);text-align:center;margin-bottom:8px">Enter your 4-digit PIN</div>
+            <div class="pin-display" id="pin-display">○○○○</div>
+            <div class="numpad" id="numpad"></div>
+            <div id="pin-err" style="color:#f87171;font-size:12px;text-align:center;min-height:18px;margin-bottom:8px"></div>
+            <button class="btn-xl btn-gold" id="pin-btn" onclick="doStaffLogin()" disabled style="width:100%;justify-content:center">Sign In →</button>
+          </div>
+        </div>
+        <!-- Admin tab -->
+        <div id="tab-admin-panel" style="display:none">
+          <div class="fg"><label class="fl" style="color:rgba(255,255,255,.4)">Email address</label><input type="email" class="fc" id="ln-email" placeholder="admin@greenfield.edu" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);color:#fff"></div>
+          <div class="fg"><label class="fl" style="color:rgba(255,255,255,.4)">Password</label><input type="password" class="fc" id="ln-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doAdminLogin()" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);color:#fff"></div>
+          <div id="admin-err" style="color:#f87171;font-size:12px;margin-bottom:8px;min-height:18px"></div>
+          <button class="btn-xl btn-gold" onclick="doAdminLogin()" style="width:100%;justify-content:center">Sign In →</button>
+          <div style="text-align:center;font-size:11px;color:rgba(255,255,255,.3);margin-top:12px">
+            Admin demo password: <code style="color:rgba(255,255,255,.55);background:rgba(255,255,255,.08);padding:2px 6px;border-radius:4px">school2026</code>
+          </div>
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08)">
+            <div style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:8px;text-align:center">Quick demo logins</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <button onclick="quickLogin('s.mitchell@greenfield.edu')" style="padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);font-size:11px;cursor:pointer;font-family:var(--font)">👑 Owner (Principal)</button>
+              <button onclick="quickLogin('j.harrington@greenfield.edu')" style="padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);font-size:11px;cursor:pointer;font-family:var(--font)">🛡 Admin (VP)</button>
+              <button onclick="quickLogin('r.torres@greenfield.edu')" style="padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);font-size:11px;cursor:pointer;font-family:var(--font)">📋 Office Manager</button>
+              <button onclick="staffQuickLogin(4)" style="padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);font-size:11px;cursor:pointer;font-family:var(--font)">👩‍🏫 Staff (Emily Chen)</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:18px;font-size:11px;color:rgba(255,255,255,.2)">
+      StaffBase v2.0 · <span class="school-name-text">Greenfield Academy</span> · Secure Staff Portal · All logins encrypted
+    </div>
+  </div>
+</div>
+
+<!-- APP SHELL (hidden until login) -->
+<div class="app-shell" id="app-shell" style="display:none">
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">🏫</div>
+      <div class="logo-text">
+        <div class="logo-name logo-name-text">Greenfield<br>Academy</div>
+        <div class="logo-sub">Staff Portal</div>
+      </div>
+    </div>
+    <div class="sidebar-user" id="sb-user"></div>
+    <nav class="sidebar-nav" id="sb-nav"></nav>
+    <div class="sidebar-footer">
+      <div id="db-connection-badge" style="padding:6px 10px;font-size:10.5px;font-weight:600;margin-bottom:8px;border-radius:6px;display:flex;align-items:center;gap:6px"></div>
+      <button class="nav-item" onclick="doLogout()" style="width:100%">
+        <i class="ti ti-door-exit"></i> Sign Out
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main-area">
+    <header class="topbar">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="btn btn-ghost btn-sm" id="menu-toggle" onclick="toggleSidebar()" style="display:none"><i class="ti ti-menu-2"></i></button>
+        <div class="page-title" id="page-title">Dashboard</div>
+        <span class="topbar-school school-name-text" id="topbar-school-label">Greenfield Academy</span>
+      </div>
+      <div class="topbar-right">
+        <div class="live-clock" id="live-clock"></div>
+        <div id="topbar-actions"></div>
+      </div>
+    </header>
+    <main class="content-area" id="content-area"></main>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ═══════════════════════════════════════════════════════════════════════════
+// DATA & CONSTANTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+const DEFAULT_SCHOOL = { lat: 43.7615, lng: -79.4111, radius: 300, name: 'Greenfield Academy', address: '150 Greenfield Ave, Toronto, ON M6G 3G7', website: 'www.greenfieldacademy.edu', email: 'admin@greenfield.edu', otThreshold: 8.0, openDays: ['Mon','Tue','Wed','Thu','Fri'] };
+let SCHOOL = JSON.parse(localStorage.getItem('sb_school')) || DEFAULT_SCHOOL;
+if (!SCHOOL.openDays) SCHOOL.openDays = ['Mon','Tue','Wed','Thu','Fri'];
+const API_BASE = 'http://localhost:3000/api';
+let USE_API = false;
+
+async function syncToServer(endpoint, data) {
+  if (!USE_API) return;
+  try {
+    await fetch(`${API_BASE}/${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+  } catch (e) {
+    console.error(`Sync error to /api/${endpoint}:`, e);
+  }
+}
+
+function saveSchool() {
+  localStorage.setItem('sb_school', JSON.stringify(SCHOOL));
+  syncToServer('school', SCHOOL);
+}
+
+function initSchoolName() {
+  const name = SCHOOL.name || 'Greenfield Academy';
+  document.title = `StaffBase — ${name}`;
+  document.querySelectorAll('.logo-name-text').forEach(el => el.innerHTML = name.replace(' ', '<br>'));
+  document.querySelectorAll('.school-name-text').forEach(el => el.textContent = name);
+  const topbarLabel = document.getElementById('topbar-school-label');
+  if (topbarLabel) topbarLabel.innerHTML = `<i class="ti ti-building" style="font-size:13px"></i> ${name}`;
+}
+
+async function probeServerAndLoadData() {
+  try {
+    const res = await fetch(`${API_BASE}/health`);
+    const health = await res.json();
+    if (health.status === 'ok') {
+      console.log("Enterprise Database Connected ✓");
+      const dataRes = await fetch(`${API_BASE}/data`);
+      const data = await dataRes.json();
+      SCHOOL = data.school;
+      USERS = data.users;
+      SUBJECTS = data.subjects;
+      SCHEDULE = data.schedule;
+      REQUESTS = data.requests;
+      ANNOUNCEMENTS = data.announcements;
+      MESSAGES = data.messages;
+      CLOCK_DATA = data.clock_data;
+      CHECKIN_LOG = data.checkin_log;
+      
+      DAYS = SCHOOL.openDays;
+      FULL_DAYS = DAYS.map(d => WEEKDAY_NAMES[d]);
+      USE_API = true;
+    }
+  } catch (e) {
+    console.warn("Express server offline, running in offline LocalStorage sandbox mode.");
+    USE_API = false;
+  }
+  initSchoolName();
+  renderConnectionBadge();
+  if (typeof initLogin === 'function') initLogin();
+}
+probeServerAndLoadData();
+
+function renderConnectionBadge() {
+  const badge = $('db-connection-badge');
+  if (!badge) return;
+  if (USE_API) {
+    badge.style.background = 'rgba(10,140,106,.15)';
+    badge.style.color = '#a3ebd6';
+    badge.style.border = '1px solid rgba(10,140,106,.3)';
+    badge.innerHTML = `<span style="width:7px;height:7px;border-radius:50%;background:#0a8c6a;display:inline-block"></span> DB: Server Connected`;
+  } else {
+    badge.style.background = 'rgba(224,136,32,.12)';
+    badge.style.color = '#fde8bc';
+    badge.style.border = '1px solid rgba(224,136,32,.25)';
+    badge.innerHTML = `<span style="width:7px;height:7px;border-radius:50%;background:#e08820;display:inline-block"></span> DB: Local Storage (Demo)`;
+  }
+}
+
+const WEEKDAY_NAMES = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'Thursday', Fri: 'Friday', Sat: 'Saturday', Sun: 'Sunday' };
+let DAYS = SCHOOL.openDays;
+let FULL_DAYS = DAYS.map(d => WEEKDAY_NAMES[d]);
+
+let SUBJECTS = JSON.parse(localStorage.getItem('sb_subjects')) || ['Mathematics', 'Science', 'English', 'History', 'Arts', 'PE', 'Administration', 'Support'];
+function saveSubjects() {
+  localStorage.setItem('sb_subjects', JSON.stringify(SUBJECTS));
+  syncToServer('subjects', SUBJECTS);
+}
+
+function getSubjectColor(dept) {
+  const baseColors = {
+    Mathematics: '#5b3fc4',
+    Science: '#0a8c6a',
+    English: '#1a65d4',
+    History: '#c97d10',
+    Arts: '#c42b1c',
+    PE: '#0a7c9e',
+    Administration: '#4a5e78',
+    Support: '#7a5230',
+  };
+  if (baseColors[dept]) return baseColors[dept];
+  let hash = 0;
+  for (let i = 0; i < dept.length; i++) {
+    hash = dept.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 65%, 48%)`;
+}
+
+const SHIFT_TYPES = {
+  Teaching:     { color: '#1a65d4', bg: '#e6effe', label: 'Teaching' },
+  Planning:     { color: '#5b3fc4', bg: '#eeeafe', label: 'Planning' },
+  Supervision:  { color: '#c97d10', bg: '#fef3dc', label: 'Supervision' },
+  Meeting:      { color: '#0a8c6a', bg: '#dcf5ee', label: 'Meeting' },
+  'Prof Dev':   { color: '#c42b1c', bg: '#fde8e6', label: 'Prof. Dev.' },
+  Off:          { color: '#8fa5bc', bg: '#f0f4f8', label: 'Day Off' },
+};
+
+const ROLES = {
+  principal_owner:    { label: 'Principal/Owner', badge: 'badge-purple', perms: ['all'] },
+  administrator:      { label: 'Administrator', badge: 'badge-gold', perms: ['manage_staff','schedule','timesheets','reports','approve','announce','gps_override','clock'] },
+  office_manager:     { label: 'Office Manager', badge: 'badge-teal', perms: ['schedule','timesheets','reports','approve','announce','gps_override','clock'] },
+  coordinator:        { label: 'Coordinator', badge: 'badge-indigo', perms: ['schedule','timesheets','reports','approve','announce','gps_override','clock'] },
+  teaching_assistant: { label: 'Teaching Assistant', badge: 'badge-blue', perms: ['clock','request'] },
+  grader:             { label: 'Grader', badge: 'badge-orange', perms: ['clock','request'] },
+};
+
+function can(perm) {
+  if (!CU) return false;
+  if (CU.role === 'principal_owner') return true;
+  return (ROLES[CU.role]?.perms || []).includes(perm);
+}
+function isManager() {
+  return CU && (CU.role === 'principal_owner' || CU.role === 'administrator' || CU.role === 'office_manager' || CU.role === 'coordinator');
+}
+
+// ─── USERS ──────────────────────────────────────────────────────────────────
+const INITIAL_USERS = [
+  { id:1, name:'Dr. Sarah Mitchell', email:'s.mitchell@greenfield.edu', role:'principal_owner', dept:'Administration', pin:'0000', password:'school2026', phone:'416-555-0001', pos:'Principal', av:'SM', active:true },
+  { id:2, name:'James Harrington',   email:'j.harrington@greenfield.edu', role:'administrator', dept:'Administration', pin:'1111', password:'school2026', phone:'416-555-0002', pos:'Vice Principal', av:'JH', active:true },
+  { id:3, name:'Rachel Torres',      email:'r.torres@greenfield.edu', role:'office_manager', dept:'Administration', pin:'2222', password:'school2026', phone:'416-555-0003', pos:'Office Manager', av:'RT', active:true },
+  { id:4, name:'Emily Chen',         email:'e.chen@greenfield.edu', role:'teaching_assistant', dept:'Mathematics', pin:'3333', password:'', phone:'416-555-0011', pos:'Math Teacher', av:'EC', active:true },
+  { id:5, name:'Marcus Williams',    email:'m.williams@greenfield.edu', role:'teaching_assistant', dept:'Science', pin:'4444', password:'', phone:'416-555-0012', pos:'Science Teacher', av:'MW', active:true },
+  { id:6, name:'Priya Sharma',       email:'p.sharma@greenfield.edu', role:'grader', dept:'English', pin:'5555', password:'', phone:'416-555-0013', pos:'English Teacher', av:'PS', active:true },
+  { id:7, name:"David O'Brien",     email:'d.obrien@greenfield.edu', role:'teaching_assistant', dept:'History', pin:'6666', password:'', phone:'416-555-0014', pos:'History Teacher', av:'DO', active:true },
+  { id:8, name:'Aisha Patel',        email:'a.patel@greenfield.edu', role:'grader', dept:'Arts', pin:'7777', password:'', phone:'416-555-0015', pos:'Art Teacher', av:'AP', active:true },
+  { id:9, name:'Tom Nakamura',       email:'t.nakamura@greenfield.edu', role:'teaching_assistant', dept:'PE', pin:'8888', password:'', phone:'416-555-0016', pos:'PE Teacher', av:'TN', active:true },
+  { id:10,name:'Lisa Kowalski',      email:'l.kowalski@greenfield.edu', role:'grader', dept:'Support', pin:'9999', password:'', phone:'416-555-0017', pos:'Counselor', av:'LK', active:true },
+];
+let USERS = JSON.parse(localStorage.getItem('sb_users')) || INITIAL_USERS;
+// Self-healing migration for existing localStorage users with old roles
+let migrated = false;
+USERS.forEach(u => {
+  if (u.role === 'owner') { u.role = 'principal_owner'; migrated = true; }
+  else if (u.role === 'admin') { u.role = 'administrator'; migrated = true; }
+  else if (u.role === 'staff') { u.role = 'teaching_assistant'; migrated = true; }
+});
+if (migrated) { localStorage.setItem('sb_users', JSON.stringify(USERS)); }
+function saveUsers() {
+  localStorage.setItem('sb_users', JSON.stringify(USERS));
+  syncToServer('users', USERS);
+}
+
+// ─── SCHEDULE ────────────────────────────────────────────────────────────────
+function buildDefaultSchedule() {
+  const patterns = {
+    4: ['Teaching','Planning','Teaching','Teaching','Teaching'],
+    5: ['Teaching','Teaching','Supervision','Teaching','Meeting'],
+    6: ['Planning','Teaching','Teaching','Teaching','Teaching'],
+    7: ['Teaching','Teaching','Meeting','Teaching','Supervision'],
+    8: ['Teaching','Supervision','Teaching','Teaching','Teaching'],
+    9: ['Prof Dev','Teaching','Teaching','Teaching','Planning'],
+    10:['Teaching','Teaching','Planning','Meeting','Teaching'],
+    3: ['Meeting','Teaching','Planning','Teaching','Supervision'],
+  };
+  const shifts = {};
+  for (const uid in patterns) {
+    shifts[uid] = {};
+    DAYS.forEach((d, i) => {
+      const type = patterns[uid][i % patterns[uid].length] || 'Off';
+      const locs = { Teaching: `Room ${100 + parseInt(uid)}`, Meeting: 'Staff Room', Supervision: 'Main Hallway', Planning: 'Office', 'Prof Dev': 'Off-site' };
+      shifts[uid][d] = { type, start: type === 'Off' ? null : '15:30', end: type === 'Off' ? null : '18:30', location: locs[type] || 'Office', notes: '', ack: false };
+    });
+  }
+  return shifts;
+}
+
+let SCHEDULE = JSON.parse(localStorage.getItem('sb_schedule')) || {
+  published: true,
+  publishedAt: 'May 26, 2026 at 08:45 AM',
+  week: 'May 26 – 30, 2026',
+  weekKey: '2026-W22',
+  shifts: buildDefaultSchedule(),
+};
+function saveSchedule() {
+  localStorage.setItem('sb_schedule', JSON.stringify(SCHEDULE));
+  syncToServer('schedule', SCHEDULE);
+}
+
+let REQUESTS = JSON.parse(localStorage.getItem('sb_requests')) || [
+  { id:1, uid:4, type:'Vacation', dates:'Jun 3–5', days:3, note:'Family trip', status:'pending', submitted:'May 27' },
+  { id:2, uid:8, type:'Sick', dates:'May 30', days:1, note:'', status:'approved', submitted:'May 29' },
+  { id:3, uid:6, type:'Professional Development', dates:'Jun 5', days:1, note:'Literacy conference', status:'pending', submitted:'May 28' },
+  { id:4, uid:9, type:'Personal', dates:'Jun 2', days:1, note:'Medical appointment', status:'denied', submitted:'May 26' },
+];
+function saveRequests() {
+  localStorage.setItem('sb_requests', JSON.stringify(REQUESTS));
+  syncToServer('requests', REQUESTS);
+}
+
+let ANNOUNCEMENTS = JSON.parse(localStorage.getItem('sb_announcements')) || [
+  { id:1, from:1, title:'End-of-year assembly — all staff required', body:'Please note the all-staff assembly on Friday June 14 at 9:00 AM in the gymnasium. Attendance is mandatory for all teaching and support staff. Agenda will be circulated by June 10.', date:'May 29', priority:'high' },
+  { id:2, from:2, title:'Schedule published for week of May 26', body:'Your schedule for the week of May 26 has been published. Please log in to review your shifts and acknowledge each day. Contact the office if you have any concerns.', date:'May 28', priority:'normal' },
+  { id:3, from:3, title:'Reminder: report card submissions due June 7', body:'All report card submissions must be completed by end of day Friday June 7. Please contact the main office if you require an extension. Late submissions will be flagged.', date:'May 27', priority:'normal' },
+];
+function saveAnnouncements() {
+  localStorage.setItem('sb_announcements', JSON.stringify(ANNOUNCEMENTS));
+  syncToServer('announcements', ANNOUNCEMENTS);
+}
+
+let MESSAGES = JSON.parse(localStorage.getItem('sb_messages')) || [
+  { id: 1, from: 2, to: 4, body: "Hi Emily, could you cover the afternoon Mathematics session tomorrow?", date: "May 28 at 2:30 PM", read: true },
+  { id: 2, from: 4, to: 2, body: "Sure James, I'd be happy to cover that shift. What is the start time?", date: "May 28 at 2:45 PM", read: true },
+  { id: 3, from: 2, to: 4, body: "Standard 3:30 PM start is perfect. Thanks so much!", date: "May 28 at 2:50 PM", read: true }
+];
+function saveMessages() {
+  localStorage.setItem('sb_messages', JSON.stringify(MESSAGES));
+  syncToServer('messages', MESSAGES);
+}
+
+let CLOCK_DATA = JSON.parse(localStorage.getItem('sb_clock_data')) || {};
+function saveClockData() {
+  localStorage.setItem('sb_clock_data', JSON.stringify(CLOCK_DATA));
+  syncToServer('clock_data', CLOCK_DATA);
+}
+
+let CHECKIN_LOG = JSON.parse(localStorage.getItem('sb_checkin_log')) || [];
+function saveCheckinLog() {
+  localStorage.setItem('sb_checkin_log', JSON.stringify(CHECKIN_LOG));
+  syncToServer('checkin_log', CHECKIN_LOG);
+}
+
+let CU = null; // current user
+let PIN_BUF = '';
+let PIN_EMP_ID = null;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const fmtTime = d => d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+function getShiftHours(sh) {
+  if (!sh || sh.type === 'Off' || !sh.start || !sh.end) return 0;
+  const [shour, smin] = sh.start.split(':').map(Number);
+  const [ehour, emin] = sh.end.split(':').map(Number);
+  const diffMinutes = (ehour * 60 + emin) - (shour * 60 + smin);
+  return Math.max(0, parseFloat((diffMinutes / 60).toFixed(2)));
+}
+function formatShiftTime(start, end) {
+  if (!start || !end) return '';
+  const to12h = t => {
+    let [h, m] = t.split(':');
+    h = parseInt(h);
+    const ampm = h >= 12 ? 'p' : 'a';
+    h = h % 12 || 12;
+    return `${h}:${m}${ampm}`;
+  };
+  return `${to12h(start)}–${to12h(end)}`;
+}
+
+const fmtTimeSec = d => d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+
+function avBg(name) {
+  const c = ['#0c1e35','#0a8c6a','#1a65d4','#5b3fc4','#c97d10','#c42b1c','#0a7c9e','#7a5230','#4a5e78'];
+  let h = 0; for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % c.length;
+  return c[h];
+}
+function mkAv(u, sz = 32) {
+  return `<div class="av" style="width:${sz}px;height:${sz}px;min-width:${sz}px;background:${avBg(u.name)};font-size:${Math.round(sz * 0.33)}px">${u.av}</div>`;
+}
+function shiftTag(type, small) {
+  const s = SHIFT_TYPES[type] || SHIFT_TYPES.Off;
+  return `<span class="shift-tag" style="color:${s.color};background:${s.bg};font-size:${small?9.5:11}px;padding:${small?'2px 6px':'3px 9px'}">${s.label}</span>`;
+}
+function roleBadge(role) {
+  const r = ROLES[role] || { label: role, badge: 'badge-gray' };
+  return `<span class="badge ${r.badge}">${r.label}</span>`;
+}
+function statusBadge(status) {
+  const m = { pending: ['badge-gold','Pending'], approved: ['badge-green','Approved'], denied: ['badge-red','Denied'] };
+  const [cls, lbl] = m[status] || ['badge-gray', status];
+  return `<span class="badge ${cls}">${lbl}</span>`;
+}
+function clockBadge(uid) {
+  const cd = CLOCK_DATA[uid];
+  if (!cd) return '<span class="badge badge-gray">Not in</span>';
+  if (cd.status === 'in') return `<span class="badge badge-green">● Clocked In</span>`;
+  return `<span class="badge badge-gray">Clocked Out</span>`;
+}
+function deptDot(dept) {
+  return `<span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${getSubjectColor(dept)};margin-right:5px;flex-shrink:0"></span>`;
+}
+
+// GPS distance (Haversine)
+function gpsDist(lat1, lng1, lat2, lng2) {
+  const R = 6371000, toRad = x => x * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════════════════════════════
+function toast(msg, type = 'ok') {
+  const icons = { ok: 'ti-circle-check', info: 'ti-info-circle', warn: 'ti-alert-triangle', err: 'ti-circle-x' };
+  const wrap = $('toast-wrap');
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.innerHTML = `<i class="ti ${icons[type]||'ti-circle-check'}" style="font-size:18px;flex-shrink:0"></i>${msg}`;
+  wrap.appendChild(el);
+  setTimeout(() => { el.style.opacity='0'; el.style.transition='opacity .3s'; setTimeout(() => el.remove(), 300); }, 3000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MODAL
+// ═══════════════════════════════════════════════════════════════════════════
+function openModal(title, body, footer = '', width = 540) {
+  let existing = $('modal-root');
+  if (existing) existing.remove();
+  const el = document.createElement('div');
+  el.id = 'modal-root';
+  el.className = 'modal-overlay';
+  el.innerHTML = `
+    <div class="modal" style="max-width:${width}px;max-height:88vh;overflow-y:auto">
+      <div class="modal-hd">
+        <div class="modal-title">${title}</div>
+        <div class="modal-close" onclick="closeModal()"><i class="ti ti-x"></i></div>
+      </div>
+      <div class="modal-bd">${body}</div>
+      ${footer ? `<div class="modal-ft">${footer}</div>` : ''}
+    </div>`;
+  el.addEventListener('click', e => { if (e.target === el) closeModal(); });
+  document.body.appendChild(el);
+}
+function closeModal() { const m = $('modal-root'); if (m) m.remove(); }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOGIN
+// ═══════════════════════════════════════════════════════════════════════════
+// Build staff select + numpad
+function initLogin() {
+  const staffUsers = USERS.filter(u => u.role === 'teaching_assistant' || u.role === 'grader');
+  const sel = $('ln-sel');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Select your name —</option>';
+  staffUsers.forEach(u => { const o = new Option(`${u.name} — ${u.pos}`, u.id); sel.appendChild(o); });
+
+  const np = $('numpad');
+  if (np) {
+    np.innerHTML = '';
+    ['1','2','3','4','5','6','7','8','9','CLR','0','⌫'].forEach(k => {
+      const b = document.createElement('button');
+      b.className = 'numpad-btn' + (k === 'CLR' ? ' clr' : '');
+      b.textContent = k;
+      b.addEventListener('click', () => handlePin(k));
+      np.appendChild(b);
+    });
+  }
+}
+
+function setLoginTab(tab) {
+  const isStaff = tab === 'staff';
+  $('tab-staff-panel').style.display = isStaff ? '' : 'none';
+  $('tab-admin-panel').style.display = isStaff ? 'none' : '';
+  $('lt-staff').classList.toggle('active', isStaff);
+  $('lt-admin').classList.toggle('active', !isStaff);
+}
+
+function onEmpSelect() {
+  const uid = parseInt($('ln-sel').value);
+  const u = USERS.find(x => x.id === uid);
+  PIN_EMP_ID = uid || null;
+  PIN_BUF = '';
+  updatePinDisplay();
+  $('pin-err').textContent = '';
+  $('pin-section').style.display = u ? '' : 'none';
+  if (u) {
+    $('selected-emp-info').innerHTML = `
+      ${mkAv(u, 38)}
+      <div><div style="font-weight:600;font-size:13px;color:#fff">${u.name}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.5)">${u.pos} · ${u.dept}</div></div>`;
+  }
+}
+
+function handlePin(k) {
+  if (k === 'CLR') PIN_BUF = '';
+  else if (k === '⌫') PIN_BUF = PIN_BUF.slice(0, -1);
+  else if (PIN_BUF.length < 4) PIN_BUF += k;
+  updatePinDisplay();
+  $('pin-err').textContent = '';
+  $('pin-btn').disabled = PIN_BUF.length !== 4;
+  if (PIN_BUF.length === 4) setTimeout(doStaffLogin, 120);
+}
+
+function updatePinDisplay() {
+  $('pin-display').textContent = '●'.repeat(PIN_BUF.length) + '○'.repeat(4 - PIN_BUF.length);
+}
+
+function doStaffLogin() {
+  const u = USERS.find(x => x.id === PIN_EMP_ID);
+  if (!u) { $('pin-err').textContent = 'Please select your name first.'; return; }
+  if (u.pin !== PIN_BUF) {
+    $('pin-err').textContent = 'Incorrect PIN. Please try again.';
+    PIN_BUF = ''; updatePinDisplay(); $('pin-btn').disabled = true; return;
+  }
+  launchApp(u);
+}
+
+function doAdminLogin() {
+  const email = $('ln-email').value.trim();
+  const pass  = $('ln-pass').value;
+  $('admin-err').textContent = '';
+  
+  const u = USERS.find(x => x.email.toLowerCase() === email.toLowerCase());
+  if (!u) {
+    $('admin-err').textContent = 'Account with this email does not exist.';
+    return;
+  }
+  if (u.role === 'teaching_assistant' || u.role === 'grader') {
+    $('admin-err').textContent = 'Access Denied: Please use the PIN Pad tab to log in as Staff.';
+    return;
+  }
+  
+  const correctPass = u.password || 'school2026';
+  if (pass !== correctPass) {
+    $('admin-err').textContent = 'Incorrect password.';
+    return;
+  }
+  
+  launchApp(u);
+}
+
+function quickLogin(email) {
+  const u = USERS.find(x => x.email.toLowerCase() === email.toLowerCase());
+  $('ln-email').value = email;
+  $('ln-pass').value = u ? (u.password || 'school2026') : 'school2026';
+  doAdminLogin();
+}
+function staffQuickLogin(uid) {
+  setLoginTab('staff');
+  $('ln-sel').value = uid; onEmpSelect();
+  setTimeout(() => { PIN_BUF = USERS.find(u=>u.id===uid)?.pin||''; updatePinDisplay(); doStaffLogin(); }, 100);
+}
+
+function launchApp(u) {
+  CU = u;
+  $('login-screen').style.display = 'none';
+  $('app-shell').style.display = 'flex';
+  initSchoolName();
+  buildSidebar();
+  renderConnectionBadge();
+  navigate('dashboard');
+  startClock();
+}
+
+function doLogout() {
+  CU = null; PIN_BUF = ''; PIN_EMP_ID = null;
+  ACTIVE_CHAT_UID = null;
+  COMM_TAB = 'broadcast';
+  $('app-shell').style.display = 'none';
+  $('login-screen').style.display = 'flex';
+  $('ln-email').value = ''; $('ln-pass').value = '';
+  $('ln-sel').value = ''; onEmpSelect();
+}
+
+function toggleMyPin(btn) {
+  const el = $('my-pin-code');
+  if (!el) return;
+  if (el.textContent === '••••') {
+    el.textContent = CU.pin;
+    btn.innerHTML = '<i class="ti ti-eye-off"></i> Hide';
+  } else {
+    el.textContent = '••••';
+    btn.innerHTML = '<i class="ti ti-eye"></i> Show';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SIDEBAR & NAVIGATION
+// ═══════════════════════════════════════════════════════════════════════════
+function buildSidebar() {
+  // User card
+  $('sb-user').innerHTML = `
+    ${mkAv(CU, 38)}
+    <div class="user-info">
+      <div class="user-name">${CU.name}</div>
+      ${roleBadge(CU.role)}
+    </div>`;
+
+  // Nav items
+  const allItems = [
+    { id:'dashboard',     icon:'ti-layout-dashboard', label:'Dashboard' },
+    { id:'schedule',      icon:'ti-calendar-week',    label: isManager() ? 'Schedule Builder' : 'My Schedule' },
+    { id:'checkin',       icon:'ti-device-mobile',    label:'Mobile Check-In', section: isManager() ? '— TIME TRACKING —' : null },
+    { id:'timesheets',    icon:'ti-report',           label:'Timesheets',   mgr: true },
+    { id:'staff',         icon:'ti-users',            label:'Staff Management', mgr: true, section: '— TEAM —' },
+    { id:'requests',      icon:'ti-calendar-off',     label:'Time-Off Requests' },
+    { id:'announcements', icon:'ti-speakerphone',     label:'Announcements', section: '— COMMUNICATIONS —' },
+    { id:'reports',       icon:'ti-chart-bar',        label:'Reports & Analytics', mgr: true, section: '— DATA —' },
+    { id:'settings',      icon:'ti-settings',         label:'Settings', settings_access: true },
+  ].filter(n => (!n.mgr || isManager()) && (!n.owner || CU.role === 'principal_owner') && (!n.settings_access || CU.role === 'principal_owner' || CU.role === 'administrator'));
+
+  let html = '';
+  const sections = new Set();
+  allItems.forEach(n => {
+    if (n.section && !sections.has(n.section)) {
+      sections.add(n.section);
+      html += `<div class="nav-section">${n.section.replace('— ','').replace(' —','')}</div>`;
+    }
+    let pendingBadge = '';
+    if (n.id === 'requests' && isManager() && REQUESTS.filter(r=>r.status==='pending').length > 0) {
+      pendingBadge = `<span class="nav-badge">${REQUESTS.filter(r=>r.status==='pending').length}</span>`;
+    } else if (n.id === 'announcements') {
+      const dms = getUnreadMessageCount();
+      if (dms > 0) {
+        pendingBadge = `<span class="nav-badge" style="background:var(--gold);color:#fff">${dms}</span>`;
+      }
+    }
+    html += `<button class="nav-item" id="nav-${n.id}" onclick="navigate('${n.id}')"><i class="ti ${n.icon}"></i>${n.label}${pendingBadge}</button>`;
+  });
+  $('sb-nav').innerHTML = html;
+}
+
+function navigate(pg) {
+  if (pg === 'settings' && CU.role !== 'principal_owner' && CU.role !== 'administrator') {
+    toast('Access Denied: You do not have permission to view Settings.', 'err');
+    navigate('dashboard');
+    return;
+  }
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+  const nb = $(`nav-${pg}`); if (nb) nb.classList.add('active');
+
+  const titles = {
+    dashboard: 'Dashboard', schedule: isManager() ? 'Schedule Builder' : 'My Schedule',
+    checkin: 'Mobile Check-In / Check-Out', timesheets: 'Timesheets',
+    staff: 'Staff Management', requests: 'Time-Off Requests',
+    announcements: 'Announcements', reports: 'Reports & Analytics', settings: 'Settings'
+  };
+  $('page-title').textContent = titles[pg] || pg;
+
+  const topbarActions = {
+    schedule: isManager() ? `<button class="btn btn-gold" onclick="publishSchedule()"><i class="ti ti-send"></i>${SCHEDULE.published ? 'Re-publish' : 'Publish Schedule'}</button>` : '',
+    requests: !isManager() ? `<button class="btn btn-primary" onclick="showNewRequest()"><i class="ti ti-plus"></i>New Request</button>` : '',
+    announcements: isManager() ? `<button class="btn btn-primary" onclick="showNewAnnouncement()"><i class="ti ti-speakerphone"></i>Post Announcement</button>` : '',
+    staff: can('manage_staff') ? `<button class="btn btn-primary" onclick="showAddStaff()"><i class="ti ti-user-plus"></i>Add Staff</button>` : '',
+  };
+  $('topbar-actions').innerHTML = topbarActions[pg] || '';
+
+  const pages = { dashboard: pgDashboard, schedule: pgSchedule, checkin: pgCheckin, timesheets: pgTimesheets, staff: pgStaff, requests: pgRequests, announcements: pgAnnouncements, reports: pgReports, settings: pgSettings };
+  if (pages[pg]) pages[pg]();
+}
+
+function toggleSidebar() { $('sidebar').classList.toggle('open'); }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CLOCK
+// ═══════════════════════════════════════════════════════════════════════════
+function startClock() {
+  const tick = () => { const el = $('live-clock'); if (el) el.textContent = fmtTimeSec(new Date()); };
+  tick(); setInterval(tick, 1000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CLOCK IN / OUT ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
+function doClock(uid, type, gpsOK, lat, lng, dist) {
+  const t = fmtTime(new Date());
+  const dateStr = new Date().toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+  if (type === 'in') {
+    CLOCK_DATA[uid] = { in: t, out: null, status: 'in', gpsOK, lat, lng, dist, date: dateStr };
+  } else {
+    CLOCK_DATA[uid] = { ...(CLOCK_DATA[uid] || {}), out: t, status: 'out', gpsOK, lat, lng, dist, date: dateStr };
+  }
+  CHECKIN_LOG.unshift({ uid, type, time: t, date: dateStr, gpsOK, lat, lng, dist });
+  saveClockData();
+  saveCheckinLog();
+  const u = USERS.find(x => x.id === uid);
+  const gpsLabel = gpsOK ? ' · GPS verified ✓' : ' · Location override';
+  toast(`${u?.name} clocked ${type === 'in' ? 'IN' : 'OUT'} at ${t}${gpsLabel}`, gpsOK ? 'ok' : 'warn');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAGE: DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════
+function pgDashboard() {
+  const staff = USERS.filter(u => u.role === 'teaching_assistant' || u.role === 'grader');
+  const cIn = Object.values(CLOCK_DATA).filter(d => d.status === 'in').length;
+  const pending = REQUESTS.filter(r => r.status === 'pending').length;
+  const unacked = Object.values(SCHEDULE.shifts).reduce((acc, s) => acc + Object.values(s).filter(sh => !sh.ack).length, 0);
+  const myShifts = SCHEDULE.shifts[CU.id] || {};
+  const hr = new Date().getHours();
+  const greeting = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
+
+  if (isManager()) {
+    $('content-area').innerHTML = `
+      <div class="banner">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-family:var(--serif);font-size:22px;color:#fff;margin-bottom:4px">${greeting}, ${CU.name.split(' ')[0]}!</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.5)">${new Date().toLocaleDateString([],{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</div>
+            ${SCHEDULE.published ? `<div style="margin-top:8px"><span class="badge badge-green"><i class="ti ti-circle-check"></i> Schedule published · ${SCHEDULE.publishedAt}</span></div>` : `<div style="margin-top:8px"><span class="badge badge-gold">Draft — schedule not yet published</span></div>`}
+          </div>
+          <div style="text-align:right">${mkAv(CU,52)}</div>
+        </div>
+      </div>
+      <div class="g4" style="margin-bottom:20px">
+        <div class="metric"><div class="metric-label"><i class="ti ti-users"></i> Total Staff</div><div class="metric-val" style="color:var(--blue)">${staff.length}</div><div class="metric-sub">active employees</div></div>
+        <div class="metric"><div class="metric-label"><i class="ti ti-clock-check"></i> Clocked In</div><div class="metric-val" style="color:var(--green)">${cIn}</div><div class="metric-sub">on-site right now</div></div>
+        <div class="metric"><div class="metric-label"><i class="ti ti-calendar-off"></i> Time-Off Requests</div><div class="metric-val" style="color:var(--amber)">${pending}</div><div class="metric-sub">awaiting your review</div></div>
+        <div class="metric"><div class="metric-label"><i class="ti ti-alert-triangle"></i> Unacknowledged</div><div class="metric-val" style="color:var(--red)">${unacked}</div><div class="metric-sub">shifts to confirm</div></div>
+      </div>
+      <div class="g2">
+        <div class="card">
+          <div class="sec-hd"><div class="sec-title">Today's attendance</div><button class="btn btn-sm" onclick="navigate('checkin')"><i class="ti ti-arrow-right"></i> Time Clock</button></div>
+          ${staff.map(s => {
+            const cd = CLOCK_DATA[s.id];
+            return `<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-radius:10px;background:${cd?.status==='in'?'var(--green-lt)':'var(--bg)'};margin-bottom:7px;transition:all .15s">
+              <div style="display:flex;align-items:center;gap:10px">${mkAv(s,30)}<div><div style="font-weight:600;font-size:12.5px">${s.name}</div><div style="font-size:11px;color:var(--tx-3)">${s.pos}</div></div></div>
+              <div style="display:flex;align-items:center;gap:8px">
+                ${cd?.in ? `<span style="font-size:11px;color:var(--tx-2)">In ${cd.in}</span>` : ''}
+                ${cd?.gpsOK === true ? `<i class="ti ti-map-pin" style="color:var(--green);font-size:13px" title="GPS verified"></i>` : cd?.gpsOK === false ? `<i class="ti ti-map-pin-off" style="color:var(--amber);font-size:13px" title="Location override"></i>` : ''}
+                ${clockBadge(s.id)}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card">
+            <div class="sec-hd"><div class="sec-title">Pending requests</div>${pending>0?`<span class="badge badge-gold">${pending} waiting</span>`:''}</div>
+            ${REQUESTS.filter(r=>r.status==='pending').length===0?'<div style="color:var(--tx-3);font-size:13px;padding:8px 0">All clear — no pending requests.</div>':''}
+            ${REQUESTS.filter(r=>r.status==='pending').map(r=>{const e=USERS.find(u=>u.id===r.uid);return`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 11px;border-radius:10px;background:var(--bg);margin-bottom:8px">
+              <div style="display:flex;align-items:center;gap:9px">${mkAv(e||{name:'?',av:'?'},28)}<div><div style="font-size:12px;font-weight:600">${e?.name?.split(' ').slice(0,2).join(' ')}</div><div style="font-size:11px;color:var(--tx-3)">${r.type} · ${r.dates}</div></div></div>
+              <div style="display:flex;gap:5px"><button class="btn btn-green btn-sm" onclick="approveRequest(${r.id})"><i class="ti ti-check"></i></button><button class="btn btn-red btn-sm" onclick="denyRequest(${r.id})"><i class="ti ti-x"></i></button></div>
+            </div>`;}).join('')}
+          </div>
+          <div class="card">
+            <div class="sec-hd"><div class="sec-title">Announcements</div></div>
+            ${ANNOUNCEMENTS.slice(0,3).map(a=>`<div style="margin-bottom:11px;padding-bottom:11px;border-bottom:1px solid var(--bdr)">
+              <div style="font-size:12.5px;font-weight:600;color:${a.priority==='high'?'var(--red)':'var(--tx)'}">${a.priority==='high'?'🔴 ':''}${a.title}</div>
+              <div style="font-size:11px;color:var(--tx-3);margin-top:3px">${a.date}</div>
+            </div>`).join('')}
+            <button class="btn btn-ghost btn-sm" onclick="navigate('announcements')">View all →</button>
+          </div>
+        </div>
+      </div>`;
+  } else {
+    // Staff view — personal dashboard ONLY
+    $('content-area').innerHTML = `
+      <div class="banner">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-family:var(--serif);font-size:22px;color:#fff;margin-bottom:4px">${greeting}, ${CU.name.split(' ')[0]}!</div>
+            <div style="font-size:12px;color:rgba(255,255,255,.5)">${CU.pos} · ${CU.dept} Department</div>
+          </div>
+          ${mkAv(CU,50)}
+        </div>
+      </div>
+      <div class="g2">
+        <div>
+          <div class="card" style="margin-bottom:16px">
+            <div class="sec-hd"><div class="sec-title">My schedule this week</div>${SCHEDULE.published?`<span class="badge badge-green"><i class="ti ti-circle-check"></i> Published</span>`:'<span class="badge badge-gold">Pending</span>'}</div>
+            ${!SCHEDULE.published ? '<div style="color:var(--tx-3);font-size:13px;padding:20px 0;text-align:center"><i class="ti ti-calendar" style="font-size:32px;display:block;margin-bottom:10px"></i>Not yet published. You\'ll be notified when ready.</div>' :
+            DAYS.map((d,i)=>{const sh=myShifts[d];if(!sh)return'';const today=i===0;return`<div style="padding:12px 15px;border-radius:11px;border:${today?'2px solid var(--gold)':'1.5px solid var(--bdr)'};background:${today?'var(--gold-pale)':'var(--sfc)'};margin-bottom:9px">
+              <div style="display:flex;align-items:center;justify-content:space-between">
+                <div style="flex:1">
+                  <div style="display:flex;align-items:center;gap:9px;margin-bottom:${sh.type!=='Off'?4:0}px">
+                    <span style="font-size:12px;font-weight:700;width:64px;color:${today?'var(--amber)':'var(--tx-2)'}">${FULL_DAYS[i]}</span>
+                    ${shiftTag(sh.type)}
+                    ${today?'<span class="badge badge-gold">Today</span>':''}
+                  </div>
+                  ${sh.type!=='Off'?`<div style="font-size:11px;color:var(--tx-2);padding-left:73px"><strong>${sh.start}</strong> – <strong>${sh.end}</strong> · ${sh.location}</div>`:''}
+                </div>
+                ${sh.ack?'<span class="badge badge-green"><i class="ti ti-check"></i> Confirmed</span>':`<button class="btn btn-primary btn-sm" onclick="ackShift(${CU.id},'${d}')"><i class="ti ti-check"></i> Acknowledge</button>`}
+              </div>
+            </div>`;}).join('')}
+          </div>
+          <div class="card">
+            <div class="sec-hd"><div class="sec-title">My check-in</div></div>
+            <div style="text-align:center;padding:10px 0 18px">
+              <div id="staff-clock-big" style="font-size:42px;font-weight:700;color:var(--navy);letter-spacing:2px;font-variant-numeric:tabular-nums"></div>
+              ${CLOCK_DATA[CU.id]?.in?`<div style="font-size:12px;color:var(--tx-2);margin-top:6px">Checked in at <strong>${CLOCK_DATA[CU.id].in}</strong>${CLOCK_DATA[CU.id]?.gpsOK?' · GPS verified ✓':' · Location override'}</div>`:'<div style="font-size:12px;color:var(--tx-3);margin-top:6px">Not yet checked in today</div>'}
+            </div>
+            <button class="btn btn-primary btn-lg" style="width:100%;justify-content:center" onclick="navigate('checkin')"><i class="ti ti-device-mobile"></i> Open Check-In / Check-Out</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="card">
+            <div class="sec-hd"><div class="sec-title">My requests</div><button class="btn btn-sm btn-primary" onclick="navigate('requests')"><i class="ti ti-plus"></i> New</button></div>
+            ${REQUESTS.filter(r=>r.uid===CU.id).length===0?'<div style="color:var(--tx-3);font-size:13px">No requests yet.</div>':''}
+            ${REQUESTS.filter(r=>r.uid===CU.id).map(r=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-radius:10px;background:var(--bg);margin-bottom:7px">
+              <div><div style="font-size:12.5px;font-weight:500">${r.type}</div><div style="font-size:11px;color:var(--tx-3)">${r.dates} · ${r.days}d</div></div>
+              ${statusBadge(r.status)}
+            </div>`).join('')}
+          </div>
+          <div class="card">
+            <div class="sec-hd"><div class="sec-title"><i class="ti ti-shield-lock" style="color:var(--gold)"></i> My Login Credentials</div></div>
+            <div style="font-size:12.5px;color:var(--tx-2);line-height:1.6">
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:8px;background:var(--bg);margin-bottom:6px">
+                <span style="font-weight:500;color:var(--tx-3);font-size:11px;text-transform:uppercase;letter-spacing:.02em">Registered Email</span>
+                <span style="font-family:monospace;font-weight:600;color:var(--navy)">${CU.email}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border-radius:8px;background:var(--bg)">
+                <span style="font-weight:500;color:var(--tx-3);font-size:11px;text-transform:uppercase;letter-spacing:.02em">Mobile Access PIN</span>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span id="my-pin-code" style="font-family:monospace;font-weight:700;letter-spacing:2px;color:var(--gold)">••••</span>
+                  <button class="btn btn-ghost btn-sm" onclick="toggleMyPin(this)" style="padding:2px 6px;font-size:11px;border:1px solid var(--bdr-2);border-radius:4px"><i class="ti ti-eye"></i> Show</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="sec-hd"><div class="sec-title">Announcements</div></div>
+            ${ANNOUNCEMENTS.map(a=>`<div style="margin-bottom:13px;padding-bottom:13px;border-bottom:1px solid var(--bdr)">
+              <div style="font-size:13px;font-weight:600;color:${a.priority==='high'?'var(--red)':'var(--tx)'}">${a.priority==='high'?'🔴 ':''}${a.title}</div>
+              <div style="font-size:11.5px;color:var(--tx-2);margin-top:5px;line-height:1.55">${a.body.slice(0,120)}…</div>
+              <div style="font-size:10.5px;color:var(--tx-3);margin-top:4px">${a.date}</div>
+            </div>`).join('')}
+          </div>
+        </div>
+      </div>`;
+    const sc = $('staff-clock-big');
+    if (sc) {
+      const tick = () => { if (sc.isConnected) { sc.textContent = fmtTime(new Date()); setTimeout(tick,1000); } };
+      tick();
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAGE: SCHEDULE
+// ═══════════════════════════════════════════════════════════════════════════
+function pgSchedule() {
+  if (isManager()) {
+    const staff = USERS.filter(u => u.role === 'staff');
+    $('content-area').innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:gap;gap:10px">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--tx-2)">Week: ${SCHEDULE.week}</div>
+          ${SCHEDULE.published?`<span class="badge badge-green" style="margin-top:5px"><i class="ti ti-circle-check"></i> Published ${SCHEDULE.publishedAt}</span>`:'<span class="badge badge-gold" style="margin-top:5px">Draft — staff cannot see this yet</span>'}
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="toast('Previous week loading…','info')"><i class="ti ti-chevron-left"></i> Prev week</button>
+          <button class="btn" onclick="toast('Next week loading…','info')">Next week <i class="ti ti-chevron-right"></i></button>
+          <button class="btn" onclick="toast('Week copied!','ok')"><i class="ti ti-copy"></i> Copy Week</button>
+        </div>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+        <div style="overflow-x:auto">
+          <div class="sched-grid" style="min-width:760px; grid-template-columns: 180px repeat(${DAYS.length}, 1fr);">
+            <div class="sched-head" style="text-align:left;padding:10px 14px">Staff Member</div>
+            ${DAYS.map((d,i)=>`<div class="sched-head">${d}<div style="font-size:9px;margin-top:1px;opacity:.6">${FULL_DAYS[i]}</div></div>`).join('')}
+            ${staff.map(u => {
+              const totalH = DAYS.reduce((a,d) => a + getShiftHours(SCHEDULE.shifts[u.id]?.[d]), 0);
+              return `
+                <div class="sched-emp"><div style="display:flex;align-items:center;gap:9px">${mkAv(u,28)}<div><div style="font-weight:600;font-size:12px">${u.name}</div><div style="font-size:10px;color:var(--tx-3)">${deptDot(u.dept)}${u.dept}</div></div></div><div style="margin-left:auto;font-size:11px;font-weight:700;color:var(--navy-3);padding-right:8px">${totalH}h</div></div>
+                ${DAYS.map(d => {
+                  const sh = SCHEDULE.shifts[u.id]?.[d];
+                  return `<div class="sched-cell" style="text-align:center;cursor:pointer" onclick="editShift(${u.id},'${d}')">
+                    ${sh ? shiftTag(sh.type, true) + (sh.type!=='Off'?`<div style="font-size:9.5px;font-weight:600;color:var(--tx-2);margin-top:3.5px">${formatShiftTime(sh.start, sh.end)}</div><div style="font-size:9px;color:var(--tx-3);margin-top:1.5px">${sh.location}</div>`:'') : '<span style="color:var(--tx-4);font-size:12px">+</span>'}
+                  </div>`;
+                }).join('')}`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+        ${Object.entries(SHIFT_TYPES).map(([k,v])=>`<div style="display:flex;align-items:center;gap:5px">${shiftTag(k)}<span style="font-size:11px;color:var(--tx-2)">${v.label}</span></div>`).join('')}
+        <div style="margin-left:auto;font-size:12px;color:var(--tx-3)">Click a cell to edit shift</div>
+      </div>`;
+  } else {
+    // Staff — ONLY their own schedule, no other staff visible
+    const myS = SCHEDULE.shifts[CU.id] || {};
+    $('content-area').innerHTML = `
+      <div class="card" style="background:var(--navy);border:none;margin-bottom:18px">
+        <div style="display:flex;align-items:center;gap:14px">${mkAv(CU,52)}<div><div style="font-family:var(--serif);color:#fff;font-size:20px">${CU.name}</div><div style="font-size:12px;color:rgba(255,255,255,.5)">${CU.pos} · ${CU.dept}</div></div></div>
+      </div>
+      ${!SCHEDULE.published ? `
+        <div class="card" style="text-align:center;padding:48px 24px">
+          <i class="ti ti-calendar-time" style="font-size:48px;color:var(--tx-4);display:block;margin-bottom:14px"></i>
+          <div style="font-size:16px;font-weight:700;margin-bottom:8px">Schedule not yet published</div>
+          <div style="font-size:13px;color:var(--tx-2)">You'll receive a notification when your schedule for the week is ready to view.</div>
+        </div>` : `
+      <div style="background:var(--green-lt);border:1.5px solid var(--green);border-radius:var(--r12);padding:11px 16px;margin-bottom:18px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--green-dk)">
+        <i class="ti ti-circle-check" style="font-size:18px"></i><strong>Your schedule for ${SCHEDULE.week} is published.</strong>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="sec-hd"><div class="sec-title">Week of ${SCHEDULE.week}</div></div>
+        ${DAYS.map((d,i)=>{const sh=myS[d];if(!sh)return'';const today=new Date().getDay() === (i+1)%7;return`
+          <div style="padding:14px 16px;border-radius:12px;border:${today?'2px solid var(--gold)':'1.5px solid var(--bdr)'};background:${today?'var(--gold-pale)':'var(--sfc)'};margin-bottom:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
+                  <span style="font-size:13px;font-weight:700;min-width:72px;color:${today?'var(--amber)':'var(--tx-2)'}">${FULL_DAYS[i]}</span>
+                  ${shiftTag(sh.type)}
+                  ${today?'<span class="badge badge-gold">Today</span>':''}
+                </div>
+                ${sh.type!=='Off'?`<div style="font-size:12px;color:var(--tx-2);padding-left:82px">
+                  <i class="ti ti-clock" style="font-size:12px"></i> <strong>${formatShiftTime(sh.start, sh.end)}</strong>
+                  &nbsp;·&nbsp;<i class="ti ti-map-pin" style="font-size:12px"></i> ${sh.location}
+                  ${sh.notes?`&nbsp;·&nbsp;${sh.notes}`:''}
+                </div>`:''}
+              </div>
+              ${sh.ack?'<span class="badge badge-green"><i class="ti ti-check"></i> Acknowledged</span>':`<button class="btn btn-primary btn-sm" onclick="ackShift(${CU.id},'${d}')"><i class="ti ti-check"></i> Acknowledge</button>`}
+            </div>
+          </div>`;}).join('')}
+      </div>
+      <div class="card">
+        <div class="sec-title" style="margin-bottom:14px">Week summary</div>
+        <div class="g3">
+          ${Object.entries(SHIFT_TYPES).map(([t,v])=>{
+            const cnt=Object.values(myS).filter(s=>s.type===t).length;
+            if(!cnt)return'';
+            return`<div style="padding:12px;border-radius:10px;background:${v.bg};border:1px solid ${v.color}22"><div style="font-size:22px;font-weight:700;color:${v.color}">${cnt}×</div><div style="font-size:11px;color:var(--tx-2);margin-top:2px">${v.label}</div></div>`;
+          }).join('')}
+        </div>
+      </div>`}`;
+  }
+}
+
+function ackShift(uid, day) {
+  if (SCHEDULE.shifts[uid]?.[day]) SCHEDULE.shifts[uid][day].ack = true;
+  pgSchedule(); toast('Shift acknowledged!', 'ok');
+}
+
+function publishSchedule() {
+  SCHEDULE.published = true;
+  SCHEDULE.publishedAt = new Date().toLocaleString('en-CA', { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  navigate('schedule'); toast('Schedule published! All staff have been notified.', 'ok');
+}
+
+function editShift(uid, day) {
+  const sh = SCHEDULE.shifts[uid]?.[day] || {};
+  const u = USERS.find(x => x.id === uid);
+  openModal(`Edit Shift — ${u?.name} · ${FULL_DAYS[DAYS.indexOf(day)]}`, `
+    <div class="fg"><label class="fl">Shift Type</label>
+      <select class="fc" id="es-type">${Object.keys(SHIFT_TYPES).map(t=>`<option value="${t}" ${sh.type===t?'selected':''}>${SHIFT_TYPES[t].label}</option>`).join('')}</select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="fg"><label class="fl">Start time</label><input class="fc" id="es-start" type="time" value="${sh.start||'15:30'}"></div>
+      <div class="fg"><label class="fl">End time</label><input class="fc" id="es-end" type="time" value="${sh.end||'18:30'}"></div>
+    </div>
+    <div class="fg"><label class="fl">Location / Room</label><input class="fc" id="es-loc" value="${sh.location||''}" placeholder="Room 101, Staff Room, Gymnasium…"></div>
+    <div class="fg"><label class="fl">Notes (optional)</label><input class="fc" id="es-notes" value="${sh.notes||''}" placeholder="Any additional details…"></div>`,
+    `<button class="btn btn-primary" onclick="saveEditShift(${uid},'${day}')"><i class="ti ti-device-floppy"></i> Save</button><button class="btn" onclick="closeModal()">Cancel</button>`);
+
+  const setupModalListeners = () => {
+    const sel = $('es-type');
+    const startInput = $('es-start');
+    const endInput = $('es-end');
+    const locInput = $('es-loc');
+    
+    if (!sel || !startInput || !endInput) return;
+    
+    const updateStates = () => {
+      const type = sel.value;
+      if (type === 'Off') {
+        startInput.value = '';
+        endInput.value = '';
+        startInput.disabled = true;
+        endInput.disabled = true;
+        if (!locInput.value || locInput.value === 'Office') {
+          locInput.value = 'Off';
+        }
+        locInput.disabled = true;
+      } else {
+        startInput.disabled = false;
+        endInput.disabled = false;
+        locInput.disabled = false;
+        if (!startInput.value) startInput.value = '15:30';
+        if (!endInput.value) endInput.value = '18:30';
+        if (locInput.value === 'Off') locInput.value = '';
+      }
+    };
+    
+    sel.addEventListener('change', updateStates);
+    updateStates(); // Initialize state
+  };
+  setTimeout(setupModalListeners, 50);
+}
+function saveEditShift(uid, day) {
+  if (!SCHEDULE.shifts[uid]) SCHEDULE.shifts[uid] = {};
+  const type = $('es-type').value;
+  const start = $('es-start').value;
+  const end = $('es-end').value;
+  
+  if (type !== 'Off' && (!start || !end)) {
+    toast('Please enter both start and end times for manual entry.', 'warn');
+    return;
+  }
+  
+  SCHEDULE.shifts[uid][day] = { 
+    type, 
+    start: type === 'Off' ? null : start, 
+    end: type === 'Off' ? null : end, 
+    location: $('es-loc').value, 
+    notes: $('es-notes').value, 
+    ack: false 
+  };
+  saveSchedule();
+  closeModal(); pgSchedule(); toast('Shift updated!', 'ok');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAGE: MOBILE CHECK-IN
+// ═══════════════════════════════════════════════════════════════════════════
+let MOB = { step: 'select', empId: null, pin: '', action: 'in', gpsResult: null };
+
+function pgCheckin() {
+  $('content-area').innerHTML = `
+    <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+
+      <!-- PHONE SIMULATOR -->
+      <div class="phone-outer">
+        <div class="phone-notch"><div class="phone-notch-pill"></div></div>
+        <div class="phone-screen" id="phone-screen">
+          <div class="phone-header">
+            <div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:2px">StaffBase · Time Clock</div>
+            <div id="mob-clock" style="font-size:30px;font-weight:700;color:#fff;letter-spacing:1px"></div>
+            <div style="font-size:11px;color:rgba(255,255,255,.5);margin-top:2px">${new Date().toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'})}</div>
+          </div>
+          <div class="phone-body" id="phone-body"></div>
+        </div>
+      </div>
+
+      <!-- CONTROL PANEL (manager) / INFO (staff) -->
+      <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:16px">
+
+        ${isManager() ? `
+        <!-- GPS Settings -->
+        <div class="card">
+          <div class="sec-hd">
+            <div class="sec-title"><i class="ti ti-map-pin" style="color:var(--green)"></i> GPS Geofence Settings</div>
+            <span class="badge badge-green">Active</span>
+          </div>
+          <div style="background:var(--green-lt);border:1.5px solid rgba(10,140,106,.2);border-radius:var(--r10);padding:12px 14px;margin-bottom:14px;font-size:12px;color:var(--green-dk)">
+            <div><strong>School location:</strong> ${SCHOOL.address}</div>
+            <div style="margin-top:3px"><strong>Coordinates:</strong> ${SCHOOL.lat}, ${SCHOOL.lng}</div>
+            <div style="margin-top:3px"><strong>Geofence radius:</strong> ${SCHOOL.radius} metres</div>
+            <div style="margin-top:3px;font-size:11px;opacity:.8">Staff must be within ${SCHOOL.radius}m of school to clock in via GPS. Admins can override.</div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+            <div class="fg"><label class="fl">Latitude</label><input class="fc" id="gps-lat" value="${SCHOOL.lat}" type="number" step="0.0001"></div>
+            <div class="fg"><label class="fl">Longitude</label><input class="fc" id="gps-lng" value="${SCHOOL.lng}" type="number" step="0.0001"></div>
+          </div>
+          <div class="fg"><label class="fl">Geofence Radius (metres)</label><input class="fc" id="gps-radius" value="${SCHOOL.radius}" type="number" min="50" max="2000"></div>
+          <button class="btn btn-green btn-sm" onclick="saveGPSSettings()"><i class="ti ti-device-floppy"></i> Save GPS Settings</button>
+        </div>
+
+        <!-- Admin manual clock -->
+        <div class="card">
+          <div class="sec-title" style="margin-bottom:12px">Manual override (admin)</div>
+          <div class="fg"><label class="fl">Staff member</label>
+            <select class="fc" id="admin-emp-sel">
+              <option value="">— Select staff member —</option>
+              ${USERS.filter(u=>u.role==='staff').map(u=>`<option value="${u.id}">${u.name} (${u.pos})</option>`).join('')}
+            </select>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <button class="btn btn-green" onclick="adminClock('in')" style="justify-content:center"><i class="ti ti-login"></i> Clock In</button>
+            <button class="btn btn-red" onclick="adminClock('out')" style="justify-content:center"><i class="ti ti-logout"></i> Clock Out</button>
+          </div>
+        </div>` : ''}
+
+        <!-- Live status -->
+        <div class="card">
+          <div class="sec-title" style="margin-bottom:12px">Today's status</div>
+          ${USERS.filter(u=>u.role==='staff').map(s=>{
+            const cd=CLOCK_DATA[s.id];
+            return`<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:9px;background:${cd?.status==='in'?'var(--green-lt)':'var(--bg)'};margin-bottom:6px">
+              <div style="display:flex;align-items:center;gap:8px">${mkAv(s,28)}<div><div style="font-size:12px;font-weight:600">${s.name.split(' ')[0]} ${s.name.split(' ').pop()}</div>
+              <div style="font-size:10.5px;color:var(--tx-3)">${cd?.in?`In: ${cd.in}${cd.out?' · Out: '+cd.out:''}` : 'Not checked in'}</div></div></div>
+              <div style="display:flex;align-items:center;gap:6px">
+                ${cd?.gpsOK===true?'<i class="ti ti-map-pin" style="color:var(--green);font-size:13px" title="GPS verified"></i>':cd?.gpsOK===false?'<i class="ti ti-map-pin-off" style="color:var(--amber);font-size:13px" title="Override"></i>':''}
+                ${clockBadge(s.id)}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+
+        <!-- Check-in log -->
+        <div class="card">
+          <div class="sec-title" style="margin-bottom:12px">Check-in log <span style="font-size:11px;font-weight:400;color:var(--tx-3)">(today)</span></div>
+          ${CHECKIN_LOG.length===0?'<div style="color:var(--tx-3);font-size:12.5px">No activity logged yet today.</div>':
+          CHECKIN_LOG.slice(0,10).map(l=>{
+            const e=USERS.find(u=>u.id===l.uid);
+            return`<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:8px;background:var(--bg);margin-bottom:5px">
+              <div style="display:flex;align-items:center;gap:7px">
+                <div class="sdot" style="background:${l.type==='in'?'var(--green)':'var(--red)'}"></div>
+                ${mkAv(e||{name:'?',av:'?'},22)}
+                <span style="font-size:12px;font-weight:500">${e?.name?.split(' ').slice(0,2).join(' ')}</span>
+                <span class="badge ${l.type==='in'?'badge-green':'badge-red'}">${l.type==='in'?'In':'Out'}</span>
+              </div>
+              <div style="font-size:11px;color:var(--tx-3);display:flex;align-items:center;gap:5px">
+                ${l.gpsOK===true?'<i class="ti ti-map-pin" style="color:var(--green);font-size:12px"></i>':l.gpsOK===false?'<i class="ti ti-map-pin-off" style="color:var(--amber);font-size:12px"></i>':''}
+                ${l.time}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+
+      </div>
+    </div>`;
+
+  renderMobScreen();
+  const mc = $('mob-clock');
+  if (mc) {
+    const tick = () => { if (mc.isConnected) { mc.textContent = fmtTime(new Date()); setTimeout(tick,1000); } };
+    tick();
+  }
+}
+
+function renderMobScreen() {
+  const pb = $('phone-body');
+  if (!pb) return;
+  const staff = USERS.filter(u => u.role === 'staff');
+
+  if (MOB.step === 'select') {
+    pb.innerHTML = `
+      <div style="font-size:12.5px;font-weight:600;color:var(--tx-2);margin-bottom:10px">Select your name to continue</div>
+      ${staff.map(s => {
+        const cd = CLOCK_DATA[s.id];
+        const stat = cd?.status==='in' ? ['badge-green','Clocked In'] : cd?.status==='out' ? ['badge-gray','Done'] : ['badge-gold','Away'];
+        return `<div class="mob-emp-row" onclick="mobSelectEmp(${s.id})">
+          <div style="display:flex;align-items:center;gap:9px">${mkAv(s,36)}<div><div style="font-size:13px;font-weight:600">${s.name}</div><div style="font-size:11px;color:var(--tx-3)">${s.pos}</div></div></div>
+          <span class="badge ${stat[0]}">${stat[1]}</span>
+        </div>`;
+      }).join('')}`;
+  }
+
+  else if (MOB.step === 'pin') {
+    const u = USERS.find(x => x.id === MOB.empId);
+    const actionLbl = MOB.action === 'in' ? 'Clock In' : 'Clock Out';
+    pb.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:var(--r10);padding:10px 12px;margin-bottom:16px">
+        ${mkAv(u,38)}<div><div style="font-size:13px;font-weight:700">${u?.name}</div><div style="font-size:11px;color:var(--tx-3)">${actionLbl} · ${u?.dept}</div></div>
+      </div>
+      <div style="text-align:center;margin-bottom:12px">
+        <div style="font-size:11.5px;color:var(--tx-3);margin-bottom:8px">Enter your 4-digit PIN</div>
+        <div id="mob-pin-dots" style="font-size:28px;letter-spacing:12px;min-height:40px;color:var(--navy)">○○○○</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:220px;margin:0 auto 12px">
+        ${['1','2','3','4','5','6','7','8','9','CLR','0','⌫'].map(k=>`<button class="numpad-btn${k==='CLR'?' clr':''}" style="padding:10px;background:var(--bg);color:var(--tx);border:1.5px solid var(--bdr-2);font-size:14px" onclick="mobPin('${k}')">${k}</button>`).join('')}
+      </div>
+      <div id="mob-pin-err" style="color:var(--red);font-size:11.5px;text-align:center;min-height:18px;margin-bottom:8px"></div>
+      <button class="btn btn-primary btn-lg" style="width:100%;justify-content:center" onclick="mobSubmitPin()"><i class="ti ti-arrow-right"></i> Continue</button>
+      <button onclick="MOB.step='select';MOB.pin='';renderMobScreen()" style="width:100%;padding:8px;border:none;background:transparent;color:var(--tx-3);font-size:12px;cursor:pointer;margin-top:6px">← Back</button>`;
+    updateMobPinDots();
+  }
+
+  else if (MOB.step === 'gps') {
+    pb.innerHTML = `
+      <div style="text-align:center;padding:24px 0">
+        <div class="gps-ring-outer"><div class="gps-pulse"></div><div class="gps-pulse-2"></div><div class="gps-core"><i class="ti ti-map-pin" style="color:#fff;font-size:18px"></i></div></div>
+        <div style="font-size:14px;font-weight:700;margin-top:18px" id="gps-txt">Locating you…</div>
+        <div style="font-size:12px;color:var(--tx-3);margin-top:5px" id="gps-sub">Verifying you're at ${SCHOOL.name}</div>
+        <div id="gps-result-area" style="margin-top:14px"></div>
+      </div>`;
+    startGPS();
+  }
+
+  else if (MOB.step === 'done') {
+    const u = USERS.find(x => x.id === MOB.empId);
+    const cd = CLOCK_DATA[MOB.empId];
+    const success = MOB.action === 'in';
+    pb.innerHTML = `
+      <div style="text-align:center;padding:20px 0">
+        <div style="font-size:56px;margin-bottom:14px">${success ? '✅' : '👋'}</div>
+        <div style="font-size:18px;font-weight:700;color:${success?'var(--green)':'var(--navy)'};margin-bottom:6px">${success ? 'Clocked In!' : 'Clocked Out!'}</div>
+        <div style="font-size:13px;color:var(--tx-2);margin-bottom:4px">${u?.name}</div>
+        <div style="font-size:13px;color:var(--tx-2)">Time: <strong>${success ? cd?.in : cd?.out}</strong></div>
+        <div style="font-size:12px;margin-top:8px;color:${MOB.gpsResult?.ok?'var(--green)':'var(--amber)'}">
+          <i class="ti ${MOB.gpsResult?.ok?'ti-map-pin':'ti-map-pin-off'}"></i>
+          ${MOB.gpsResult?.ok ? `GPS verified · ${MOB.gpsResult.dist}m from school` : 'Location override used'}
+        </div>
+        <div style="background:var(--bg);border-radius:var(--r10);padding:10px;margin-top:14px;font-size:11.5px;color:var(--tx-2)">
+          ${success?`Shift ends: <strong>${SCHEDULE.shifts[MOB.empId]?.Mon?.end || '16:00'}</strong>`:`Total today: <strong>${cd?.in && cd?.out ? 'see timesheets' : '—'}</strong>`}
+        </div>
+        <button onclick="MOB={step:'select',empId:null,pin:'',action:'in',gpsResult:null};renderMobScreen()" class="btn btn-primary" style="margin-top:18px;width:100%;justify-content:center"><i class="ti ti-arrow-left"></i> Back to names</button>
+      </div>`;
+  }
+}
+
+function mobSelectEmp(uid) {
+  const cd = CLOCK_DATA[uid];
+  MOB.empId = uid;
+  MOB.action = cd?.status === 'in' ? 'out' : 'in';
+  MOB.pin = '';
+  MOB.step = 'pin';
+  renderMobScreen();
+}
+function mobPin(k) {
+  if (k === 'CLR') MOB.pin = '';
+  else if (k === '⌫') MOB.pin = MOB.pin.slice(0, -1);
+  else if (MOB.pin.length < 4) MOB.pin += k;
+  updateMobPinDots();
+  const errEl = $('mob-pin-err');
+  if (errEl) errEl.textContent = '';
+}
+function updateMobPinDots() {
+  const el = $('mob-pin-dots');
+  if (el) el.textContent = '●'.repeat(MOB.pin.length) + '○'.repeat(4 - MOB.pin.length);
+}
+function mobSubmitPin() {
+  const u = USERS.find(x => x.id === MOB.empId);
+  if (!u || MOB.pin !== u.pin) {
+    const err = $('mob-pin-err'); if (err) err.textContent = 'Incorrect PIN. Please try again.';
+    MOB.pin = ''; updateMobPinDots(); return;
+  }
+  MOB.step = 'gps'; renderMobScreen();
+}
+
+function startGPS() {
+  if (!navigator.geolocation) { showGPSFallback('GPS not supported in this browser.'); return; }
+  const lat0 = parseFloat($('gps-lat')?.value || SCHOOL.lat);
+  const lng0 = parseFloat($('gps-lng')?.value || SCHOOL.lng);
+  const rad  = parseInt($('gps-radius')?.value || SCHOOL.radius);
+
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      const { latitude: lat, longitude: lng, accuracy } = pos.coords;
+      const dist = gpsDist(lat, lng, lat0, lng0);
+      const within = dist <= rad;
+      const gtxt = $('gps-txt'); const gsub = $('gps-sub'); const garea = $('gps-result-area');
+      if (gtxt) gtxt.textContent = within ? '✅ Location verified!' : '⚠️ Outside school grounds';
+      if (gsub) gsub.textContent = `You are ${dist}m from school${accuracy ? ` (±${Math.round(accuracy)}m accuracy)` : ''}`;
+      if (within) {
+        if (garea) garea.innerHTML = `<div class="gps-status-box success"><div style="font-size:13px;font-weight:600;color:var(--green-dk)">${dist}m from school · Within ${rad}m geofence</div></div>`;
+        setTimeout(() => completeCheckin(true, lat, lng, dist), 1200);
+      } else {
+        if (garea) garea.innerHTML = `
+          <div class="gps-status-box warning" style="margin-bottom:10px">
+            <div style="font-size:13px;font-weight:600;color:var(--amber)">You are ${dist}m away (limit: ${rad}m)</div>
+            <div style="font-size:11.5px;color:var(--tx-2);margin-top:4px">You appear to be outside the school geofence.</div>
+          </div>
+          ${isManager()?`<button class="btn btn-gold" style="width:100%;justify-content:center" onclick="completeCheckin(false,${lat},${lng},${dist})"><i class="ti ti-shield-check"></i> Admin Override & ${MOB.action==='in'?'Clock In':'Clock Out'}</button>`:'<div style="font-size:12px;color:var(--red);margin-top:8px">Please contact your manager to override.</div>'}`;
+      }
+    },
+    err => showGPSFallback(err.code === 1 ? 'Location permission denied. Please enable in browser settings.' : 'Could not determine your location.'),
+    { timeout: 10000, enableHighAccuracy: true, maximumAge: 30000 }
+  );
+}
+
+function showGPSFallback(reason) {
+  const gtxt=$('gps-txt'),gsub=$('gps-sub'),garea=$('gps-result-area');
+  if(gtxt) gtxt.textContent='GPS Unavailable';
+  if(gsub) gsub.textContent=reason;
+  if(garea) garea.innerHTML=`
+    <div class="gps-status-box warning" style="margin-bottom:10px"><div style="font-size:12px;color:var(--amber-lt);">${reason}</div><div style="font-size:11px;color:var(--tx-2);margin-top:4px">In the real mobile app, GPS works on-device automatically.</div></div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:8px" onclick="completeCheckin(false,null,null,null)"><i class="ti ti-login"></i> Continue (Demo / Override)</button>
+    <button onclick="MOB.step='select';renderMobScreen()" style="width:100%;padding:8px;border:none;background:transparent;color:var(--tx-3);font-size:12px;cursor:pointer">← Cancel</button>`;
+}
+
+function completeCheckin(gpsOK, lat, lng, dist) {
+  MOB.gpsResult = { ok: gpsOK, lat, lng, dist };
+  doClock(MOB.empId, MOB.action, gpsOK, lat, lng, dist);
+  MOB.step = 'done';
+  renderMobScreen();
+  pgCheckin(); // refresh live status panel
+  // re-render phone screen after refresh
+  setTimeout(()=>renderMobScreen(),50);
+}
+
+function saveGPSSettings() {
+  SCHOOL.lat    = parseFloat($('gps-lat')?.value || SCHOOL.lat);
+  SCHOOL.lng    = parseFloat($('gps-lng')?.value || SCHOOL.lng);
+  SCHOOL.radius = parseInt($('gps-radius')?.value || SCHOOL.radius);
+  toast('GPS geofence settings saved!', 'ok');
+}
+function adminClock(type) {
+  const uid = parseInt($('admin-emp-sel')?.value);
+  if (!uid) { toast('Please select a staff member.', 'warn'); return; }
+  doClock(uid, type, false, null, null, null);
+  pgCheckin();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAGE: TIMESHEETS
+// ═══════════════════════════════════════════════════════════════════════════
+function pgTimesheets(deptFilter = '') {
+  let staff = USERS.filter(u => u.role === 'staff');
+  if (deptFilter) {
+    staff = staff.filter(u => u.dept === deptFilter);
+  }
+  const getH = uid => DAYS.reduce((a,d) => a + getShiftHours(SCHEDULE.shifts[uid]?.[d]), 0);
+  $('content-area').innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select class="fc" style="width:160px"><option>This week</option><option>Last week</option><option>This month</option><option>Last month</option></select>
+        <select class="fc" style="width:160px" onchange="pgTimesheets(this.value)">
+          <option value="">All departments</option>
+          ${SUBJECTS.map(d=>`<option value="${d}" ${deptFilter===d?'selected':''}>${d}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-sm" onclick="toast('Exporting CSV…','info')"><i class="ti ti-file-spreadsheet"></i> Export CSV</button>
+        <button class="btn btn-sm" onclick="toast('Printing…','info')"><i class="ti ti-printer"></i> Print</button>
+      </div>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+      <div style="overflow-x:auto">
+        <table class="tbl" style="min-width:680px">
+          <thead><tr>
+            <th style="width:200px">Employee</th>
+            ${DAYS.map(d=>`<th style="text-align:center">${d}</th>`).join('')}
+            <th style="text-align:center">Total</th>
+            <th style="text-align:center">Overtime</th>
+            <th style="text-align:center">Status</th>
+          </tr></thead>
+          <tbody>
+          ${staff.map((u,ri) => {
+            const total = getH(u.id);
+            const ot = Math.max(0, total - 40);
+            return `<tr>
+              <td><div style="display:flex;align-items:center;gap:9px">${mkAv(u,30)}<div><div style="font-weight:600">${u.name}</div><div style="font-size:11px;color:var(--tx-3)">${deptDot(u.dept)}${u.dept}</div></div></div></td>
+              ${DAYS.map(d=>{const s=SCHEDULE.shifts[u.id]?.[d];return`<td style="text-align:center;font-size:12.5px;color:${s?.type==='Off'?'var(--tx-4)':'var(--tx)'}">${s?.type==='Off'?'–':s?`${getShiftHours(s)}h`:'–'}</td>`;}).join('')}
+              <td style="text-align:center;font-weight:700;font-size:14px;color:${ot>0?'var(--red)':'var(--tx)'}">${total}h</td>
+              <td style="text-align:center;font-size:13px;color:${ot>0?'var(--red)':'var(--tx-4)'};font-weight:${ot>0?700:400}">${ot>0?`+${ot}h OT`:'—'}</td>
+              <td style="text-align:center"><span class="badge ${total>=15?'badge-green':'badge-gold'}">${total>=15?'Complete':'Partial'}</span></td>
+            </tr>`;
+          }).join('')}
+          <tr style="background:var(--bg);font-weight:700">
+            <td colspan="${1 + DAYS.length}" style="font-size:12px;color:var(--tx-2);padding:10px 14px">Totals</td>
+            <td style="text-align:center;font-size:14px;font-weight:700">${staff.reduce((a,u)=>a+getH(u.id),0)}h</td>
+            <td style="text-align:center;font-size:13px;color:var(--red)">${staff.reduce((a,u)=>a+Math.max(0,getH(u.id)-40),0)>0?`+${staff.reduce((a,u)=>a+Math.max(0,getH(u.id)-40),0)}h`:'—'}</td>
+            <td></td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="g4">
+      <div class="metric"><div class="metric-label">Total scheduled hours</div><div class="metric-val" style="color:var(--blue)">${staff.reduce((a,u)=>a+getH(u.id),0)}h</div></div>
+      <div class="metric"><div class="metric-label">Overtime hours</div><div class="metric-val" style="color:var(--red)">${staff.reduce((a,u)=>a+Math.max(0,getH(u.id)-40),0)}h</div><div class="metric-sub">at time & a half</div></div>
+      <div class="metric"><div class="metric-label">Avg per staff</div><div class="metric-val" style="color:var(--green)">${Math.round(staff.reduce((a,u)=>a+getH(u.id),0)/staff.length)}h</div></div>
+      <div class="metric"><div class="metric-label">Staff at full hours</div><div class="metric-val">${staff.filter(u=>getH(u.id)>=38).length}/${staff.length}</div></div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAGE: STAFF MANAGEMENT
+// ═══════════════════════════════════════════════════════════════════════════
+function pgStaff() {
+  // Check for duplicates in USERS roster
+  const seen = {};
+  const duplicates = [];
+  USERS.forEach(u => {
+    if (u.active) {
+      const name = u.name.trim().toLowerCase();
+      if (seen[name]) {
+        if (!duplicates.some(d => d.name.trim().toLowerCase() === name)) {
+          duplicates.push(seen[name]);
+        }
+        duplicates.push(u);
+      } else {
+        seen[name] = u;
+      }
+    }
+  });
+
+  let duplicateBanner = '';
+  if (duplicates.length > 0) {
+    duplicateBanner = `
+      <div class="card" style="background:var(--red-lt);border:1.5px solid var(--red);margin-bottom:18px;padding:14px 18px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:22px">⚠️</span>
+            <div>
+              <div style="font-weight:700;color:#9a2215;font-size:13.5px">Duplicate Staff Names Detected!</div>
+              <div style="font-size:12px;color:var(--tx-2);margin-top:2px">We detected duplicate active profiles for: <strong>${Array.from(new Set(duplicates.map(d=>d.name))).join(', ')}</strong>. This can cause login and punch reporting issues.</div>
+            </div>
+          </div>
+          <button class="btn btn-red btn-sm" onclick="showDuplicateCleanup()"><i class="ti ti-trash"></i> Resolve Duplicates</button>
+        </div>
+      </div>`;
+  }
+
+  $('content-area').innerHTML = `
+    ${duplicateBanner}
+    <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+      <input class="fc" id="staff-search" style="max-width:260px;flex:1" placeholder="Search by name, role, department…" oninput="filterStaff(this.value, $('staff-role-filter').value, $('staff-dept-filter').value)">
+      <select class="fc" id="staff-role-filter" style="width:160px" onchange="filterStaff($('staff-search').value, this.value, $('staff-dept-filter').value)">
+        <option value="">All roles</option>
+        <option value="principal_owner">Principal/Owner</option>
+        <option value="administrator">Administrator</option>
+        <option value="office_manager">Office Manager</option>
+        <option value="coordinator">Coordinator</option>
+        <option value="teaching_assistant">Teaching Assistant</option>
+        <option value="grader">Grader</option>
+      </select>
+      <select class="fc" id="staff-dept-filter" style="width:160px" onchange="filterStaff($('staff-search').value, $('staff-role-filter').value, this.value)">
+        <option value="">All departments</option>
+        ${SUBJECTS.map(d=>`<option value="${d}">${d}</option>`).join('')}
+      </select>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="overflow-x:auto">
+        <table class="tbl" id="staff-tbl">
+          <thead><tr>
+            <th style="min-width:200px">Name &amp; Email</th>
+            <th>Role</th><th>Department</th><th>Position</th>
+            <th>PIN</th><th>Phone</th><th>Status</th>
+            ${can('manage_staff')?'<th>Actions</th>':''}
+          </tr></thead>
+          <tbody id="staff-tbody"></tbody>
+        </table>
+      </div>
+    </div>`;
+  renderStaffTable(USERS);
+}
+
+function renderStaffTable(list) {
+  const tb = $('staff-tbody');
+  if (!tb) return;
+  tb.innerHTML = list.map(u => {
+    const canDelete = !u.active && (CU.role === 'principal_owner' || CU.role === 'administrator');
+    return `<tr style="opacity:${u.active?1:.5}">
+    <td><div style="display:flex;align-items:center;gap:10px">${mkAv(u,32)}<div><div style="font-weight:600">${u.name}</div><div style="font-size:11px;color:var(--tx-3)">${u.email}</div></div></div></td>
+    <td>${roleBadge(u.role)}</td>
+    <td><div style="display:flex;align-items:center">${deptDot(u.dept)}<span>${u.dept}</span></div></td>
+    <td style="font-size:12.5px;color:var(--tx-2)">${u.pos}</td>
+    <td><code style="background:var(--bg);padding:2px 8px;border-radius:5px;font-size:12px;border:1px solid var(--bdr)">${u.pin}</code></td>
+    <td style="font-size:12px;color:var(--tx-2)">${u.phone}</td>
+    <td><span class="badge ${u.active?'badge-green':'badge-gray'}">${u.active?'Active':'Inactive'}</span></td>
+    ${can('manage_staff')?`<td><div style="display:flex;gap:5px"><button class="btn btn-sm" onclick="editStaff(${u.id})"><i class="ti ti-edit"></i></button><button class="btn btn-sm ${u.active?'btn-red':'btn-green'}" onclick="toggleStaff(${u.id})">${u.active?'Deactivate':'Activate'}</button>${canDelete?`<button class="btn btn-sm btn-red" onclick="confirmDeleteStaff(${u.id})" title="Permanently delete this inactive employee"><i class="ti ti-trash"></i> Delete</button>`:''}</div></td>`:''}
+  </tr>`;
+  }).join('');
+}
+function filterStaff(q, role, dept) {
+  const filtered = USERS.filter(u => {
+    const matchQ = !q || u.name.toLowerCase().includes(q.toLowerCase()) || u.dept.toLowerCase().includes(q.toLowerCase()) || u.email.toLowerCase().includes(q.toLowerCase());
+    const matchR = !role || u.role === role;
+    const matchD = !dept || u.dept === dept;
+    return matchQ && matchR && matchD;
+  });
+  renderStaffTable(filtered);
+}
+function toggleStaff(id) { 
+  USERS = USERS.map(u => u.id === id ? { ...u, active: !u.active } : u); 
+  saveUsers();
+  pgStaff(); 
+  toast('Staff status updated.', 'ok'); 
+}
+
+function confirmDeleteStaff(id) {
+  const u = USERS.find(x => x.id === id);
+  if (!u) return;
+  if (u.active) { toast('Only inactive/deactivated employees can be deleted.', 'err'); return; }
+  if (CU.role !== 'owner' && CU.role !== 'admin') { toast('Access Denied: Only Administrators can delete staff records.', 'err'); return; }
+  
+  openModal('⚠️ Permanently Delete Employee', `
+    <div style="text-align:center;padding:10px 0">
+      <div style="width:64px;height:64px;border-radius:50%;background:var(--red-lt);display:flex;align-items:center;justify-content:center;margin:0 auto 14px">
+        <i class="ti ti-trash" style="font-size:28px;color:var(--red)"></i>
+      </div>
+      <div style="font-size:16px;font-weight:700;color:var(--red);margin-bottom:8px">Delete Employee Record</div>
+      <div style="font-size:13px;color:var(--tx-2);line-height:1.55;margin-bottom:16px">
+        Are you sure you want to <strong>permanently delete</strong> this employee record?<br>This action <strong>cannot be undone</strong>.
+      </div>
+      <div style="background:var(--bg);border-radius:var(--r12);padding:14px 18px;text-align:left;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+          ${mkAv(u, 40)}
+          <div>
+            <div style="font-weight:700;font-size:14px">${u.name}</div>
+            <div style="font-size:12px;color:var(--tx-3)">${u.email}</div>
+          </div>
+        </div>
+        <div style="font-size:11.5px;color:var(--tx-2);line-height:1.6">
+          <strong>Role:</strong> ${ROLES[u.role]?.label || u.role} · <strong>Department:</strong> ${u.dept} · <strong>Position:</strong> ${u.pos}<br>
+          <strong>Status:</strong> <span style="color:var(--red);font-weight:600">Inactive / Deactivated</span>
+        </div>
+      </div>
+      <div style="background:var(--red-lt);border:1.5px solid var(--red);border-radius:var(--r10);padding:10px 14px;font-size:11.5px;color:#9a2215;text-align:left">
+        <i class="ti ti-alert-triangle" style="margin-right:4px"></i>
+        <strong>Warning:</strong> This will remove all schedule data, clock records, and messages associated with this employee.
+      </div>
+    </div>`,
+    `<button class="btn btn-red" onclick="permanentDeleteStaff(${id})"><i class="ti ti-trash"></i> Delete Permanently</button><button class="btn" onclick="closeModal()">Cancel — Keep Record</button>`);
+}
+
+function permanentDeleteStaff(id) {
+  const u = USERS.find(x => x.id === id);
+  if (!u) return;
+  
+  // Remove from USERS
+  USERS = USERS.filter(x => x.id !== id);
+  saveUsers();
+  
+  // Remove schedule data
+  if (SCHEDULE.shifts[id]) {
+    delete SCHEDULE.shifts[id];
+    saveSchedule();
+  }
+  
+  // Remove clock data
+  if (CLOCK_DATA[id]) {
+    delete CLOCK_DATA[id];
+    saveClockData();
+  }
+  
+  // Remove check-in log entries
+  CHECKIN_LOG = CHECKIN_LOG.filter(l => l.uid !== id);
+  saveCheckinLog();
+  
+  // Remove messages involving this user
+  MESSAGES = MESSAGES.filter(m => m.from !== id && m.to !== id);
+  saveMessages();
+  
+  // Remove requests
+  REQUESTS = REQUESTS.filter(r => r.uid !== id);
+  saveRequests();
+  
+  closeModal();
+  pgStaff();
+  toast(`Employee "${u.name}" has been permanently deleted.`, 'ok');
+}
+function editStaff(id) {
+  const u = USERS.find(x => x.id === id);
+  openModal(`Edit Staff — ${u.name}`, `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="fg"><label class="fl">Full name</label><input class="fc" id="ef-name" value="${u.name}"></div>
+      <div class="fg"><label class="fl">Email</label><input class="fc" id="ef-email" value="${u.email}"></div>
+      <div class="fg"><label class="fl">Role</label><select class="fc" id="ef-role">
+        ${(function() {
+          const isOwner = CU.role === 'principal_owner';
+          let roleOptions = '';
+          if (isOwner) {
+            roleOptions += `<option value="principal_owner" ${u.role==='principal_owner'?'selected':''}>Principal/Owner</option>`;
+            roleOptions += `<option value="administrator" ${u.role==='administrator'?'selected':''}>Administrator</option>`;
+          } else {
+            if (u.role === 'principal_owner') {
+              roleOptions += `<option value="principal_owner" selected>Principal/Owner</option>`;
+            } else {
+              roleOptions += `<option value="administrator" ${u.role==='administrator'?'selected':''}>Administrator</option>`;
+            }
+          }
+          roleOptions += `
+            <option value="office_manager" ${u.role==='office_manager'?'selected':''}>Office Manager</option>
+            <option value="coordinator" ${u.role==='coordinator'?'selected':''}>Coordinator</option>
+            <option value="teaching_assistant" ${u.role==='teaching_assistant'?'selected':''}>Teaching Assistant</option>
+            <option value="grader" ${u.role==='grader'?'selected':''}>Grader</option>
+          `;
+          return roleOptions;
+        })()}
+      </select></div>
+      <div class="fg"><label class="fl">Department</label><select class="fc" id="ef-dept">${SUBJECTS.map(d=>`<option value="${d}" ${u.dept===d?'selected':''}>${d}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">Position</label><input class="fc" id="ef-pos" value="${u.pos}"></div>
+      <div class="fg"><label class="fl">Phone</label><input class="fc" id="ef-phone" value="${u.phone}"></div>
+      <div class="fg"><label class="fl">New PIN (4 digits)</label><input class="fc" id="ef-pin" value="${u.pin}" maxlength="4"></div>
+      <div class="fg"><label class="fl">Password (Admins only)</label><input class="fc" id="ef-pass" type="password" value="${u.password || ''}" placeholder="Password for Admin login"></div>
+    </div>`,
+    `<button class="btn btn-primary" onclick="saveEditStaff(${id})"><i class="ti ti-device-floppy"></i> Save Changes</button><button class="btn" onclick="closeModal()">Cancel</button>`);
+}
+function saveEditStaff(id) {
+  const name = $('ef-name').value.trim();
+  const duplicate = USERS.find(u => u.id !== id && u.name.trim().toLowerCase() === name.toLowerCase() && u.active);
+  if (duplicate) {
+    toast(`Duplicate staff member named "${name}" already exists.`, 'err');
+    return;
+  }
+  USERS = USERS.map(u => u.id === id ? { 
+    ...u, 
+    name: name, 
+    email: $('ef-email').value, 
+    role: $('ef-role').value, 
+    dept: $('ef-dept').value, 
+    pos: $('ef-pos').value, 
+    phone: $('ef-phone').value, 
+    pin: $('ef-pin').value || u.pin,
+    password: $('ef-pass')?.value || u.password || ''
+  } : u);
+  saveUsers();
+  closeModal(); pgStaff(); toast('Staff member updated!', 'ok');
+}
+function showAddStaff() {
+  openModal('Add New Staff Member', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="fg"><label class="fl">First name</label><input class="fc" id="nf-fn" placeholder="First"></div>
+      <div class="fg"><label class="fl">Last name</label><input class="fc" id="nf-ln" placeholder="Last"></div>
+      <div class="fg"><label class="fl">Email</label><input class="fc" id="nf-email" type="email" placeholder="name@greenfield.edu"></div>
+      <div class="fg"><label class="fl">Phone</label><input class="fc" id="nf-phone" placeholder="416-555-0000"></div>
+      <div class="fg"><label class="fl">Role</label><select class="fc" id="nf-role">
+        ${(function() {
+          const isOwner = CU.role === 'principal_owner';
+          let roleOptions = '';
+          if (isOwner) {
+            roleOptions += `<option value="principal_owner">Principal/Owner</option>`;
+            roleOptions += `<option value="administrator">Administrator</option>`;
+          } else {
+            roleOptions += `<option value="administrator">Administrator</option>`;
+          }
+          roleOptions += `
+            <option value="office_manager">Office Manager</option>
+            <option value="coordinator">Coordinator</option>
+            <option value="teaching_assistant" selected>Teaching Assistant</option>
+            <option value="grader">Grader</option>
+          `;
+          return roleOptions;
+        })()}
+      </select></div>
+      <div class="fg"><label class="fl">Department</label><select class="fc" id="nf-dept">${SUBJECTS.map(d=>`<option value="${d}">${d}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">Position / Title</label><input class="fc" id="nf-pos" placeholder="e.g. Math Teacher"></div>
+      <div class="fg"><label class="fl">PIN (4 digits)</label><input class="fc" id="nf-pin" placeholder="1234" maxlength="4"></div>
+      <div class="fg"><label class="fl">Password (Admins only)</label><input class="fc" id="nf-pass" type="password" placeholder="e.g. securePass123"></div>
+    </div>
+    <div style="background:var(--blue-lt);border-radius:var(--r10);padding:10px 14px;font-size:12px;color:var(--blue);margin-top:4px">
+      <i class="ti ti-info-circle"></i> Staff will use their PIN on the mobile check-in screen. Admin accounts use email + password.
+    </div>`,
+    `<button class="btn btn-primary" onclick="saveNewStaff()"><i class="ti ti-user-plus"></i> Add Staff Member</button><button class="btn" onclick="closeModal()">Cancel</button>`);
+}
+function saveNewStaff(bypassDuplicateCheck = false) {
+  const fn = $('nf-fn')?.value.trim(), ln = $('nf-ln')?.value.trim();
+  if (!fn || !ln) { toast('First and last name are required.', 'err'); return; }
+  const name = `${fn} ${ln}`;
+  
+  if (!bypassDuplicateCheck) {
+    const duplicate = USERS.find(u => u.name.trim().toLowerCase() === name.toLowerCase() && u.active);
+    if (duplicate) {
+      openModal("Duplicate Name Detected", `
+        <div style="text-align:center;padding:10px 0">
+          <div style="font-size:42px;margin-bottom:12px">⚠️</div>
+          <div style="font-size:15px;font-weight:700;margin-bottom:8px">Duplicate Staff Name Detected</div>
+          <div style="font-size:12.5px;color:var(--tx-2);line-height:1.5;margin-bottom:14px">
+            A staff member named <strong>"${name}"</strong> already exists in the system.<br>
+            To prevent reporting errors, we do not allow duplicate active staff names.
+          </div>
+          <div style="background:var(--bg);border-radius:var(--r10);padding:10px 12px;font-size:11px;color:var(--tx-2);margin-bottom:14px;text-align:left">
+            <strong>Existing profile:</strong> ${duplicate.pos} · ${duplicate.dept} Department · PIN: ${duplicate.pin}
+          </div>
+        </div>`,
+        `<button class="btn btn-red" onclick="deleteAndConfirmAddStaff('${duplicate.name}', ${duplicate.id})"><i class="ti ti-trash"></i> Delete Duplicate & Add New</button>
+         <button class="btn" onclick="closeModal()">Keep Existing / Rename</button>`);
+      return;
+    }
+  }
+
+  const pin = $('nf-pin')?.value || '0000';
+  if (pin.length !== 4 || isNaN(pin)) { toast('PIN must be exactly 4 digits.', 'err'); return; }
+  const email = $('nf-email')?.value.trim();
+  if (!email) { toast('Email is required.', 'err'); return; }
+  const password = $('nf-pass')?.value || '';
+  
+  const newId = Date.now();
+  USERS.push({ 
+    id: newId, 
+    name, 
+    email, 
+    role: $('nf-role')?.value || 'teaching_assistant', 
+    dept: $('nf-dept')?.value || 'Administration', 
+    pin, 
+    password, 
+    phone: $('nf-phone')?.value || '', 
+    pos: $('nf-pos')?.value || '', 
+    av: `${fn[0]}${ln[0]}`.toUpperCase(), 
+    active: true 
+  });
+  
+  // Allocate default schedule slots
+  SCHEDULE.shifts[newId] = {};
+  DAYS.forEach(d => {
+    SCHEDULE.shifts[newId][d] = { type: 'Off', start: null, end: null, location: 'Office', notes: '', ack: false };
+  });
+  
+  saveUsers();
+  saveSchedule();
+  
+  const newUser = USERS.find(x => x.id === newId);
+  closeModal();
+  pgStaff();
+  toast(`${name} added to the team!`, 'ok');
+  
+  // Trigger welcome email simulation
+  setTimeout(() => showWelcomeEmail(newUser), 400);
+}
+
+function deleteAndConfirmAddStaff(name, oldId) {
+  USERS = USERS.filter(u => u.id !== oldId);
+  saveUsers();
+  closeModal();
+  saveNewStaff(true); // Bypass duplicate check this time
+}
+
+function showDuplicateCleanup() {
+  const seen = {};
+  const duplicates = [];
+  USERS.forEach(u => {
+    if (u.active) {
+      const name = u.name.trim().toLowerCase();
+      if (seen[name]) {
+        if (!duplicates.some(d => d.original.id === seen[name].id)) {
+          duplicates.push({ original: seen[name], duplicate: u });
+        }
+      } else {
+        seen[name] = u;
+      }
+    }
+  });
+
+  openModal("Resolve Duplicate Staff Names", `
+    <div style="font-size:12.5px;color:var(--tx-2);margin-bottom:14px;line-height:1.4">
+      To ensure secure timecard reporting and accurate PIN logins, we recommend deleting duplicate active staff profiles.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;max-height:55vh;overflow-y:auto">
+      ${duplicates.map(pair => `
+        <div style="padding:12px;border:1.5px solid var(--bdr);border-radius:var(--r10);background:var(--bg)">
+          <div style="font-weight:700;font-size:13px;margin-bottom:8px;color:var(--navy)">Duplicate Profile: "${pair.original.name}"</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:11px">
+            <div style="padding:8px;background:#fff;border-radius:var(--r8);border:1px solid var(--bdr-2);display:flex;flex-direction:column;justify-content:space-between">
+              <div>
+                <strong>Profile A (Older):</strong><br>
+                Pos: ${pair.original.pos}<br>
+                Dept: ${pair.original.dept}<br>
+                PIN: ${pair.original.pin}
+              </div>
+              <button class="btn btn-red btn-sm" style="margin-top:8px;width:100%;justify-content:center" onclick="deleteDuplicateUser(${pair.original.id})"><i class="ti ti-trash"></i> Delete A</button>
+            </div>
+            <div style="padding:8px;background:#fff;border-radius:var(--r8);border:1px solid var(--bdr-2);display:flex;flex-direction:column;justify-content:space-between">
+              <div>
+                <strong>Profile B (Newer):</strong><br>
+                Pos: ${pair.duplicate.pos}<br>
+                Dept: ${pair.duplicate.dept}<br>
+                PIN: ${pair.duplicate.pin}
+              </div>
+              <button class="btn btn-red btn-sm" style="margin-top:8px;width:100%;justify-content:center" onclick="deleteDuplicateUser(${pair.duplicate.id})"><i class="ti ti-trash"></i> Delete B</button>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>`,
+    `<button class="btn btn-primary" onclick="closeModal()">Close</button>`, 540);
+}
+
+function deleteDuplicateUser(id) {
+  USERS = USERS.filter(u => u.id !== id);
+  saveUsers();
+  closeModal();
+  pgStaff();
+  toast("Duplicate staff record deleted successfully!", "ok");
+}
+
+function showWelcomeEmail(user) {
+  if (!user) return;
+  const schoolName = SCHOOL.name || 'Greenfield Academy';
+  const adminEmail = SCHOOL.email || 'admin@greenfield.edu';
+  const loginUrl = window.location.href;
+  
+  openModal(`✉️ Welcome Email — ${user.name}`, `
+    <div style="border:1px solid var(--bdr);border-radius:var(--r12);overflow:hidden">
+      <!-- Email Header -->
+      <div style="background:var(--navy);padding:20px 24px;text-align:center">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.4);margin-bottom:6px">AUTOMATED ONBOARDING EMAIL</div>
+        <div style="font-family:var(--serif);font-size:18px;color:#fff;margin-bottom:4px">Welcome to ${schoolName}</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.45)">StaffBase · Employee Onboarding</div>
+      </div>
+      
+      <!-- Email Body -->
+      <div style="padding:20px 24px;font-size:12.5px;color:var(--tx-2);line-height:1.65">
+        <p style="margin-bottom:12px">Dear <strong>${user.name}</strong>,</p>
+        <p style="margin-bottom:12px">Welcome to the <strong>${schoolName}</strong> team! We're excited to have you on board as our new <strong>${user.pos}</strong> in the <strong>${user.dept}</strong> department.</p>
+        <p style="margin-bottom:12px">Your StaffBase portal account has been created. Here are your login credentials:</p>
+        
+        <div style="background:var(--bg);border:1.5px solid var(--bdr);border-radius:var(--r10);padding:14px 16px;margin-bottom:14px">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--tx-3);margin-bottom:8px;font-weight:700">YOUR LOGIN CREDENTIALS</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+            <div><span style="color:var(--tx-3)">Email:</span> <strong>${user.email}</strong></div>
+            <div><span style="color:var(--tx-3)">Mobile PIN:</span> <strong style="color:var(--gold);letter-spacing:2px">${user.pin}</strong></div>
+            <div><span style="color:var(--tx-3)">Role:</span> <strong>${ROLES[user.role]?.label || user.role}</strong></div>
+            <div><span style="color:var(--tx-3)">Department:</span> <strong>${user.dept}</strong></div>
+          </div>
+          ${user.password ? `<div style="margin-top:8px;font-size:12px"><span style="color:var(--tx-3)">Password:</span> <strong style="letter-spacing:1px">••••••••</strong> <span style="font-size:10px;color:var(--tx-3)">(set by administrator)</span></div>` : ''}
+        </div>
+        
+        <div style="margin-bottom:14px">
+          <div style="font-weight:700;color:var(--tx);margin-bottom:6px"><i class="ti ti-clock" style="color:var(--green)"></i> Schedule & Time Tracking</div>
+          <ul style="margin:0;padding-left:20px;font-size:12px">
+            <li>Your weekly schedule will be published by your administrator</li>
+            <li>Use the <strong>Mobile Check-In</strong> screen to clock in/out using your 4-digit PIN</li>
+            <li>GPS verification is required — please enable location services on your device</li>
+            <li>Acknowledge each shift as soon as you see it to confirm your availability</li>
+          </ul>
+        </div>
+        
+        <div style="margin-bottom:14px">
+          <div style="font-weight:700;color:var(--tx);margin-bottom:6px"><i class="ti ti-user" style="color:var(--blue)"></i> Profile & Account</div>
+          <ul style="margin:0;padding-left:20px;font-size:12px">
+            <li>Your profile is managed by the school administration</li>
+            <li>For PIN changes or account updates, contact your administrator</li>
+            <li>Use the <strong>Time-Off Requests</strong> feature to submit leave requests</li>
+          </ul>
+        </div>
+        
+        <div style="background:var(--gold-pale);border:1px solid var(--gold-lt);border-radius:var(--r8);padding:10px 14px;font-size:11.5px;color:var(--amber);margin-bottom:14px">
+          <i class="ti ti-device-mobile" style="margin-right:4px"></i>
+          <strong>Mobile Access:</strong> Open <code style="background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px;font-size:10.5px">${loginUrl}</code> on your phone and add to homescreen for instant access.
+        </div>
+        
+        <p style="margin-bottom:8px">If you have any questions, please contact:</p>
+        <div style="font-size:12px;margin-bottom:14px">
+          <strong>Administrator:</strong> <a href="mailto:${adminEmail}" style="color:var(--blue)">${adminEmail}</a>
+        </div>
+        
+        <p style="color:var(--tx-3);font-size:11px;border-top:1px solid var(--bdr);padding-top:12px;margin-top:14px">This is an automated message from StaffBase at ${schoolName}. Please keep your login credentials secure and do not share them.</p>
+      </div>
+    </div>
+    <div style="margin-top:10px;padding:8px 12px;background:var(--blue-lt);border-radius:var(--r8);font-size:11px;color:var(--blue);display:flex;align-items:center;gap:6px">
+      <i class="ti ti-info-circle"></i> In production, this email would be sent automatically via SMTP/API (e.g. SendGrid, Mailgun).
+    </div>`,
+    `<button class="btn btn-primary" onclick="closeModal()"><i class="ti ti-check"></i> Done</button>`, 620);
+  
+  toast(`✉️ Welcome email sent to ${user.name} at ${user.email}!`, 'ok');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAGE: REQUESTS
+// ═══════════════════════════════════════════════════════════════════════════
+function pgRequests() {
+  const visible = isManager() ? REQUESTS : REQUESTS.filter(r => r.uid === CU.id);
+  $('content-area').innerHTML = `
+    ${isManager()?`<div class="tab-bar" id="req-tabs">
+      <div class="tab active" onclick="filterRequests('all',this)">All (${REQUESTS.length})</div>
+      <div class="tab" onclick="filterRequests('pending',this)">Pending (${REQUESTS.filter(r=>r.status==='pending').length})</div>
+      <div class="tab" onclick="filterRequests('approved',this)">Approved</div>
+      <div class="tab" onclick="filterRequests('denied',this)">Denied</div>
+    </div>`:''}
+    <div class="card" style="padding:0;overflow:hidden" id="req-card">
+      <table class="tbl">
+        <thead><tr>
+          ${isManager()?'<th>Employee</th>':''}
+          <th>Type</th><th>Dates</th><th>Days</th><th>Note</th><th>Submitted</th><th>Status</th>
+          ${isManager()?'<th>Action</th>':''}
+        </tr></thead>
+        <tbody id="req-tbody"></tbody>
+      </table>
+    </div>`;
+  renderRequestTable(visible);
+}
+
+function renderRequestTable(list) {
+  const tb = $('req-tbody');
+  if (!tb) return;
+  tb.innerHTML = list.length === 0 ? `<tr><td colspan="${isManager()?8:6}" style="text-align:center;padding:30px;color:var(--tx-3)">No requests to display.</td></tr>` :
+    list.map(r => {
+      const e = USERS.find(u => u.id === r.uid);
+      return `<tr>
+        ${isManager()?`<td><div style="display:flex;align-items:center;gap:9px">${mkAv(e||{name:'?',av:'?'},28)}<span style="font-size:12.5px;font-weight:500">${e?.name}</span></div></td>`:''}
+        <td><span class="badge badge-blue">${r.type}</span></td>
+        <td style="font-weight:600;font-size:12.5px">${r.dates}</td>
+        <td style="font-size:12.5px">${r.days}d</td>
+        <td style="font-size:12px;color:var(--tx-2)">${r.note||'—'}</td>
+        <td style="font-size:12px;color:var(--tx-3)">${r.submitted}</td>
+        <td>${statusBadge(r.status)}</td>
+        ${isManager()&&r.status==='pending'?`<td><div style="display:flex;gap:5px"><button class="btn btn-green btn-sm" onclick="approveRequest(${r.id})"><i class="ti ti-check"></i> Approve</button><button class="btn btn-red btn-sm" onclick="denyRequest(${r.id})"><i class="ti ti-x"></i> Deny</button></div></td>`:isManager()?'<td></td>':''}
+      </tr>`;
+    }).join('');
+}
+function filterRequests(status, tab) {
+  document.querySelectorAll('#req-tabs .tab').forEach(t => t.classList.remove('active'));
+  if (tab) tab.classList.add('active');
+  const list = status==='all' ? REQUESTS : REQUESTS.filter(r=>r.status===status);
+  renderRequestTable(list);
+}
+function approveRequest(id) { REQUESTS = REQUESTS.map(r => r.id===id?{...r,status:'approved'}:r); saveRequests(); pgRequests(); buildSidebar(); toast('Request approved!','ok'); }
+function denyRequest(id) { REQUESTS = REQUESTS.map(r => r.id===id?{...r,status:'denied'}:r); saveRequests(); pgRequests(); buildSidebar(); toast('Request denied.','info'); }
+function showNewRequest() {
+  openModal('Submit Time-Off Request', `
+    <div class="fg"><label class="fl">Request type</label><select class="fc" id="rq-type"><option>Vacation</option><option>Sick Leave</option><option>Personal Day</option><option>Professional Development</option><option>Bereavement</option><option>Unpaid Leave</option></select></div>
+    <div class="fg"><label class="fl">Date(s)</label><input class="fc" id="rq-dates" placeholder="e.g. Jun 3–5, 2026 or Jun 3, 2026"></div>
+    <div class="fg"><label class="fl">Number of days</label><input class="fc" id="rq-days" type="number" value="1" min="1"></div>
+    <div class="fg"><label class="fl">Notes / reason (optional)</label><textarea class="fc" id="rq-note" rows="3" placeholder="Any additional context for your manager…" style="resize:vertical"></textarea></div>`,
+    `<button class="btn btn-primary" onclick="submitRequest()"><i class="ti ti-send"></i> Submit Request</button><button class="btn" onclick="closeModal()">Cancel</button>`);
+}
+function submitRequest() {
+  const dates = $('rq-dates')?.value.trim();
+  if (!dates) { toast('Please enter the date(s).','err'); return; }
+  REQUESTS.push({ id: Date.now(), uid: CU.id, type: $('rq-type')?.value, dates, days: parseInt($('rq-days')?.value)||1, note: $('rq-note')?.value||'', status:'pending', submitted: new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric'}) });
+  saveRequests();
+  closeModal(); navigate('requests'); toast('Request submitted! Your manager will review it.','ok');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAGE: ANNOUNCEMENTS
+// ═══════════════════════════════════════════════════════════════════════════
+let COMM_TAB = 'broadcast';
+let ACTIVE_CHAT_UID = null;
+
+function pgAnnouncements() {
+  $('content-area').innerHTML = `
+    <div class="tab-bar" style="margin-bottom:18px">
+      <div class="tab ${COMM_TAB === 'broadcast' ? 'active' : ''}" onclick="setCommTab('broadcast')"><i class="ti ti-speakerphone"></i> School Announcements</div>
+      <div class="tab ${COMM_TAB === 'dm' ? 'active' : ''}" onclick="setCommTab('dm')" style="display:flex;align-items:center;gap:6px">
+        <i class="ti ti-message-circle"></i> Direct Messaging
+        ${getUnreadMessageCount() > 0 ? `<span style="background:var(--gold);color:#fff;font-size:9.5px;padding:2px 5px;border-radius:10px;font-weight:700;line-height:1">${getUnreadMessageCount()}</span>` : ''}
+      </div>
+    </div>
+    <div id="comm-tab-content"></div>
+  `;
+  renderCommTab();
+}
+
+function setCommTab(tab) {
+  COMM_TAB = tab;
+  pgAnnouncements();
+  buildSidebar();
+}
+
+function getUnreadMessageCount(fromUid = null) {
+  if (fromUid) {
+    return MESSAGES.filter(m => m.to === CU.id && m.from === fromUid && !m.read).length;
+  }
+  return MESSAGES.filter(m => m.to === CU.id && !m.read).length;
+}
+
+function renderCommTab() {
+  const container = $('comm-tab-content');
+  if (!container) return;
+  
+  if (COMM_TAB === 'broadcast') {
+    container.innerHTML = `
+      <div style="max-width:720px; max-height:65vh; overflow-y:auto; padding-right:8px">
+        ${ANNOUNCEMENTS.map(a => {
+          const author = USERS.find(u => u.id === a.from);
+          return `<div class="card ann-card ${a.priority==='high'?'high':''}" style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+              <div style="font-size:15px;font-weight:700;color:${a.priority==='high'?'var(--red)':'var(--tx)'};line-height:1.3">
+                ${a.priority==='high'?'<i class="ti ti-alert-circle" style="color:var(--red);margin-right:6px"></i>':''}${a.title}
+              </div>
+              <div style="font-size:11px;color:var(--tx-3);white-space:nowrap;margin-left:16px;margin-top:2px">${a.date}</div>
+            </div>
+            <div style="font-size:13px;color:var(--tx-2);line-height:1.65;margin-bottom:12px">${a.body}</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              ${mkAv(author||{name:'?',av:'?'},22)}
+              <span style="font-size:12px;color:var(--tx-3)">Posted by <strong>${author?.name}</strong> · ${author?.pos}</span>
+              ${a.priority==='high'?'<span class="badge badge-red"><i class="ti ti-alert-triangle"></i> High Priority</span>':''}
+            </div>
+          </div>`;
+        }).join('')}
+        ${ANNOUNCEMENTS.length===0?'<div class="card" style="text-align:center;padding:40px;color:var(--tx-3)">No announcements yet.</div>':''}
+      </div>
+    `;
+  } else {
+    const chatUsers = USERS.filter(u => u.id !== CU.id && u.active);
+    if (!ACTIVE_CHAT_UID && chatUsers.length > 0) {
+      ACTIVE_CHAT_UID = chatUsers[0].id;
+    }
+    
+    if (ACTIVE_CHAT_UID) {
+      MESSAGES.forEach(m => {
+        if (m.to === CU.id && m.from === ACTIVE_CHAT_UID) {
+          m.read = true;
+        }
+      });
+      saveMessages();
+    }
+    
+    const activeUser = USERS.find(u => u.id === ACTIVE_CHAT_UID);
+    
+    container.innerHTML = `
+      <div class="card" style="padding:0;overflow:hidden;height:65vh;display:flex;border:1px solid var(--bdr)">
+        <!-- Left Side: Roster -->
+        <div style="width:260px;border-right:1px solid var(--bdr);display:flex;flex-direction:column;background:var(--sfc-2);flex-shrink:0">
+          <div style="padding:12px;font-size:12px;font-weight:700;color:var(--tx-3);border-bottom:1px solid var(--bdr);background:var(--sfc)">
+            STAFF DIRECTORY
+          </div>
+          <div style="flex:1;overflow-y:auto;padding:8px">
+            ${chatUsers.map(u => {
+              const activeClass = u.id === ACTIVE_CHAT_UID ? 'background:rgba(224,136,32,.08);border-color:rgba(224,136,32,.25);color:var(--tx)' : 'background:transparent;border-color:transparent;color:var(--tx-2)';
+              const unread = getUnreadMessageCount(u.id);
+              const lastMsg = MESSAGES.filter(m => (m.from === CU.id && m.to === u.id) || (m.from === u.id && m.to === CU.id)).pop();
+              const snippet = lastMsg ? lastMsg.body : 'No messages yet';
+              
+              return `
+                <div onclick="selectChat(${u.id})" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r10);border:1.5px solid transparent;cursor:pointer;margin-bottom:4px;transition:all .15s;${activeClass}">
+                  ${mkAv(u, 30)}
+                  <div style="flex:1;min-width:0">
+                    <div style="display:flex;justify-content:space-between;align-items:center">
+                      <span style="font-weight:600;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${u.name.split(' ')[0]} ${u.name.split(' ').pop()}</span>
+                      ${unread > 0 ? `<span style="width:7px;height:7px;border-radius:50%;background:var(--gold);flex-shrink:0"></span>` : ''}
+                    </div>
+                    <div style="font-size:11px;color:var(--tx-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px">${snippet}</div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+        
+        <!-- Right Side: Messaging Workspace -->
+        <div style="flex:1;display:flex;flex-direction:column;background:var(--sfc)">
+          ${activeUser ? `
+            <!-- Chat Header -->
+            <div style="padding:12px 20px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;background:var(--sfc);flex-shrink:0">
+              <div style="display:flex;align-items:center;gap:10px">
+                ${mkAv(activeUser, 34)}
+                <div>
+                  <div style="font-weight:700;font-size:13.5px;color:var(--tx)">${activeUser.name}</div>
+                  <div style="font-size:11px;color:var(--tx-3)">${activeUser.pos} · ${activeUser.dept} Department</div>
+                </div>
+              </div>
+              <div>${roleBadge(activeUser.role)}</div>
+            </div>
+            
+            <!-- Messages bubbles container -->
+            <div id="dm-chat-body" style="flex:1;overflow-y:auto;padding:20px;background:#f8fafb;display:flex;flex-direction:column;gap:12px">
+              ${renderChatMessages(activeUser.id)}
+            </div>
+            
+            <!-- Chat Input footer -->
+            <div style="padding:14px 20px;border-top:1px solid var(--bdr);background:var(--sfc);display:flex;gap:10px;align-items:center;flex-shrink:0">
+              <input class="fc" id="dm-input" placeholder="Type a private message to ${activeUser.name.split(' ')[0]}…" onkeydown="if(event.key==='Enter')sendDirectMessage(${activeUser.id})" style="flex:1;background:var(--sfc-2)">
+              <button class="btn btn-primary" onclick="sendDirectMessage(${activeUser.id})" style="padding:9px 18px"><i class="ti ti-send"></i> Send</button>
+            </div>
+          ` : `
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--tx-3);padding:40px;text-align:center">
+              <i class="ti ti-message-2" style="font-size:48px;margin-bottom:12px;color:var(--tx-4)"></i>
+              <div style="font-size:15px;font-weight:600">No Active Conversation</div>
+              <div style="font-size:12.5px;margin-top:4px">Select a staff member from the directory to start messaging.</div>
+            </div>
+          `}
+        </div>
+      </div>
+    `;
+    
+    setTimeout(() => {
+      const body = $('dm-chat-body');
+      if (body) body.scrollTop = body.scrollHeight;
+    }, 50);
+  }
+}
+
+function selectChat(uid) {
+  ACTIVE_CHAT_UID = uid;
+  renderCommTab();
+}
+
+function renderChatMessages(uid) {
+  const thread = MESSAGES.filter(m => (m.from === CU.id && m.to === uid) || (m.from === uid && m.to === CU.id));
+  if (thread.length === 0) {
+    return `<div style="text-align:center;padding:40px;color:var(--tx-3);font-size:12.5px;font-style:italic">No messages yet. Say hello to start the conversation!</div>`;
+  }
+  
+  return thread.map(m => {
+    const isMe = m.from === CU.id;
+    const alignStyle = isMe ? 'align-self:flex-end;align-items:flex-end' : 'align-self:flex-start;align-items:flex-start';
+    const bubbleStyle = isMe 
+      ? 'background:var(--navy);color:#fff;border-radius:14px 14px 2px 14px;border:1px solid var(--navy)' 
+      : 'background:#fff;border:1px solid #e2e8f0;color:var(--tx);border-radius:14px 14px 14px 2px;box-shadow:var(--sh-sm)';
+    
+    return `
+      <div style="display:flex;flex-direction:column;max-width:70%;margin-bottom:3px;${alignStyle}">
+        <div style="padding:10px 14px;font-size:12.5px;line-height:1.45;${bubbleStyle}">
+          ${m.body.replace(/\n/g, '<br>')}
+        </div>
+        <div style="font-size:10px;color:var(--tx-3);margin-top:4px;margin-bottom:2px">${m.date}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function sendDirectMessage(uid) {
+  const inp = $('dm-input');
+  const body = inp?.value.trim();
+  if (!body) return;
+  
+  const newMsg = {
+    id: Date.now(),
+    from: CU.id,
+    to: uid,
+    body: body,
+    date: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+    read: false
+  };
+  
+  MESSAGES.push(newMsg);
+  saveMessages();
+  inp.value = '';
+  
+  renderCommTab();
+  
+  setTimeout(() => {
+    const chatBody = $('dm-chat-body');
+    if (chatBody) chatBody.scrollTop = chatBody.scrollHeight;
+  }, 30);
+}
+function showNewAnnouncement() {
+  openModal('Post Announcement to All Staff', `
+    <div class="fg"><label class="fl">Title</label><input class="fc" id="an-title" placeholder="Announcement title…"></div>
+    <div class="fg"><label class="fl">Message body</label><textarea class="fc" id="an-body" rows="5" placeholder="Write your message to all staff members…" style="resize:vertical"></textarea></div>
+    <div class="fg"><label class="fl">Priority</label>
+      <select class="fc" id="an-priority"><option value="normal">Normal</option><option value="high">High Priority (shown in red)</option></select></div>`,
+    `<button class="btn btn-primary" onclick="postAnnouncement()"><i class="ti ti-speakerphone"></i> Post to All Staff</button><button class="btn" onclick="closeModal()">Cancel</button>`);
+}
+function postAnnouncement() {
+  const title = $('an-title')?.value.trim(), body = $('an-body')?.value.trim();
+  if (!title||!body) { toast('Title and message are required.','err'); return; }
+  ANNOUNCEMENTS.unshift({ id:Date.now(), from:CU.id, title, body, priority:$('an-priority')?.value||'normal', date: new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric'}) });
+  saveAnnouncements();
+  closeModal(); pgAnnouncements(); toast('Announcement posted to all staff!','ok');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAGE: REPORTS
+// ═══════════════════════════════════════════════════════════════════════════
+function pgReports() {
+  const staff = USERS.filter(u => u.role === 'teaching_assistant' || u.role === 'grader');
+  const getH = uid => DAYS.reduce((a,d) => a + getShiftHours(SCHEDULE.shifts[uid]?.[d]), 0);
+  const totalH = staff.reduce((a,u)=>a+getH(u.id),0);
+  const gpsVerified = CHECKIN_LOG.filter(l=>l.gpsOK).length;
+  const overrides = CHECKIN_LOG.filter(l=>l.gpsOK===false).length;
+  const acks = Object.values(SCHEDULE.shifts).reduce((a,s)=>a+Object.values(s).filter(sh=>sh.ack).length,0);
+  const total_shifts = Object.values(SCHEDULE.shifts).reduce((a,s)=>a+Object.values(s).length,0);
+
+  $('content-area').innerHTML = `
+    <div class="g4" style="margin-bottom:22px">
+      <div class="metric"><div class="metric-label"><i class="ti ti-users"></i> Total Staff</div><div class="metric-val" style="color:var(--blue)">${staff.length}</div><div class="metric-sub">${USERS.filter(u=>u.role!=='staff').length} admin/manager</div></div>
+      <div class="metric"><div class="metric-label"><i class="ti ti-clock"></i> Scheduled Hours</div><div class="metric-val" style="color:var(--green)">${totalH}h</div><div class="metric-sub">this week</div></div>
+      <div class="metric"><div class="metric-label"><i class="ti ti-map-pin"></i> GPS Check-ins</div><div class="metric-val" style="color:var(--green)">${gpsVerified}</div><div class="metric-sub">${overrides} admin overrides</div></div>
+      <div class="metric"><div class="metric-label"><i class="ti ti-circle-check"></i> Shifts Acknowledged</div><div class="metric-val">${acks}/${total_shifts}</div><div class="metric-sub">${total_shifts>0?Math.round(acks/total_shifts*100):0}% acknowledgement rate</div></div>
+    </div>
+    <div class="g2" style="margin-bottom:20px">
+      <div class="card">
+        <div class="sec-title" style="margin-bottom:16px">Hours by staff member</div>
+        ${staff.map(u=>{const h=getH(u.id);const pct=Math.min(100,Math.round(h/40*100));return`
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+            ${mkAv(u,28)}
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+                <span style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${u.name.split(' ')[0]} ${u.name.split(' ').pop()}</span>
+                <span style="font-weight:700;color:${h>40?'var(--red)':'var(--tx)'};flex-shrink:0;margin-left:8px">${h}h</span>
+              </div>
+              <div class="progress-wrap"><div class="progress-fill" style="width:${pct}%;background:${h>40?'var(--red)':'var(--green)'}"></div></div>
+            </div>
+          </div>`;}).join('')}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px">
+          <div class="sec-title" style="margin-bottom:14px">Hours by department</div>
+          ${SUBJECTS.map(dept=>{
+            const ds=staff.filter(u=>u.dept===dept);if(!ds.length)return'';
+            const tot=ds.reduce((a,u)=>a+getH(u.id),0);const col=getSubjectColor(dept);
+            const pct=Math.min(100,Math.round(tot/40));
+            return`<div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">
+              <div style="width:10px;height:10px;border-radius:50%;background:${col};flex-shrink:0"></div>
+              <div style="flex:1">
+                <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+                  <span style="font-weight:500">${dept}</span>
+                  <span style="color:var(--tx-2)">${tot}h · ${ds.length} staff</span>
+                </div>
+                <div class="progress-wrap"><div class="progress-fill" style="width:${pct}%;background:${col}"></div></div>
+              </div>
+            </div>`;}).join('')}
+        </div>
+        <div class="card">
+          <div class="sec-title" style="margin-bottom:14px">GPS check-in breakdown</div>
+          <div style="display:flex;gap:12px">
+            <div style="flex:1;background:var(--green-lt);border-radius:var(--r10);padding:14px;text-align:center">
+              <div style="font-size:26px;font-weight:700;color:var(--green-dk)">${gpsVerified}</div>
+              <div style="font-size:11px;color:var(--green-dk);margin-top:3px"><i class="ti ti-map-pin"></i> GPS Verified</div>
+            </div>
+            <div style="flex:1;background:var(--amber-lt);border-radius:var(--r10);padding:14px;text-align:center">
+              <div style="font-size:26px;font-weight:700;color:var(--amber)">${overrides}</div>
+              <div style="font-size:11px;color:var(--amber);margin-top:3px"><i class="ti ti-shield-check"></i> Admin Override</div>
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <div class="progress-wrap" style="height:10px"><div class="progress-fill" style="width:${CHECKIN_LOG.length>0?Math.round(gpsVerified/CHECKIN_LOG.length*100):0}%;background:var(--green)"></div></div>
+            <div style="font-size:11px;color:var(--tx-3);margin-top:4px">${CHECKIN_LOG.length>0?Math.round(gpsVerified/CHECKIN_LOG.length*100):0}% GPS compliance rate</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sec-title" style="margin-bottom:14px">Shift acknowledgement</div>
+          <div style="text-align:center;padding:8px 0">
+            <div style="font-size:38px;font-weight:700;color:${acks===total_shifts?'var(--green)':'var(--amber)'}">${total_shifts>0?Math.round(acks/total_shifts*100):0}%</div>
+            <div style="font-size:12px;color:var(--tx-3);margin-top:4px">${acks} of ${total_shifts} shifts acknowledged</div>
+          </div>
+          <div class="progress-wrap" style="height:10px"><div class="progress-fill" style="width:${total_shifts>0?Math.round(acks/total_shifts*100):0}%;background:${acks===total_shifts?'var(--green)':'var(--amber)'}"></div></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAGE: SETTINGS
+// ═══════════════════════════════════════════════════════════════════════════
+function saveSchoolInfo() {
+  const schoolName = $('set-school-name').value.trim();
+  const address = $('set-school-address').value.trim();
+  const website = $('set-school-website').value.trim();
+  const email = $('set-school-email').value.trim();
+  
+  if (!schoolName) { toast('School name is required.', 'err'); return; }
+  SCHOOL.name = schoolName;
+  SCHOOL.address = address;
+  SCHOOL.website = website;
+  SCHOOL.email = email;
+  
+  saveSchool();
+  initSchoolName();
+  toast('School information saved successfully!', 'ok');
+}
+
+function saveGpsSettings() {
+  const lat = parseFloat($('set-gps-lat').value);
+  const lng = parseFloat($('set-gps-lng').value);
+  const radius = parseInt($('set-gps-radius').value);
+  
+  if (isNaN(lat) || isNaN(lng) || isNaN(radius)) { toast('All coordinates & radius must be valid numbers.', 'err'); return; }
+  SCHOOL.lat = lat;
+  SCHOOL.lng = lng;
+  SCHOOL.radius = radius;
+  
+  saveSchool();
+  toast('GPS Geofence configurations updated!', 'ok');
+}
+
+function saveSchedSettings() {
+  const threshold = parseFloat($('set-ot-threshold').value);
+  if (isNaN(threshold) || threshold <= 0) { toast('Overtime threshold must be a valid number.', 'err'); return; }
+  
+  const checkedBoxes = document.querySelectorAll('input[name="school-open-days"]:checked');
+  const selectedDays = Array.from(checkedBoxes).map(cb => cb.value);
+  
+  if (selectedDays.length === 0) {
+    toast('You must select at least one open day for the school.', 'err');
+    return;
+  }
+  
+  SCHOOL.otThreshold = threshold;
+  SCHOOL.openDays = selectedDays;
+  saveSchool();
+  
+  // Re-derive DAYS and FULL_DAYS
+  DAYS = SCHOOL.openDays;
+  FULL_DAYS = DAYS.map(d => WEEKDAY_NAMES[d]);
+  
+  // Roster schedule safety sync
+  USERS.forEach(u => {
+    if (u.role === 'owner' || u.role === 'admin' || u.role === 'office_manager' || u.role === 'coordinator' || u.role === 'teaching_assistant' || u.role === 'grader') {
+      if (!SCHEDULE.shifts[u.id]) SCHEDULE.shifts[u.id] = {};
+      DAYS.forEach(d => {
+        if (!SCHEDULE.shifts[u.id][d]) {
+          SCHEDULE.shifts[u.id][d] = { type: 'Off', start: null, end: null, location: 'Office', notes: '', ack: false };
+        }
+      });
+    }
+  });
+  saveSchedule();
+  
+  toast('Scheduling & Open Days settings saved!', 'ok');
+  pgSettings();
+}
+
+function pgSettings() {
+  $('content-area').innerHTML = `
+    <!-- PRIMARY SETTINGS (Top) -->
+    <div class="g2" style="max-width:900px;margin-bottom:20px">
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="sec-hd" style="margin-bottom:14px"><div class="sec-title"><i class="ti ti-building" style="color:var(--gold);font-size:16px"></i> School Information</div></div>
+          <div class="fg"><label class="fl">School name</label><input class="fc" id="set-school-name" value="${SCHOOL.name || 'Greenfield Academy'}"></div>
+          <div class="fg"><label class="fl">Street address</label><input class="fc" id="set-school-address" value="${SCHOOL.address}"></div>
+          <div class="fg"><label class="fl">School website</label><input class="fc" id="set-school-website" value="${SCHOOL.website || 'www.greenfieldacademy.edu'}"></div>
+          <div class="fg"><label class="fl">Admin contact email</label><input class="fc" id="set-school-email" value="${SCHOOL.email || 'admin@greenfield.edu'}" type="email"></div>
+          <button class="btn btn-primary" onclick="saveSchoolInfo()"><i class="ti ti-device-floppy"></i> Save School Info</button>
+        </div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="sec-hd" style="margin-bottom:14px"><div class="sec-title"><i class="ti ti-calendar-event" style="color:var(--blue);font-size:16px"></i> Scheduling & Open Days</div></div>
+          <div class="fg">
+            <label class="fl">School Open Days</label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;margin-bottom:14px">
+              ${['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d => {
+                const checked = SCHOOL.openDays.includes(d) ? 'checked' : '';
+                return `<label style="display:inline-flex;align-items:center;gap:6px;background:var(--bg);border:1.5px solid var(--bdr-2);padding:6px 12px;border-radius:var(--r8);cursor:pointer;font-size:12px;font-weight:600;color:var(--tx-2);transition:all .15s">
+                  <input type="checkbox" name="school-open-days" value="${d}" ${checked} style="accent-color:var(--navy)">
+                  ${d}
+                </label>`;
+              }).join('')}
+            </div>
+          </div>
+          <div class="fg"><label class="fl">Week starts on</label><select class="fc"><option>Monday</option><option>Sunday</option></select></div>
+          <div class="fg"><label class="fl">Timezone</label><select class="fc"><option>America/Toronto (ET)</option><option>America/Vancouver (PT)</option><option>America/Chicago (CT)</option><option>America/Denver (MT)</option></select></div>
+          <div class="fg"><label class="fl">Overtime threshold (hrs/day)</label><input class="fc" id="set-ot-threshold" value="${SCHOOL.otThreshold || 8}" type="number"></div>
+          <div class="fg"><label class="fl">School year start</label><input class="fc" value="Sep 5, 2025" type="text"></div>
+          <div class="fg"><label class="fl">School year end</label><input class="fc" value="Jun 25, 2026" type="text"></div>
+          <button class="btn btn-primary" onclick="saveSchedSettings()"><i class="ti ti-device-floppy"></i> Save Schedule Settings</button>
+        </div>
+        <div class="card">
+          <div class="sec-hd" style="margin-bottom:14px"><div class="sec-title"><i class="ti ti-books" style="color:var(--purple);font-size:16px"></i> Academic Subjects</div></div>
+          <div style="font-size:12px;color:var(--tx-3);margin-bottom:12px">Define the dynamic subjects available for your school staff roster & scheduling.</div>
+          <div id="settings-subject-list" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px"></div>
+          <div style="display:flex;gap:8px">
+            <input class="fc" id="new-subject-input" placeholder="e.g. Music, French…" style="flex:1">
+            <button class="btn btn-primary" onclick="addSubjectFromSettings()"><i class="ti ti-plus"></i> Add Subject</button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="sec-hd" style="margin-bottom:14px"><div class="sec-title"><i class="ti ti-map-pin" style="color:var(--green);font-size:16px"></i> GPS Geofence</div></div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="fg"><label class="fl">Latitude</label><input class="fc" id="set-gps-lat" value="${SCHOOL.lat}" type="number" step="0.0001"></div>
+            <div class="fg"><label class="fl">Longitude</label><input class="fc" id="set-gps-lng" value="${SCHOOL.lng}" type="number" step="0.0001"></div>
+          </div>
+          <div class="fg"><label class="fl">Geofence radius (metres)</label><input class="fc" id="set-gps-radius" value="${SCHOOL.radius}" type="number" min="50"></div>
+          <div style="background:var(--green-lt);border-radius:var(--r10);padding:10px 14px;font-size:12px;color:var(--green-dk);margin-bottom:12px">
+            <i class="ti ti-info-circle"></i> Staff must be within ${SCHOOL.radius}m to clock in via GPS. Outside this range requires admin override.
+          </div>
+          <button class="btn btn-green" onclick="saveGpsSettings()"><i class="ti ti-map-pin"></i> Save GPS Settings</button>
+        </div>
+        <div class="card">
+          <div class="sec-hd" style="margin-bottom:14px"><div class="sec-title"><i class="ti ti-bell" style="color:var(--amber);font-size:16px"></i> Notification Settings</div></div>
+          ${[
+            ['Late check-in alerts (15+ min)',true],
+            ['Missed clock-out alerts',true],
+            ['Overtime threshold warnings',true],
+            ['New time-off requests',true],
+            ['Schedule published notification',true],
+            ['Shift reminder (1hr before)',true],
+            ['GPS geofence violation alerts',true],
+            ['New staff member added',false],
+          ].map(([lbl,on])=>`<label style="display:flex;justify-content:space-between;align-items:center;margin-bottom:13px;cursor:pointer;font-size:13px">
+            <span>${lbl}</span>
+            <div onclick="this.dataset.on=this.dataset.on==='0'?'1':'0';this.style.background=this.dataset.on==='0'?'var(--bdr-2)':'var(--green)';this.firstElementChild.style.left=this.dataset.on==='0'?'3px':'21px'" data-on="${on?1:0}" style="width:42px;height:24px;border-radius:12px;background:${on?'var(--green)':'var(--bdr-2)'};position:relative;cursor:pointer;transition:background .2s;flex-shrink:0">
+              <div style="width:18px;height:18px;border-radius:50%;background:#fff;position:absolute;top:3px;left:${on?21:3}px;transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.2)"></div>
+            </div>
+          </label>`).join('')}
+          <button class="btn btn-primary btn-sm" onclick="toast('Notification preferences saved!','ok')"><i class="ti ti-device-floppy"></i> Save Notifications</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- ADMINISTRATIVE & REFERENCE SECTIONS (Bottom) -->
+    <div style="max-width:900px">
+      <div style="border-top:2px solid var(--bdr);margin-bottom:18px;padding-top:18px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--tx-3);font-weight:700;margin-bottom:14px"><i class="ti ti-settings" style="font-size:13px"></i> ADMINISTRATION & REFERENCE</div>
+      </div>
+      <div class="g2">
+        <div class="card">
+          <div class="sec-hd" style="margin-bottom:14px"><div class="sec-title"><i class="ti ti-brand-appstore" style="font-size:16px;color:var(--gold)"></i> Mobile App & iOS/Android Download</div></div>
+          <div style="font-size:12.5px;color:var(--tx-2);line-height:1.4;margin-bottom:12px">
+            StaffBase is built as a highly optimized, fully responsive <strong>Progressive Web App (PWA)</strong>. Your school staff can install it directly onto their phone homescreens.
+          </div>
+          <div style="background:var(--bg);border-radius:var(--r10);padding:10px;margin-bottom:10px;font-size:11px;line-height:1.3">
+            <strong>📲 iOS (iPhone/iPad):</strong><br>
+            Open Safari, go to this URL, tap the <i class="ti ti-share"></i> <strong>Share</strong> button, and select <strong>"Add to Home Screen"</strong>. Installs instantly with a native icon!
+          </div>
+          <div style="background:var(--bg);border-radius:var(--r10);padding:10px;margin-bottom:10px;font-size:11px;line-height:1.3">
+            <strong>🤖 Android (Play Store):</strong><br>
+            Open Chrome, go to this URL, tap the <i class="ti ti-dots-vertical"></i> options, and tap <strong>"Install App"</strong>.
+          </div>
+          <div style="border-top:1px dashed var(--bdr);padding-top:10px;font-size:10.5px;color:var(--tx-3);line-height:1.3">
+            <strong>📦 App Store Publishing Guide:</strong><br>
+            To offer a native downloadable package on Google Play or iOS App Store, simply wrap this PWA using <strong>CapacitorJS</strong> or <strong>TWA (Trusted Web Activity)</strong> in under 10 minutes. This builds native <code>.apk</code>/<code>.aab</code> and <code>.ipa</code> packages.
+          </div>
+        </div>
+        <div class="card">
+          <div class="sec-hd" style="margin-bottom:14px"><div class="sec-title"><i class="ti ti-shield-lock" style="font-size:16px;color:var(--navy)"></i> Roles & Permissions</div></div>
+          <div style="font-size:12px;color:var(--tx-3);margin-bottom:12px">What each role can do in StaffBase</div>
+          <table class="tbl" style="font-size:11.5px">
+            <thead><tr><th style="min-width:140px">Permission</th><th style="text-align:center">Owner</th><th style="text-align:center">Admin</th><th style="text-align:center">Ofc Mgr</th><th style="text-align:center">Coord</th><th style="text-align:center">TA</th><th style="text-align:center">Grader</th></tr></thead>
+            <tbody>
+              ${[
+                ['View own schedule','✅','✅','✅','✅','✅','✅'],
+                ['Acknowledge shifts','✅','✅','✅','✅','✅','✅'],
+                ['Clock in/out (GPS)','✅','✅','✅','✅','✅','✅'],
+                ['Submit time-off','✅','✅','✅','✅','✅','✅'],
+                ['View all timesheets','✅','✅','✅','✅','❌','❌'],
+                ['Edit schedules','✅','✅','✅','✅','❌','❌'],
+                ['Publish schedules','✅','✅','✅','✅','❌','❌'],
+                ['Approve time-off','✅','✅','✅','✅','❌','❌'],
+                ['Post announcements','✅','✅','✅','✅','❌','❌'],
+                ['View all reports','✅','✅','✅','✅','❌','❌'],
+                ['GPS override','✅','✅','✅','✅','❌','❌'],
+                ['Manage staff roster','✅','✅','❌','❌','❌','❌'],
+                ['Edit staff PINs','✅','✅','❌','❌','❌','❌'],
+                ['Change system settings','✅','✅','❌','❌','❌','❌'],
+                ['Add admin accounts','✅','❌','❌','❌','❌','❌'],
+              ].map(r=>`<tr><td>${r[0]}</td>${r.slice(1).map(v=>`<td style="text-align:center">${v}</td>`).join('')}</tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  renderSettingsSubjects();
+}
+
+function renderSettingsSubjects() {
+  const container = $('settings-subject-list');
+  if (!container) return;
+  container.innerHTML = SUBJECTS.map(sub => {
+    const col = getSubjectColor(sub);
+    return `<div style="display:inline-flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--bdr-2);padding:6px 12px;border-radius:var(--r8);font-size:12px;font-weight:600;color:var(--tx)">
+      <span style="width:8px;height:8px;border-radius:50%;background:${col}"></span>
+      <span>${sub}</span>
+      <span onclick="deleteSubjectFromSettings('${sub}')" style="cursor:pointer;color:var(--red);margin-left:4px;display:flex;align-items:center" title="Delete Subject"><i class="ti ti-x" style="font-size:13px"></i></span>
+    </div>`;
+  }).join('');
+}
+
+function addSubjectFromSettings() {
+  const inp = $('new-subject-input');
+  const val = inp?.value.trim();
+  if (!val) { toast('Subject name cannot be empty.', 'err'); return; }
+  if (SUBJECTS.includes(val)) { toast('Subject already exists.', 'err'); return; }
+  
+  SUBJECTS.push(val);
+  saveSubjects();
+  inp.value = '';
+  renderSettingsSubjects();
+  toast(`Subject "${val}" added successfully!`, 'ok');
+}
+
+function deleteSubjectFromSettings(sub) {
+  if (SUBJECTS.length <= 1) {
+    toast('You must have at least one academic subject.', 'err');
+    return;
+  }
+  const assigned = USERS.filter(u => u.dept === sub && u.active);
+  if (assigned.length > 0) {
+    toast(`Cannot delete: ${assigned.length} staff member(s) are currently assigned to "${sub}".`, 'err');
+    return;
+  }
+  SUBJECTS = SUBJECTS.filter(x => x !== sub);
+  saveSubjects();
+  renderSettingsSubjects();
+  toast(`Subject "${sub}" removed.`, 'ok');
+}
+</script>
+</body>
+</html>

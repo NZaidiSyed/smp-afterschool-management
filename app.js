@@ -205,13 +205,19 @@ function renderAll() {
   renderStaffAdministration();
 }
 
+function hasStaffAccess() {
+  const role = String(state.current_user?.role || "").toLowerCase();
+  return Boolean(state.can_access_staff || ["admin", "owner", "office manager"].includes(role));
+}
+
 function renderAdminAreas() {
   const staffButton = qs("#staffAdminArea");
+  const canOpenStaff = hasStaffAccess();
   if (staffButton) {
-    staffButton.disabled = !state.can_access_staff;
-    staffButton.title = state.can_access_staff ? "Open Staff Administration" : "Staff Administration is limited to Admin and Office Manager";
+    staffButton.disabled = !canOpenStaff;
+    staffButton.title = canOpenStaff ? "Open Staff Administration" : "Staff Administration is limited to Admin and Office Manager";
   }
-  if (!state.can_access_staff && activeAdminArea === "staff") activeAdminArea = "student";
+  if (!canOpenStaff && activeAdminArea === "staff") activeAdminArea = "student";
   document.body.dataset.adminArea = activeAdminArea;
   qs("#studentTabs")?.classList.toggle("collapsed", activeAdminArea !== "student");
   qs("#staffAdministration")?.classList.toggle("active", activeAdminArea === "staff");
@@ -224,7 +230,7 @@ function renderAdminAreas() {
 }
 
 function switchAdminArea(area) {
-  if (area === "staff" && !state.can_access_staff) {
+  if (area === "staff" && !hasStaffAccess()) {
     toast("Staff Administration is limited to Admin and Office Manager");
     return;
   }
@@ -965,47 +971,11 @@ function staffbaseHours(row) {
 }
 
 function renderStaffAdministration() {
-  const workspace = qs("#staffWorkspace");
-  if (!workspace) return;
-  qs("#staffLockedState")?.classList.toggle("collapsed", Boolean(state.can_access_staff));
-  workspace.classList.toggle("collapsed", !state.can_access_staff);
-  if (!state.can_access_staff) return;
-  const sampleNote = staffbaseIsSample() ? `<span class="staffbase-sample">Sample data from tested StaffBase code</span>` : `<span class="staffbase-sample live">Live database</span>`;
-  workspace.innerHTML = `
-    <aside class="staffbase-sidebar">
-      <div class="staffbase-logo">
-        <div class="staffbase-logo-mark">S</div>
-        <div><strong>StaffBase</strong><span>${escapeHtml(state.settings?.institution_name || "After School Centre")}</span></div>
-      </div>
-      <div class="staffbase-user">
-        ${staffbaseAvatar({ staff_name: state.current_user?.name || "SMP Admin" }, 34)}
-        <div><strong>${escapeHtml(state.current_user?.name || "SMP Admin")}</strong><span>${escapeHtml(state.current_user?.role || "Admin / Manager")}</span></div>
-      </div>
-      <nav class="staffbase-nav">
-        ${[
-          ["staff-dashboard", "Dashboard"],
-          ["staff-schedule", "Weekly Schedule"],
-          ["staff-timesheets", "Timesheets"],
-          ["staff-roster", "Staff Roster"],
-          ["staff-clock", "Time Clock"],
-        ].map(([view, label]) => `<button type="button" data-staff-view="${view}" class="${activeStaffView === view ? "active" : ""}">${label}</button>`).join("")}
-      </nav>
-    </aside>
-    <div class="staffbase-main">
-      <header class="staffbase-topbar">
-        <div><h2>${staffbaseTitle()}</h2>${sampleNote}</div>
-        <div class="staffbase-live-clock">${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</div>
-      </header>
-      <main class="staffbase-content">${staffbaseContent()}</main>
-    </div>`;
-  workspace.querySelectorAll("[data-staff-view]").forEach((button) => {
-    button.addEventListener("click", () => {
-      activeStaffView = button.dataset.staffView;
-      renderStaffAdministration();
-    });
-  });
-  workspace.querySelector("#staffbaseSearch")?.addEventListener("input", () => renderStaffbaseRoster());
-  renderStaffbaseRoster();
+  const frame = qs("#staffbaseFrame");
+  if (!frame) return;
+  const canOpenStaff = hasStaffAccess();
+  qs("#staffLockedState")?.classList.toggle("collapsed", canOpenStaff);
+  frame.classList.toggle("collapsed", !canOpenStaff);
 }
 
 function staffbaseTitle() {

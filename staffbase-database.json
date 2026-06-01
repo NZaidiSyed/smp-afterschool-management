@@ -1,0 +1,656 @@
+{
+  "school": {
+    "lat": 43.7615,
+    "lng": -79.4111,
+    "radius": 300,
+    "name": "Greenfield Academy",
+    "address": "150 Greenfield Ave, Toronto, ON M6G 3G7",
+    "website": "www.greenfieldacademy.edu",
+    "email": "admin@greenfield.edu",
+    "otThreshold": 8,
+    "openDays": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri"
+    ]
+  },
+  "users": [
+    {
+      "id": 1,
+      "name": "Dr. Sarah Mitchell",
+      "email": "s.mitchell@greenfield.edu",
+      "role": "principal_owner",
+      "dept": "Administration",
+      "pin": "0000",
+      "password": "school2026",
+      "phone": "416-555-0001",
+      "pos": "Principal",
+      "av": "SM",
+      "active": true
+    },
+    {
+      "id": 2,
+      "name": "James Harrington",
+      "email": "j.harrington@greenfield.edu",
+      "role": "administrator",
+      "dept": "Administration",
+      "pin": "1111",
+      "password": "school2026",
+      "phone": "416-555-0002",
+      "pos": "Vice Principal",
+      "av": "JH",
+      "active": true
+    },
+    {
+      "id": 3,
+      "name": "Rachel Torres",
+      "email": "r.torres@greenfield.edu",
+      "role": "office_manager",
+      "dept": "Administration",
+      "pin": "2222",
+      "password": "school2026",
+      "phone": "416-555-0003",
+      "pos": "Office Manager",
+      "av": "RT",
+      "active": true
+    },
+    {
+      "id": 4,
+      "name": "Emily Chen",
+      "email": "e.chen@greenfield.edu",
+      "role": "teaching_assistant",
+      "dept": "Mathematics",
+      "pin": "3333",
+      "password": "",
+      "phone": "416-555-0011",
+      "pos": "Math Teacher",
+      "av": "EC",
+      "active": true
+    },
+    {
+      "id": 5,
+      "name": "Marcus Williams",
+      "email": "m.williams@greenfield.edu",
+      "role": "teaching_assistant",
+      "dept": "Science",
+      "pin": "4444",
+      "password": "",
+      "phone": "416-555-0012",
+      "pos": "Science Teacher",
+      "av": "MW",
+      "active": true
+    },
+    {
+      "id": 6,
+      "name": "Priya Sharma",
+      "email": "p.sharma@greenfield.edu",
+      "role": "grader",
+      "dept": "English",
+      "pin": "5555",
+      "password": "",
+      "phone": "416-555-0013",
+      "pos": "English Teacher",
+      "av": "PS",
+      "active": true
+    },
+    {
+      "id": 7,
+      "name": "David O'Brien",
+      "email": "d.obrien@greenfield.edu",
+      "role": "teaching_assistant",
+      "dept": "History",
+      "pin": "6666",
+      "password": "",
+      "phone": "416-555-0014",
+      "pos": "History Teacher",
+      "av": "DO",
+      "active": true
+    },
+    {
+      "id": 8,
+      "name": "Aisha Patel",
+      "email": "a.patel@greenfield.edu",
+      "role": "grader",
+      "dept": "Arts",
+      "pin": "7777",
+      "password": "",
+      "phone": "416-555-0015",
+      "pos": "Art Teacher",
+      "av": "AP",
+      "active": true
+    },
+    {
+      "id": 9,
+      "name": "Tom Nakamura",
+      "email": "t.nakamura@greenfield.edu",
+      "role": "teaching_assistant",
+      "dept": "PE",
+      "pin": "8888",
+      "password": "",
+      "phone": "416-555-0016",
+      "pos": "PE Teacher",
+      "av": "TN",
+      "active": false
+    },
+    {
+      "id": 10,
+      "name": "Lisa Kowalski",
+      "email": "l.kowalski@greenfield.edu",
+      "role": "grader",
+      "dept": "Support",
+      "pin": "9999",
+      "password": "",
+      "phone": "416-555-0017",
+      "pos": "Counselor",
+      "av": "LK",
+      "active": true
+    },
+    {
+      "id": 1780286499772,
+      "name": "Syed Zaidi",
+      "email": "najampk@gmail.com",
+      "role": "administrator",
+      "dept": "Administration",
+      "pin": "2030",
+      "password": "Calgary70",
+      "phone": "5879988604",
+      "pos": "Adminstrator",
+      "av": "SZ",
+      "active": true
+    }
+  ],
+  "subjects": [
+    "Mathematics",
+    "Science",
+    "English",
+    "History",
+    "Arts",
+    "PE",
+    "Administration",
+    "Support"
+  ],
+  "schedule": {
+    "published": true,
+    "publishedAt": "May 26, 2026 at 08:45 AM",
+    "week": "May 26 – 30, 2026",
+    "weekKey": "2026-W22",
+    "shifts": {
+      "3": {
+        "Mon": {
+          "type": "Meeting",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Staff Room",
+          "notes": "",
+          "ack": false
+        },
+        "Tue": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 103",
+          "notes": "",
+          "ack": false
+        },
+        "Wed": {
+          "type": "Planning",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Thu": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 103",
+          "notes": "",
+          "ack": false
+        },
+        "Fri": {
+          "type": "Supervision",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Main Hallway",
+          "notes": "",
+          "ack": false
+        }
+      },
+      "4": {
+        "Mon": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 104",
+          "notes": "",
+          "ack": false
+        },
+        "Tue": {
+          "type": "Planning",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Wed": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 104",
+          "notes": "",
+          "ack": false
+        },
+        "Thu": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 104",
+          "notes": "",
+          "ack": false
+        },
+        "Fri": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 104",
+          "notes": "",
+          "ack": false
+        }
+      },
+      "5": {
+        "Mon": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 105",
+          "notes": "",
+          "ack": false
+        },
+        "Tue": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 105",
+          "notes": "",
+          "ack": false
+        },
+        "Wed": {
+          "type": "Supervision",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Main Hallway",
+          "notes": "",
+          "ack": false
+        },
+        "Thu": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 105",
+          "notes": "",
+          "ack": false
+        },
+        "Fri": {
+          "type": "Meeting",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Staff Room",
+          "notes": "",
+          "ack": false
+        }
+      },
+      "6": {
+        "Mon": {
+          "type": "Planning",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Tue": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 106",
+          "notes": "",
+          "ack": false
+        },
+        "Wed": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 106",
+          "notes": "",
+          "ack": false
+        },
+        "Thu": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 106",
+          "notes": "",
+          "ack": false
+        },
+        "Fri": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 106",
+          "notes": "",
+          "ack": false
+        }
+      },
+      "7": {
+        "Mon": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 107",
+          "notes": "",
+          "ack": false
+        },
+        "Tue": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 107",
+          "notes": "",
+          "ack": false
+        },
+        "Wed": {
+          "type": "Meeting",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Staff Room",
+          "notes": "",
+          "ack": false
+        },
+        "Thu": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 107",
+          "notes": "",
+          "ack": false
+        },
+        "Fri": {
+          "type": "Supervision",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Main Hallway",
+          "notes": "",
+          "ack": false
+        }
+      },
+      "8": {
+        "Mon": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 108",
+          "notes": "",
+          "ack": false
+        },
+        "Tue": {
+          "type": "Supervision",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Main Hallway",
+          "notes": "",
+          "ack": false
+        },
+        "Wed": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 108",
+          "notes": "",
+          "ack": false
+        },
+        "Thu": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 108",
+          "notes": "",
+          "ack": false
+        },
+        "Fri": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 108",
+          "notes": "",
+          "ack": false
+        }
+      },
+      "9": {
+        "Mon": {
+          "type": "Prof Dev",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Off-site",
+          "notes": "",
+          "ack": false
+        },
+        "Tue": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 109",
+          "notes": "",
+          "ack": false
+        },
+        "Wed": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 109",
+          "notes": "",
+          "ack": false
+        },
+        "Thu": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 109",
+          "notes": "",
+          "ack": false
+        },
+        "Fri": {
+          "type": "Planning",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        }
+      },
+      "10": {
+        "Mon": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 110",
+          "notes": "",
+          "ack": false
+        },
+        "Tue": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 110",
+          "notes": "",
+          "ack": false
+        },
+        "Wed": {
+          "type": "Planning",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Thu": {
+          "type": "Meeting",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Staff Room",
+          "notes": "",
+          "ack": false
+        },
+        "Fri": {
+          "type": "Teaching",
+          "start": "15:30",
+          "end": "18:30",
+          "location": "Room 110",
+          "notes": "",
+          "ack": false
+        }
+      },
+      "1780286499772": {
+        "Mon": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Tue": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Wed": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Thu": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Fri": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        }
+      }
+    }
+  },
+  "requests": [
+    {
+      "id": 1,
+      "uid": 4,
+      "type": "Vacation",
+      "dates": "Jun 3–5",
+      "days": 3,
+      "note": "Family trip",
+      "status": "pending",
+      "submitted": "May 27"
+    },
+    {
+      "id": 2,
+      "uid": 8,
+      "type": "Sick",
+      "dates": "May 30",
+      "days": 1,
+      "note": "",
+      "status": "approved",
+      "submitted": "May 29"
+    },
+    {
+      "id": 3,
+      "uid": 6,
+      "type": "Professional Development",
+      "dates": "Jun 5",
+      "days": 1,
+      "note": "Literacy conference",
+      "status": "pending",
+      "submitted": "May 28"
+    },
+    {
+      "id": 4,
+      "uid": 9,
+      "type": "Personal",
+      "dates": "Jun 2",
+      "days": 1,
+      "note": "Medical appointment",
+      "status": "denied",
+      "submitted": "May 26"
+    }
+  ],
+  "announcements": [
+    {
+      "id": 1,
+      "from": 1,
+      "title": "End-of-year assembly — all staff required",
+      "body": "Please note the all-staff assembly on Friday June 14 at 9:00 AM in the gymnasium. Attendance is mandatory for all teaching and support staff. Agenda will be circulated by June 10.",
+      "date": "May 29",
+      "priority": "high"
+    },
+    {
+      "id": 2,
+      "from": 2,
+      "title": "Schedule published for week of May 26",
+      "body": "Your schedule for the week of May 26 has been published. Please log in to review your shifts and acknowledge each day. Contact the office if you have any concerns.",
+      "date": "May 28",
+      "priority": "normal"
+    },
+    {
+      "id": 3,
+      "from": 3,
+      "title": "Reminder: report card submissions due June 7",
+      "body": "All report card submissions must be completed by end of day Friday June 7. Please contact the main office if you require an extension. Late submissions will be flagged.",
+      "date": "May 27",
+      "priority": "normal"
+    }
+  ],
+  "messages": [
+    {
+      "id": 1,
+      "from": 2,
+      "to": 4,
+      "body": "Hi Emily, could you cover the afternoon Mathematics session tomorrow?",
+      "date": "May 28 at 2:30 PM",
+      "read": true
+    },
+    {
+      "id": 2,
+      "from": 4,
+      "to": 2,
+      "body": "Sure James, I'd be happy to cover that shift. What is the start time?",
+      "date": "May 28 at 2:45 PM",
+      "read": true
+    },
+    {
+      "id": 3,
+      "from": 2,
+      "to": 4,
+      "body": "Standard 3:30 PM start is perfect. Thanks so much!",
+      "date": "May 28 at 2:50 PM",
+      "read": true
+    }
+  ],
+  "clock_data": {},
+  "checkin_log": []
+}

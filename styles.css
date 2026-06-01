@@ -319,6 +319,42 @@ main { padding: 0 clamp(18px, 4vw, 48px) 42px; }
 .panel.active { display: block; }
 .panel.area-hidden { display: none !important; }
 
+body[data-admin-area="staff"] #studentTabs {
+  display: none !important;
+}
+
+body[data-admin-area="staff"] #studentAdminArea {
+  display: none !important;
+}
+
+body[data-admin-area="staff"] .admin-area-switch {
+  grid-template-columns: 1fr;
+}
+
+body[data-admin-area="staff"] main {
+  padding: 0 0 24px;
+}
+
+body[data-admin-area="staff"] #staffAdministration {
+  width: 100%;
+}
+
+.staff-admin-full {
+  min-height: calc(100vh - 230px);
+}
+
+.staffbase-frame {
+  display: block;
+  width: 100%;
+  min-height: calc(100vh - 230px);
+  border: 0;
+  background: #f3f5f8;
+}
+
+.staffbase-frame.collapsed {
+  display: none;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(160px, 1fr));
