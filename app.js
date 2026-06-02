@@ -13,6 +13,7 @@ let state = {
   reconciliation: [],
   payer_aliases: [],
   status_changes: [],
+  audit_logs: [],
   can_access_staff: false,
   staff: { members: [], schedules: [], punches: [], weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri"], summary: {} },
   current_user: {},
@@ -346,6 +347,7 @@ function normalizedDuplicateKey(row) {
 function activeDuplicateNameMap() {
   const counts = {};
   for (const row of state.students || []) {
+    if (row.deleted_at) continue;
     if (String(row.status || "").toUpperCase() !== "C") continue;
     const key = normalizedDuplicateKey(row);
     if (!normalizedStudentName(row.student_name)) continue;
@@ -355,6 +357,7 @@ function activeDuplicateNameMap() {
 }
 
 function isActiveDuplicateName(row) {
+  if (row.deleted_at) return false;
   if (String(row.status || "").toUpperCase() !== "C") return false;
   return (activeDuplicateNameMap()[normalizedDuplicateKey(row)] || 0) > 1;
 }
@@ -712,13 +715,17 @@ function renderRoster() {
     ? (id) => `<button class="small danger" data-review-delete="${id}">Review/Delete</button>`
     : () => "";
   const rows = state.students
-    .filter((s) => filter === "all" || s.status.toUpperCase() === "C")
+    .filter((s) => {
+      if (filter === "deleted") return Boolean(s.deleted_at);
+      if (s.deleted_at) return false;
+      return filter === "all" || s.status.toUpperCase() === "C";
+    })
     .filter((s) => JSON.stringify(s).toLowerCase().includes(term))
     .map((s) => [
       s.number,
       `<button class="link-button ${[isStudentOverdue(s.id) ? "overdue-name" : "", isActiveDuplicateName(s) ? "duplicate-name" : ""].filter(Boolean).join(" ")}" data-profile="${s.id}">${s.student_name}</button>`,
       s.parent_guardian,
-      `<span class="status-badge ${s.status.toUpperCase() === "C" ? "current" : "inactive"}">${s.status}</span>`,
+      `<span class="status-badge ${s.deleted_at ? "inactive" : s.status.toUpperCase() === "C" ? "current" : "inactive"}">${s.deleted_at ? "Deleted" : s.status}</span>`,
       s.enrol_date,
       subjectText(s.subjects),
       s.last_modification || "",
@@ -727,11 +734,12 @@ function renderRoster() {
       s.payment_method,
       s.phone || "",
       s.email || "",
-      `<div class="row-actions"><button class="small" data-profile="${s.id}">Profile</button>${deleteAction(s.id)}</div>`,
+      `<div class="row-actions"><button class="small" data-profile="${s.id}">Profile</button>${s.deleted_at && canDeleteStudentRecords() ? `<button class="small" data-restore-student="${s.id}">Restore</button>` : deleteAction(s.id)}</div>`,
     ]);
   renderTable(qs("#rosterTable"), ["#", "Student Name", "Parent / Guardian", "Status", "Enrol Date", "Subjects", "Last Modification", "Rate Type", "STD Fee", "Pay Method", "Phone", "Email", "Actions"], rows);
   document.querySelectorAll("[data-profile]").forEach((button) => button.addEventListener("click", () => showStudentProfile(button.dataset.profile)));
   document.querySelectorAll("[data-review-delete]").forEach((button) => button.addEventListener("click", () => showStudentDeleteReview(button.dataset.reviewDelete)));
+  document.querySelectorAll("[data-restore-student]").forEach((button) => button.addEventListener("click", () => restoreStudent(button.dataset.restoreStudent)));
 }
 
 function isStudentOverdue(studentId) {
@@ -741,8 +749,8 @@ function isStudentOverdue(studentId) {
 
 function showStudentProfile(id) {
   const student = state.students.find((s) => String(s.id) === String(id));
-  const fee = state.fee_tracker.find((s) => String(s.id) === String(id));
-  if (!student || !fee) return;
+  const fee = state.fee_tracker.find((s) => String(s.id) === String(id)) || { months: {}, total_paid: 0, balance: 0 };
+  if (!student) return;
   const enrolDate = student.enrol_date ? new Date(`${student.enrol_date}T00:00:00`) : null;
   const timelineMonths = state.months.filter((m) => {
     const d = monthDate(m);
@@ -758,6 +766,7 @@ function showStudentProfile(id) {
     </div>
     <div class="profile-summary">
       <div><span>Status</span><strong>${student.status}</strong></div>
+      <div><span>Deleted</span><strong>${student.deleted_at || "No"}</strong></div>
       <div><span>Subjects</span><strong>${subjectText(student.subjects)}</strong></div>
       <div><span>Rate Type</span><strong>${student.rate_type}</strong></div>
       <div><span>Monthly Fee</span><strong>${money(student.std_monthly_fee)}</strong></div>
@@ -802,8 +811,8 @@ function paymentTimeline(student, fee) {
 
 function showStudentDeleteReview(id) {
   const student = state.students.find((s) => String(s.id) === String(id));
-  const fee = state.fee_tracker.find((s) => String(s.id) === String(id));
-  if (!student || !fee) {
+  const fee = state.fee_tracker.find((s) => String(s.id) === String(id)) || { months: {}, total_paid: 0, balance: 0 };
+  if (!student) {
     toast("Student record was not found");
     return;
   }
@@ -829,6 +838,8 @@ function showStudentDeleteReview(id) {
       <div><span>Email</span><strong>${escapeHtml(student.email || "-")}</strong></div>
       <div><span>Siblings</span><strong>${escapeHtml(student.siblings || "-")}</strong></div>
       <div><span>Last Modification</span><strong>${escapeHtml(student.last_modification || "-")}</strong></div>
+      <div><span>Deleted At</span><strong>${escapeHtml(student.deleted_at || "-")}</strong></div>
+      <div><span>Delete Reason</span><strong>${escapeHtml(student.delete_reason || "-")}</strong></div>
     </div>
     <div class="profile-block">
       <h3>Notes</h3>
@@ -946,6 +957,17 @@ function renderBillingAndAccess() {
     qs("#backupTable"),
     ["Backup File", "Modified", "Size"],
     state.backups.map((b) => [b.name, b.modified, `${Math.round((b.size || 0) / 1024)} KB`])
+  );
+  renderTable(
+    qs("#auditLogTable"),
+    ["Date", "Action", "Entity", "Actor", "Summary"],
+    (state.audit_logs || []).map((row) => [
+      escapeHtml(row.created_at || ""),
+      escapeHtml(row.action || ""),
+      escapeHtml(`${row.entity_type || ""} ${row.entity_id || ""}`.trim()),
+      escapeHtml(row.actor_email || ""),
+      escapeHtml(row.summary || ""),
+    ])
   );
 
   document.querySelectorAll("[data-save-discount]").forEach((button) => button.addEventListener("click", () => saveDiscount(button.dataset.saveDiscount)));
@@ -1707,6 +1729,13 @@ async function deleteStudent(id) {
   await api(`/api/students/${id}`, { method: "DELETE" });
   toast("Student record has been successfully deleted.");
   closeProfile();
+  await load();
+}
+
+async function restoreStudent(id) {
+  if (!confirm("Restore this student record to active roster views?")) return;
+  await api(`/api/students/${id}/restore`, { method: "PUT" });
+  toast("Student record restored");
   await load();
 }
 

@@ -266,6 +266,7 @@
                 <select id="rosterStatusFilter" class="compact-select">
                   <option value="current">Current Only</option>
                   <option value="all">All Students</option>
+                  <option value="deleted">Deleted Records</option>
                 </select>
               </label>
               <input id="search" class="search" placeholder="Search records">
@@ -404,6 +405,15 @@
             <span>Formula and macro equivalents</span>
           </div>
           <pre id="formulaManifest"></pre>
+        </section>
+        <section class="surface">
+          <div class="section-title">
+            <h2>Audit Log</h2>
+            <span>Recent student, payment, import, and restore actions</span>
+          </div>
+          <div class="table-wrap">
+            <table id="auditLogTable"></table>
+          </div>
         </section>
       </div>
     </section>

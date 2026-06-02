@@ -298,6 +298,9 @@ def create_empty_db():
             siblings TEXT,
             notes TEXT,
             last_modification TEXT,
+            deleted_at TEXT,
+            deleted_by TEXT,
+            delete_reason TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
@@ -316,6 +319,17 @@ def create_empty_db():
             changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             changed_month TEXT NOT NULL,
             notes TEXT
+        );
+        CREATE TABLE audit_logs (
+            id INTEGER PRIMARY KEY,
+            entity_type TEXT NOT NULL,
+            entity_id TEXT,
+            action TEXT NOT NULL,
+            actor_email TEXT,
+            summary TEXT,
+            before_json TEXT,
+            after_json TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE rates (
             id INTEGER PRIMARY KEY,
@@ -700,6 +714,7 @@ def ensure_meta_defaults():
         student_columns = [row["name"] for row in conn.execute("PRAGMA table_info(students)").fetchall()]
         if "last_modification" not in student_columns:
             conn.execute("ALTER TABLE students ADD COLUMN last_modification TEXT")
+        ensure_student_audit_tables(conn)
         for key, value in DEFAULT_SETTINGS.items():
             conn.execute("INSERT OR IGNORE INTO app_meta(key,value) VALUES (?,?)", (key, value))
         conn.execute(
@@ -907,6 +922,72 @@ def ensure_status_change_table(conn):
             )
             """
         )
+
+
+def ensure_student_audit_tables(conn):
+    if PG_MODE:
+        conn.execute("ALTER TABLE public.students ADD COLUMN IF NOT EXISTS deleted_at timestamptz")
+        conn.execute("ALTER TABLE public.students ADD COLUMN IF NOT EXISTS deleted_by text")
+        conn.execute("ALTER TABLE public.students ADD COLUMN IF NOT EXISTS delete_reason text")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS public.audit_logs (
+                id uuid primary key default gen_random_uuid(),
+                organization_id uuid references public.organizations(id) on delete cascade,
+                entity_type text not null,
+                entity_id text,
+                action text not null,
+                actor_email text,
+                summary text,
+                before_json jsonb,
+                after_json jsonb,
+                created_at timestamptz not null default now()
+            )
+            """
+        )
+        return
+
+    student_columns = {row["name"] for row in conn.execute("PRAGMA table_info(students)").fetchall()}
+    for name in ["deleted_at", "deleted_by", "delete_reason"]:
+        if name not in student_columns:
+            conn.execute(f"ALTER TABLE students ADD COLUMN {name} TEXT")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id INTEGER PRIMARY KEY,
+            entity_type TEXT NOT NULL,
+            entity_id TEXT,
+            action TEXT NOT NULL,
+            actor_email TEXT,
+            summary TEXT,
+            before_json TEXT,
+            after_json TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+
+def record_audit(conn, action, entity_type, entity_id=None, summary="", before=None, after=None, actor_email="system"):
+    ensure_student_audit_tables(conn)
+    before_json = json.dumps(rowdict(before) if before is not None and not isinstance(before, dict) else before, default=str) if before is not None else None
+    after_json = json.dumps(rowdict(after) if after is not None and not isinstance(after, dict) else after, default=str) if after is not None else None
+    if PG_MODE:
+        conn.execute(
+            """
+            INSERT INTO public.audit_logs(organization_id, entity_type, entity_id, action, actor_email, summary, before_json, after_json)
+            VALUES (%s,%s,%s,%s,%s,%s,%s::jsonb,%s::jsonb)
+            """,
+            (current_org_id(conn), entity_type, str(entity_id or ""), action, actor_email, summary, before_json, after_json),
+        )
+        return
+    conn.execute(
+        """
+        INSERT INTO audit_logs(entity_type, entity_id, action, actor_email, summary, before_json, after_json)
+        VALUES (?,?,?,?,?,?,?)
+        """,
+        (entity_type, str(entity_id or ""), action, actor_email, summary, before_json, after_json),
+    )
 
 
 def ensure_staff_tables(conn):
@@ -1690,21 +1771,49 @@ def recent_months(current_month, count=13):
     return months[-count:]
 
 
-def get_students(conn):
+def get_students(conn, include_deleted=False):
     if PG_MODE:
+        deleted_filter = "" if include_deleted else "AND deleted_at IS NULL"
         rows = conn.execute(
-            """
+            f"""
             SELECT id::text AS id, number, student_name, parent_guardian, status, enrol_date,
                    subjects, rate_type, std_monthly_fee, payment_method, phone, email, siblings,
-                   notes, last_modification, created_at, updated_at
+                   notes, last_modification, deleted_at, deleted_by, delete_reason, created_at, updated_at
             FROM public.students
-            WHERE organization_id=%s
+            WHERE organization_id=%s {deleted_filter}
             ORDER BY number, student_name
             """,
             (current_org_id(conn),),
         ).fetchall()
         return [display_student(row) for row in rows]
-    return [rowdict(row) for row in conn.execute("SELECT * FROM students ORDER BY number, student_name")]
+    where = "" if include_deleted else "WHERE deleted_at IS NULL"
+    return [rowdict(row) for row in conn.execute(f"SELECT * FROM students {where} ORDER BY number, student_name")]
+
+
+def get_audit_logs(conn, limit=75):
+    ensure_student_audit_tables(conn)
+    if PG_MODE:
+        rows = conn.execute(
+            """
+            SELECT id::text AS id, entity_type, entity_id, action, actor_email, summary, created_at
+            FROM public.audit_logs
+            WHERE organization_id=%s OR organization_id IS NULL
+            ORDER BY created_at DESC
+            LIMIT %s
+            """,
+            (current_org_id(conn), limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT id, entity_type, entity_id, action, actor_email, summary, created_at
+            FROM audit_logs
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [rowdict(row) for row in rows]
 
 
 def get_payments(conn):
@@ -2097,7 +2206,7 @@ def dashboard(conn, current_month="May-26"):
     }
 
 
-def insert_student_record(conn, student, number):
+def insert_student_record(conn, student, number, actor_email="system"):
     note = datetime.now().strftime("%Y-%m-%d: Created")
     if PG_MODE:
         org_id = current_org_id(conn)
@@ -2137,6 +2246,15 @@ def insert_student_record(conn, student, number):
             """,
             [(org_id, student_id, month) for month in MONTHS],
         )
+        record_audit(
+            conn,
+            "student_create",
+            "student",
+            student_id,
+            f"Created student {student['student_name']}",
+            after={**student, "number": number},
+            actor_email=actor_email,
+        )
         return student_id
     cur = conn.execute(
         """
@@ -2164,6 +2282,15 @@ def insert_student_record(conn, student, number):
     )
     for month in MONTHS:
         conn.execute("INSERT INTO payments(student_id, month_label, amount) VALUES (?,?,0)", (cur.lastrowid, month))
+    record_audit(
+        conn,
+        "student_create",
+        "student",
+        cur.lastrowid,
+        f"Created student {student['student_name']}",
+        after={**student, "number": number},
+        actor_email=actor_email,
+    )
     return cur.lastrowid
 
 
@@ -2175,7 +2302,8 @@ def next_student_number(conn):
     return int(row["n"] or 1)
 
 
-def update_payment_amount(conn, student_id, month_label, amount, source="manual"):
+def update_payment_amount(conn, student_id, month_label, amount, source="manual", actor_email="system"):
+    existing_amount = float(get_payments(conn).get(str(student_id), {}).get(month_label, 0) or 0)
     if PG_MODE:
         conn.execute(
             """
@@ -2195,6 +2323,17 @@ def update_payment_amount(conn, student_id, month_label, amount, source="manual"
             """,
             (student_id, month_label, amount),
         )
+    if abs(existing_amount - float(amount or 0)) > 0.01:
+        record_audit(
+            conn,
+            "payment_update",
+            "payment",
+            f"{student_id}:{month_label}",
+            f"{month_label} payment changed from {existing_amount:.2f} to {float(amount or 0):.2f}",
+            before={"amount": existing_amount, "month_label": month_label, "student_id": str(student_id)},
+            after={"amount": float(amount or 0), "month_label": month_label, "student_id": str(student_id), "source": source},
+            actor_email=actor_email,
+        )
 
 
 def ensure_pg_defaults():
@@ -2202,6 +2341,7 @@ def ensure_pg_defaults():
         org_id = current_org_id(conn)
         ensure_access_tables(conn)
         ensure_status_change_table(conn)
+        ensure_student_audit_tables(conn)
         ensure_staff_tables(conn)
         for subject in ["Math", "English"]:
             conn.execute(
@@ -2299,6 +2439,9 @@ class Handler(SimpleHTTPRequestHandler):
             return False
         return True
 
+    def actor_email(self):
+        return str((self.auth_access or {}).get("email") or (self.auth_user or {}).get("email") or "local-admin")
+
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/config":
@@ -2344,7 +2487,7 @@ class Handler(SimpleHTTPRequestHandler):
                     backups = list_backups()
                 can_access_staff = self.require_permission("manage_staff", send_error=False)
                 payload = {
-                        "students": get_students(conn),
+                        "students": get_students(conn, include_deleted=True),
                         "fee_tracker": fee_tracker(conn),
                         "dashboard": dashboard(conn, settings.get("current_month", "May-26")),
                         "rates": rates,
@@ -2358,6 +2501,7 @@ class Handler(SimpleHTTPRequestHandler):
                         "reconciliation": reconciliation_summary(conn),
                         "payer_aliases": payer_aliases,
                         "status_changes": get_status_changes(conn),
+                        "audit_logs": get_audit_logs(conn),
                         "can_access_staff": can_access_staff,
                         "current_user": self.auth_access or {},
                         "role_options": ROLE_OPTIONS,
@@ -2398,7 +2542,7 @@ class Handler(SimpleHTTPRequestHandler):
                     return
                 student = normalize_student(self.read_json())
                 with db() as conn:
-                    new_id = insert_student_record(conn, student, next_student_number(conn))
+                    new_id = insert_student_record(conn, student, next_student_number(conn), self.actor_email())
                     conn.commit()
                     self.send_json({"ok": True, "id": new_id})
                 return
@@ -2447,7 +2591,7 @@ class Handler(SimpleHTTPRequestHandler):
                     saved_count = 0
                     for index, student in saved:
                         try:
-                            insert_student_record(conn, student, next_number)
+                            insert_student_record(conn, student, next_number, self.actor_email())
                             conn.commit()
                             next_number += 1
                             saved_count += 1
@@ -2663,7 +2807,7 @@ class Handler(SimpleHTTPRequestHandler):
                         ).fetchone()
                     if existing_import:
                         raise ValueError("This PAD transaction was already imported")
-                    update_payment_amount(conn, student_id, month_label, amount, "reconciliation")
+                    update_payment_amount(conn, student_id, month_label, amount, "reconciliation", self.actor_email())
                     if description:
                         alias = description[:120]
                         if PG_MODE:
@@ -2768,12 +2912,52 @@ class Handler(SimpleHTTPRequestHandler):
             return
         id_pattern = r"([0-9a-fA-F-]+)"
         match = re.match(rf"^/api/students/{id_pattern}$", parsed.path)
+        restore_match = re.match(rf"^/api/students/{id_pattern}/restore$", parsed.path)
         rate_match = re.match(rf"^/api/rates/{id_pattern}$", parsed.path)
         discount_match = re.match(rf"^/api/discounts/{id_pattern}$", parsed.path)
         user_match = re.match(rf"^/api/users/{id_pattern}$", parsed.path)
         staff_member_match = re.match(rf"^/api/staff/members/{id_pattern}$", parsed.path)
         payment_match = re.match(rf"^/api/payments/{id_pattern}/([^/]+)$", parsed.path)
         try:
+            if restore_match:
+                if not self.require_permission("delete_records"):
+                    return
+                with db() as conn:
+                    if PG_MODE:
+                        old_student = conn.execute("SELECT * FROM public.students WHERE id=%s AND organization_id=%s", (restore_match.group(1), current_org_id(conn))).fetchone()
+                        conn.execute(
+                            """
+                            UPDATE public.students
+                            SET deleted_at=NULL, deleted_by=NULL, delete_reason=NULL,
+                                last_modification=%s, updated_at=now()
+                            WHERE id=%s AND organization_id=%s
+                            """,
+                            (datetime.now().strftime("%Y-%m-%d: Restored"), restore_match.group(1), current_org_id(conn)),
+                        )
+                    else:
+                        old_student = conn.execute("SELECT * FROM students WHERE id=?", (int(restore_match.group(1)),)).fetchone()
+                        conn.execute(
+                            """
+                            UPDATE students
+                            SET deleted_at=NULL, deleted_by=NULL, delete_reason=NULL,
+                                last_modification=?, updated_at=CURRENT_TIMESTAMP
+                            WHERE id=?
+                            """,
+                            (datetime.now().strftime("%Y-%m-%d: Restored"), int(restore_match.group(1))),
+                        )
+                    if old_student:
+                        record_audit(
+                            conn,
+                            "student_restore",
+                            "student",
+                            restore_match.group(1),
+                            f"Restored student {row_get(old_student, 'student_name', '')}",
+                            before=old_student,
+                            actor_email=self.actor_email(),
+                        )
+                    conn.commit()
+                self.send_json({"ok": True})
+                return
             if staff_member_match:
                 if not self.require_permission("manage_staff"):
                     return
@@ -2792,7 +2976,7 @@ class Handler(SimpleHTTPRequestHandler):
                     raise ValueError("Unknown month")
                 payload = self.read_json()
                 with db() as conn:
-                    update_payment_amount(conn, student_id if PG_MODE else int(student_id), month_label, money(payload.get("amount")))
+                    update_payment_amount(conn, student_id if PG_MODE else int(student_id), month_label, money(payload.get("amount")), "manual", self.actor_email())
                     conn.commit()
                 self.send_json({"ok": True})
                 return
@@ -2938,6 +3122,16 @@ class Handler(SimpleHTTPRequestHandler):
                         ),
                     )
                     record_status_change(conn, match.group(1), old_status, student["status"], modification_note)
+                    record_audit(
+                        conn,
+                        "student_update",
+                        "student",
+                        match.group(1),
+                        f"Updated student {student['student_name']}: {modification_note}",
+                        before=old_student,
+                        after={**student, "id": match.group(1), "last_modification": modification_note},
+                        actor_email=self.actor_email(),
+                    )
                 else:
                     conn.execute(
                         """
@@ -2965,6 +3159,16 @@ class Handler(SimpleHTTPRequestHandler):
                         ),
                     )
                     record_status_change(conn, int(match.group(1)), old_status, student["status"], modification_note)
+                    record_audit(
+                        conn,
+                        "student_update",
+                        "student",
+                        match.group(1),
+                        f"Updated student {student['student_name']}: {modification_note}",
+                        before=old_student,
+                        after={**student, "id": match.group(1), "last_modification": modification_note},
+                        actor_email=self.actor_email(),
+                    )
                 conn.commit()
             self.send_json({"ok": True})
         except ValueError as exc:
@@ -3038,9 +3242,53 @@ class Handler(SimpleHTTPRequestHandler):
             return
         with db() as conn:
             if PG_MODE:
-                conn.execute("DELETE FROM public.students WHERE id=%s AND organization_id=%s", (match.group(1), current_org_id(conn)))
+                old_student = conn.execute("SELECT * FROM public.students WHERE id=%s AND organization_id=%s", (match.group(1), current_org_id(conn))).fetchone()
+                if not old_student:
+                    self.send_json({"ok": False, "error": "Student was not found"}, 404)
+                    return
+                conn.execute(
+                    """
+                    UPDATE public.students
+                    SET deleted_at=now(), deleted_by=%s, delete_reason=%s,
+                        last_modification=%s, updated_at=now()
+                    WHERE id=%s AND organization_id=%s
+                    """,
+                    (
+                        self.actor_email(),
+                        "Soft deleted by Admin after review",
+                        datetime.now().strftime("%Y-%m-%d: Soft deleted"),
+                        match.group(1),
+                        current_org_id(conn),
+                    ),
+                )
             else:
-                conn.execute("DELETE FROM students WHERE id=?", (int(match.group(1)),))
+                old_student = conn.execute("SELECT * FROM students WHERE id=?", (int(match.group(1)),)).fetchone()
+                if not old_student:
+                    self.send_json({"ok": False, "error": "Student was not found"}, 404)
+                    return
+                conn.execute(
+                    """
+                    UPDATE students
+                    SET deleted_at=CURRENT_TIMESTAMP, deleted_by=?, delete_reason=?,
+                        last_modification=?, updated_at=CURRENT_TIMESTAMP
+                    WHERE id=?
+                    """,
+                    (
+                        self.actor_email(),
+                        "Soft deleted by Admin after review",
+                        datetime.now().strftime("%Y-%m-%d: Soft deleted"),
+                        int(match.group(1)),
+                    ),
+                )
+            record_audit(
+                conn,
+                "student_soft_delete",
+                "student",
+                match.group(1),
+                f"Soft deleted student {row_get(old_student, 'student_name', '')}",
+                before=old_student,
+                actor_email=self.actor_email(),
+            )
             conn.commit()
         self.send_json({"ok": True})
 
