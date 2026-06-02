@@ -92,11 +92,12 @@ MONTHS = [
 ]
 
 BASE_MONTHS = MONTHS[:]
-ROLE_OPTIONS = ["Admin", "Office Manager", "Office Assistant"]
+ROLE_OPTIONS = ["Admin", "Office Manager", "Office Assistant", "Staff"]
 ROLE_PERMISSIONS = {
     "Admin": {"admin", "manage_students", "manage_payments", "manage_settings", "manage_users", "manage_staff", "delete_records"},
     "Office Manager": {"manage_students", "manage_payments", "manage_staff"},
     "Office Assistant": {"manage_payments"},
+    "Staff": set(),
 }
 
 
@@ -832,10 +833,12 @@ def current_org_id(conn):
         return None
     if SMP_ORGANIZATION_ID:
         return SMP_ORGANIZATION_ID
-    row = conn.execute("SELECT id::text AS id FROM public.organizations ORDER BY created_at LIMIT 1").fetchone()
-    if row:
-        SMP_ORGANIZATION_ID = row["id"]
+    rows = conn.execute("SELECT id::text AS id FROM public.organizations ORDER BY created_at LIMIT 2").fetchall()
+    if len(rows) == 1:
+        SMP_ORGANIZATION_ID = rows[0]["id"]
         return SMP_ORGANIZATION_ID
+    if len(rows) > 1:
+        raise RuntimeError("SMP_ORGANIZATION_ID must be set when multiple organizations exist")
     row = conn.execute(
         """
         INSERT INTO public.organizations(name, details, subjects_offered, current_month)
@@ -869,6 +872,14 @@ def ensure_access_tables(conn):
                 updated_at timestamptz not null default now(),
                 unique (organization_id, email)
             )
+            """
+        )
+        conn.execute("ALTER TABLE public.app_users DROP CONSTRAINT IF EXISTS app_users_role_check")
+        conn.execute(
+            """
+            ALTER TABLE public.app_users
+            ADD CONSTRAINT app_users_role_check
+            CHECK (role in ('Admin', 'Office Manager', 'Office Assistant', 'Staff'))
             """
         )
     else:
@@ -1109,7 +1120,9 @@ def normalize_role(role):
         "manager": "Office Manager",
         "office assistant": "Office Assistant",
         "assistant": "Office Assistant",
-        "staff": "Office Assistant",
+        "staff": "Staff",
+        "teacher": "Staff",
+        "employee": "Staff",
     }
     return aliases.get(value.lower(), value if value in ROLE_OPTIONS else "Office Assistant")
 
@@ -1454,43 +1467,78 @@ def meaningful_tokens(value):
     return [token for token in clean_match_text(value).split() if len(token) >= 3 and token not in ignored]
 
 
-def score_payment_match(row, student, aliases, payments):
+DEFAULT_RECON_MATCH_RULES = {"parent_name", "payment_amount", "payment_date", "payment_method"}
+
+
+def score_payment_match(row, student, aliases, payments, match_rules=None, upload_method="PAD"):
+    rules = set(match_rules or DEFAULT_RECON_MATCH_RULES)
     description = clean_match_text(f"{row.get('description', '')} {row.get('source', '')}")
     amount = money(row.get("amount"))
     month_label = transaction_month_label(row.get("date") or row.get("transaction_date"))
     score = 0
     reasons = []
+    row_text = clean_match_text(" ".join(str(row.get(key, "")) for key in ["description", "source", "student_name", "parent_name", "email", "reference"]))
+
+    if "payment_method" in rules:
+        row_method = payment_method_label(row.get("payment_method") or upload_method)
+        student_method = payment_method_label(student.get("payment_method", ""))
+        if row_method == student_method:
+            score += 18
+            reasons.append(f"payment method matches {student_method}")
+        else:
+            reasons.append(f"payment method mismatch: CSV {row_method}, student {student_method}")
 
     parent = student.get("parent_guardian", "")
     parent_text = clean_match_text(parent)
-    if parent_text and parent_text in description:
+    if "parent_name" in rules and parent_text and parent_text in row_text:
         score += 38
         reasons.append("parent/guardian full name found")
-    else:
-        matched_tokens = [token for token in meaningful_tokens(parent) if token in description]
+    elif "parent_name" in rules:
+        matched_tokens = [token for token in meaningful_tokens(parent) if token in row_text]
         if matched_tokens:
             score += min(32, len(matched_tokens) * 14)
             reasons.append("parent/guardian name token match")
 
-    alias_hit = ""
-    for alias in aliases.get(str(student["id"]), []):
-        alias_text = clean_match_text(alias)
-        if alias_text and alias_text in description:
-            alias_hit = alias
-            score += 45
-            reasons.append(f"saved payer alias: {alias}")
-            break
+    if "parent_name" in rules:
+        alias_hit = ""
+        for alias in aliases.get(str(student["id"]), []):
+            alias_text = clean_match_text(alias)
+            if alias_text and alias_text in row_text:
+                alias_hit = alias
+                score += 45
+                reasons.append(f"saved payer alias: {alias}")
+                break
+    else:
+        alias_hit = ""
 
-    student_tokens = [token for token in meaningful_tokens(student.get("student_name", "")) if token in description]
-    if student_tokens:
-        score += min(22, len(student_tokens) * 12)
-        reasons.append("student name token match")
+    if "student_id" in rules:
+        csv_student_id = clean_match_text(row.get("student_id", ""))
+        if csv_student_id and csv_student_id in {clean_match_text(student.get("id")), clean_match_text(student.get("number"))}:
+            score += 55
+            reasons.append("student ID exact match")
+
+    if "student_name" in rules:
+        student_name_text = clean_match_text(student.get("student_name", ""))
+        if student_name_text and student_name_text in row_text:
+            score += 35
+            reasons.append("student full name found")
+        else:
+            student_tokens = [token for token in meaningful_tokens(student.get("student_name", "")) if token in row_text]
+            if student_tokens:
+                score += min(24, len(student_tokens) * 12)
+                reasons.append("student name token match")
+
+    if "email" in rules:
+        email = clean_match_text(student.get("email", ""))
+        if email and email in row_text:
+            score += 30
+            reasons.append("email match")
 
     expected = float(student.get("std_monthly_fee") or 0)
-    if expected and abs(amount - expected) <= 0.01:
+    if "payment_amount" in rules and expected and abs(amount - expected) <= 0.01:
         score += 25
         reasons.append("amount matches standard monthly fee")
-    elif expected and 0 < abs(amount - expected) <= 5:
+    elif "payment_amount" in rules and expected and 0 < abs(amount - expected) <= 5:
         score += 12
         reasons.append("amount is close to standard fee")
 
@@ -1500,21 +1548,29 @@ def score_payment_match(row, student, aliases, payments):
     enrol_date = str(student.get("enrol_date") or "")
     month_date = month_to_date(month_label)
     is_new_enrolment = bool(enrol_date and month_label and enrol_date.startswith(month_date.strftime("%Y-%m")))
-    if prev_month and prev_paid:
+    if "payment_date" in rules and prev_month and prev_paid:
         score += 14
         reasons.append("same student paid last month")
         if abs(prev_paid - amount) <= 0.01:
             score += 10
             reasons.append("amount matches last month payment")
-    elif is_new_enrolment:
+    elif "payment_date" in rules and is_new_enrolment:
         score += 8
         reasons.append("new enrolment: previous month exception")
-    elif prev_month:
+    elif "payment_date" in rules and prev_month:
         reasons.append("no previous month payment found")
 
-    if parent_text and SequenceMatcher(None, parent_text, description).ratio() >= 0.55:
+    if "parent_name" in rules and parent_text and SequenceMatcher(None, parent_text, row_text).ratio() >= 0.55:
         score += 8
         reasons.append("description is similar to guardian name")
+
+    if "organization_id" in rules and str(row.get("organization_id") or "").strip():
+        score += 8
+        reasons.append("organization ID present in CSV")
+
+    if "branch_id" in rules and str(row.get("branch_id") or "").strip():
+        score += 8
+        reasons.append("branch ID present in CSV")
 
     if current_paid > 0:
         score = max(0, score - 25)
@@ -1538,7 +1594,42 @@ def score_payment_match(row, student, aliases, payments):
     }
 
 
-def preview_reconciliation(rows):
+def reconciliation_summary_from_previews(previews, students, upload_method):
+    verified = [row for row in previews if row.get("suggestion") == "auto-fill"]
+    rejected = [row for row in previews if row.get("rejected")]
+    manual = [row for row in previews if row.get("suggestion") != "auto-fill" and not row.get("rejected")]
+    expected_amount = sum(float(student.get("std_monthly_fee") or 0) for student in students if payment_method_label(student.get("payment_method")) == upload_method)
+    csv_amount = sum(float(row.get("amount") or 0) for row in previews)
+    verified_amount = sum(float(row.get("amount") or 0) for row in verified)
+    matched_ids = {str(row.get("best_match", {}).get("student_id")) for row in previews if row.get("best_match")}
+    return {
+        "csv": {
+            "total_rows": len(previews),
+            "processed_rows": len(previews),
+            "matched_rows": len([row for row in previews if row.get("best_match")]),
+            "ready_rows": len(verified),
+            "rejected_rows": len(rejected),
+            "manual_review_rows": len(manual),
+        },
+        "financial": {
+            "expected_amount": expected_amount,
+            "csv_amount": csv_amount,
+            "verified_amount": verified_amount,
+            "rejected_amount": sum(float(row.get("amount") or 0) for row in rejected),
+            "outstanding_amount": max(0, expected_amount - verified_amount),
+            "difference": verified_amount - expected_amount,
+        },
+        "students": {
+            "matched_students": len(matched_ids),
+            "students_not_found": len([row for row in previews if not row.get("best_match")]),
+            "students_with_payment_discrepancies": len([row for row in previews if row.get("warnings")]),
+            "outstanding_students": max(0, len(students) - len(matched_ids)),
+        },
+    }
+
+
+def preview_reconciliation(rows, payment_method="PAD", match_rules=None):
+    upload_method = payment_method_label(payment_method)
     with db() as conn:
         students = [rowdict(row) for row in conn.execute("SELECT * FROM students WHERE upper(status)='C' ORDER BY student_name")]
         payments = get_payments(conn)
@@ -1553,7 +1644,11 @@ def preview_reconciliation(rows):
     aliases = {}
     for row in alias_rows:
         aliases.setdefault(str(row["student_id"]), []).append(row["alias"])
-    pad_students = [student for student in students if str(student.get("status", "")).upper() == "C" and is_pad_payment_method(student.get("payment_method"))]
+    method_students = [
+        student for student in students
+        if str(student.get("status", "")).upper() == "C"
+        and payment_method_label(student.get("payment_method")) == upload_method
+    ]
 
     previews = []
     for index, row in enumerate(rows, start=1):
@@ -1563,30 +1658,40 @@ def preview_reconciliation(rows):
             "description": str(row.get("description") or row.get("memo") or row.get("name") or "").strip(),
             "amount": money(row.get("amount") or row.get("credit") or row.get("deposit")),
             "source": str(row.get("source") or row.get("account") or "").strip(),
+            "reference": str(row.get("reference") or row.get("transaction_id") or "").strip(),
+            "student_id": str(row.get("student_id") or "").strip(),
+            "student_name": str(row.get("student_name") or "").strip(),
+            "parent_name": str(row.get("parent_name") or row.get("payer") or "").strip(),
+            "email": str(row.get("email") or "").strip(),
+            "payment_method": str(row.get("payment_method") or upload_method).strip(),
+            "organization_id": str(row.get("organization_id") or "").strip(),
+            "branch_id": str(row.get("branch_id") or "").strip(),
         }
         matches = sorted(
-            [score_payment_match(normalized, student, aliases, payments) for student in pad_students],
+            [score_payment_match(normalized, student, aliases, payments, match_rules, upload_method) for student in method_students],
             key=lambda match: match["score"],
             reverse=True,
         )[:5]
         best = matches[0] if matches else None
         warnings = []
-        if not pad_students:
-            warnings.append("No active PAD students are available for matching")
+        if not method_students:
+            warnings.append(f"No active {upload_method} students are available for matching")
         if best and best.get("already_paid"):
             warnings.append(f"{best['student_name']} already has {best['month_label']} payment recorded")
+        rejected = not best
         previews.append(
             {
                 **normalized,
                 "month_label": best["month_label"] if best else transaction_month_label(normalized["date"]),
                 "best_match": best,
                 "candidates": matches,
+                "rejected": rejected,
                 "warnings": warnings,
-                "pad_only": True,
+                "payment_method_mode": upload_method,
                 "suggestion": "auto-fill" if best and best["confidence"] == "high" and not warnings else "review",
             }
         )
-    return previews
+    return {"rows": previews, "summary": reconciliation_summary_from_previews(previews, method_students, upload_method)}
 
 
 def reconciliation_summary(conn):
@@ -1814,6 +1919,52 @@ def get_audit_logs(conn, limit=75):
             (limit,),
         ).fetchall()
     return [rowdict(row) for row in rows]
+
+
+def production_readiness(conn):
+    checks = {
+        "database": "supabase" if PG_MODE else "sqlite",
+        "auth_required": SUPABASE_REQUIRE_AUTH,
+        "supabase_configured": bool(SUPABASE_URL and SUPABASE_ANON_KEY),
+        "organization_pinned": bool(SMP_ORGANIZATION_ID),
+        "role_options": ROLE_OPTIONS,
+        "required_tables": {},
+    }
+    required = [
+        "students", "payments", "app_users", "rates", "payer_aliases",
+        "payment_imports", "payment_import_rows", "student_status_changes",
+        "audit_logs", "staff_members", "staff_schedules", "staff_shift_punches",
+    ]
+    if PG_MODE:
+        org_count = conn.execute("SELECT count(*) AS c FROM public.organizations").fetchone()["c"]
+        checks["organization_count"] = int(org_count or 0)
+        checks["organization_safe"] = bool(SMP_ORGANIZATION_ID or org_count <= 1)
+        rows = conn.execute(
+            """
+            SELECT table_name
+            FROM information_schema.tables
+            WHERE table_schema='public'
+            """
+        ).fetchall()
+        existing = {row["table_name"] for row in rows}
+        for table in required:
+            checks["required_tables"][table] = table in existing
+    else:
+        checks["organization_count"] = 1
+        checks["organization_safe"] = True
+        rows = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        existing = {row["name"] for row in rows}
+        for table in required:
+            sqlite_table = "users" if table == "app_users" else table
+            checks["required_tables"][table] = sqlite_table in existing
+    checks["ready_for_real_users"] = (
+        PG_MODE
+        and SUPABASE_REQUIRE_AUTH
+        and checks["supabase_configured"]
+        and checks["organization_safe"]
+        and all(checks["required_tables"].values())
+    )
+    return checks
 
 
 def get_payments(conn):
@@ -2127,6 +2278,135 @@ def save_staff_punch(conn, data):
         (int(staff_id), punch_date, clock_in, clock_out, duration_hours, source, notes),
     )
     return cur.lastrowid
+
+
+def seed_demo_data(conn, actor_email="system"):
+    demo_students = [
+        {
+            "student_name": "Amina Demo",
+            "parent_guardian": "Sara Demo",
+            "status": "C",
+            "enrol_date": date.today().replace(day=1).isoformat(),
+            "subjects": "Math",
+            "rate_type": "Regular",
+            "std_monthly_fee": 165,
+            "payment_method": "PAD",
+            "phone": "403-555-0101",
+            "email": "sara.demo@example.com",
+            "siblings": "",
+            "notes": "Demo PAD student",
+        },
+        {
+            "student_name": "Noah Demo",
+            "parent_guardian": "Omar Demo",
+            "status": "C",
+            "enrol_date": date.today().replace(day=1).isoformat(),
+            "subjects": "Math, English",
+            "rate_type": "Regular",
+            "std_monthly_fee": 330,
+            "payment_method": "E-Transfer",
+            "phone": "403-555-0102",
+            "email": "omar.demo@example.com",
+            "siblings": "",
+            "notes": "Demo E-Transfer student",
+        },
+        {
+            "student_name": "Mia Demo",
+            "parent_guardian": "Priya Demo",
+            "status": "C",
+            "enrol_date": date.today().replace(day=1).isoformat(),
+            "subjects": "English",
+            "rate_type": "Regular",
+            "std_monthly_fee": 165,
+            "payment_method": "Credit Card",
+            "phone": "403-555-0103",
+            "email": "priya.demo@example.com",
+            "siblings": "",
+            "notes": "Demo credit card student",
+        },
+    ]
+    created_students = 0
+    student_ids = []
+    for student in demo_students:
+        if PG_MODE:
+            existing = conn.execute(
+                """
+                SELECT id::text AS id
+                FROM public.students
+                WHERE organization_id=%s AND lower(student_name)=lower(%s) AND lower(parent_guardian)=lower(%s)
+                """,
+                (current_org_id(conn), student["student_name"], student["parent_guardian"]),
+            ).fetchone()
+        else:
+            existing = conn.execute(
+                """
+                SELECT id
+                FROM students
+                WHERE lower(student_name)=lower(?) AND lower(parent_guardian)=lower(?)
+                """,
+                (student["student_name"], student["parent_guardian"]),
+            ).fetchone()
+        if existing:
+            student_ids.append(str(existing["id"]))
+            continue
+        student_id = insert_student_record(conn, student, next_student_number(conn), actor_email)
+        student_ids.append(str(student_id))
+        created_students += 1
+
+    current = current_month_label()
+    prev = previous_month_label(current) or current
+    payment_updates = 0
+    for student_id, student in zip(student_ids, demo_students):
+        if student["payment_method"] != "PAD":
+            update_payment_amount(conn, student_id if PG_MODE else int(student_id), prev, student["std_monthly_fee"], "demo seed", actor_email)
+            payment_updates += 1
+        if student["payment_method"] == "Credit Card":
+            update_payment_amount(conn, student_id if PG_MODE else int(student_id), current, student["std_monthly_fee"], "demo seed", actor_email)
+            payment_updates += 1
+        alias = student["parent_guardian"]
+        if PG_MODE:
+            conn.execute(
+                """
+                INSERT INTO public.payer_aliases(organization_id, student_id, alias, source)
+                VALUES (%s,%s,%s,'demo seed')
+                ON CONFLICT(student_id, alias) DO NOTHING
+                """,
+                (current_org_id(conn), student_id, alias),
+            )
+        else:
+            conn.execute(
+                "INSERT OR IGNORE INTO payer_aliases(student_id, alias, source) VALUES (?,?,?)",
+                (int(student_id), alias, "demo seed"),
+            )
+
+    demo_staff = [
+        {"staff_name": "SMP Demo Admin", "role_title": "Owner", "subject": "Administration", "phone": "403-555-0201", "email": "admin.demo@example.com", "hourly_rate": 40, "pin": "1111", "active": True, "notes": "Demo staff"},
+        {"staff_name": "Rina Demo", "role_title": "Instructor", "subject": "Math", "phone": "403-555-0202", "email": "rina.demo@example.com", "hourly_rate": 26, "pin": "2222", "active": True, "notes": "Demo staff"},
+    ]
+    created_staff = 0
+    for staff in demo_staff:
+        if PG_MODE:
+            existing = conn.execute(
+                "SELECT id::text AS id FROM public.staff_members WHERE organization_id=%s AND lower(email)=lower(%s)",
+                (current_org_id(conn), staff["email"]),
+            ).fetchone()
+        else:
+            existing = conn.execute("SELECT id FROM staff_members WHERE lower(email)=lower(?)", (staff["email"],)).fetchone()
+        if existing:
+            continue
+        save_staff_member(conn, staff)
+        created_staff += 1
+
+    record_audit(
+        conn,
+        "demo_seed",
+        "organization",
+        current_org_id(conn) if PG_MODE else "local",
+        f"Seeded demo data: {created_students} students, {created_staff} staff, {payment_updates} payments",
+        after={"students": created_students, "staff": created_staff, "payments": payment_updates},
+        actor_email=actor_email,
+    )
+    return {"students_created": created_students, "staff_created": created_staff, "payments_created": payment_updates}
 
 
 def fee_tracker(conn):
@@ -2455,6 +2735,10 @@ class Handler(SimpleHTTPRequestHandler):
                 }
             )
             return
+        if parsed.path == "/api/health/production":
+            with db() as conn:
+                self.send_json({"ok": True, "checks": production_readiness(conn)})
+            return
         if parsed.path.startswith("/api/") and not self.require_auth():
             return
         if parsed.path == "/api/bootstrap":
@@ -2740,6 +3024,14 @@ class Handler(SimpleHTTPRequestHandler):
                 restore_backup(str(payload.get("name", "")))
                 self.send_json({"ok": True})
                 return
+            if parsed.path == "/api/demo/seed":
+                if not self.require_permission("manage_settings"):
+                    return
+                with db() as conn:
+                    result = seed_demo_data(conn, self.actor_email())
+                    conn.commit()
+                self.send_json({"ok": True, **result})
+                return
             if parsed.path == "/api/reconciliation/preview":
                 if not self.require_permission("manage_payments"):
                     return
@@ -2747,7 +3039,12 @@ class Handler(SimpleHTTPRequestHandler):
                 rows = payload.get("rows", [])
                 if not isinstance(rows, list) or not rows:
                     raise ValueError("Upload at least one payment transaction row")
-                self.send_json({"ok": True, "rows": preview_reconciliation(rows[:500])})
+                result = preview_reconciliation(
+                    rows[:500],
+                    payload.get("payment_method") or "PAD",
+                    payload.get("match_rules") or list(DEFAULT_RECON_MATCH_RULES),
+                )
+                self.send_json({"ok": True, **result})
                 return
             if parsed.path == "/api/reconciliation/apply":
                 if not self.require_permission("manage_payments"):
@@ -2758,6 +3055,7 @@ class Handler(SimpleHTTPRequestHandler):
                 amount = money(payload.get("amount"))
                 description = str(payload.get("description") or "").strip()
                 source = str(payload.get("source") or "").strip()
+                upload_method = payment_method_label(payload.get("payment_method") or "PAD")
                 if not student_id or month_label not in MONTHS:
                     raise ValueError("Student and month are required before applying a match")
                 with db() as conn:
@@ -2774,8 +3072,8 @@ class Handler(SimpleHTTPRequestHandler):
                     student_data = rowdict(student)
                     if str(student_data.get("status", "")).upper() != "C":
                         raise ValueError("Only active students can be updated from PAD reconciliation")
-                    if not is_pad_payment_method(student_data.get("payment_method")):
-                        raise ValueError("PAD upload can only update students with PAD payment method")
+                    if payment_method_label(student_data.get("payment_method")) != upload_method:
+                        raise ValueError(f"{upload_method} upload can only update students with {upload_method} payment method")
                     existing_payment = float(get_payments(conn).get(str(student_id), {}).get(month_label, 0) or 0)
                     if existing_payment > 0:
                         raise ValueError(f"{month_label} already has a payment recorded for this student")

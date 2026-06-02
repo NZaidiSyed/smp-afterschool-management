@@ -50,9 +50,12 @@ SUPABASE_URL=
 SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 SUPABASE_DB_URL=
+SMP_ORGANIZATION_ID=
 ```
 
 Do not commit these values to GitHub.
+
+`SMP_ORGANIZATION_ID` should be set to the UUID from `public.organizations.id` for the branch/centre this deployment should open.
 
 ## Step 4: Migration Plan
 
@@ -69,3 +72,4 @@ Do not commit these values to GitHub.
 - Row-level security is enabled.
 - Admin/manager/staff/read-only roles are represented in `organization_members`.
 - Stripe billing fields are reserved on `organizations`.
+- See `docs/MULTI_ORG_RECONCILIATION.md` for branch setup, demo data, and payment reconciliation workflow.

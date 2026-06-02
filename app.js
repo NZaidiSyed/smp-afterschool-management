@@ -17,9 +17,12 @@ let state = {
   can_access_staff: false,
   staff: { members: [], schedules: [], punches: [], weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri"], summary: {} },
   current_user: {},
-  role_options: ["Admin", "Office Manager", "Office Assistant"],
+  role_options: ["Admin", "Office Manager", "Office Assistant", "Staff"],
   reconciliationPreview: [],
+  reconciliationSummary: null,
   reconciliationFileName: "",
+  reconciliationPaymentMethod: "PAD",
+  reconciliationMatchRules: ["parent_name", "payment_amount", "payment_date", "payment_method"],
   feeImportRows: [],
   feeImportPreview: [],
   batchImportRows: [],
@@ -38,6 +41,17 @@ let activeStaffView = "staff-dashboard";
 const FEE_PAST_MONTHS = 1;
 const FEE_FUTURE_MONTHS = 2;
 const FEE_MONTH_WINDOW = FEE_PAST_MONTHS + 1 + FEE_FUTURE_MONTHS;
+const RECON_RULES = [
+  ["student_id", "Student ID"],
+  ["student_name", "Student Name"],
+  ["parent_name", "Parent Name"],
+  ["email", "Email Address"],
+  ["payment_amount", "Payment Amount"],
+  ["payment_date", "Payment Date"],
+  ["payment_method", "Payment Method"],
+  ["organization_id", "Organization ID"],
+  ["branch_id", "Branch ID"],
+];
 
 const money = (value) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(value || 0);
 const number = (value) => new Intl.NumberFormat("en-CA", { maximumFractionDigits: 2 }).format(value || 0);
@@ -231,6 +245,7 @@ function renderAll() {
   renderReporting();
   renderSettings();
   renderBatch();
+  renderReconciliationRules();
   renderReconciliation();
   renderStaffAdministration();
 }
@@ -904,7 +919,7 @@ function setSelectedSubjects(value) {
 
 function renderBillingAndAccess() {
   const subscription = state.subscriptions[0] || {};
-  const roleOptions = state.role_options?.length ? state.role_options : ["Admin", "Office Manager", "Office Assistant"];
+  const roleOptions = state.role_options?.length ? state.role_options : ["Admin", "Office Manager", "Office Assistant", "Staff"];
   const roleSelectOptions = (selected) => roleOptions
     .map((role) => `<option value="${escapeAttr(role)}" ${role === selected ? "selected" : ""}>${role}</option>`)
     .join("");
@@ -1302,6 +1317,25 @@ function renderBatch() {
   renderBatchImportPreview();
 }
 
+function renderReconciliationRules() {
+  const container = qs("#reconRuleChoices");
+  if (!container) return;
+  const selected = new Set(state.reconciliationMatchRules || []);
+  container.innerHTML = RECON_RULES.map(([id, label]) => `
+    <label>
+      <input type="checkbox" data-recon-rule="${id}" ${selected.has(id) ? "checked" : ""}>
+      <span>${label}</span>
+    </label>
+  `).join("");
+  document.querySelectorAll("[data-recon-rule]").forEach((input) => {
+    input.addEventListener("change", () => {
+      state.reconciliationMatchRules = [...document.querySelectorAll("[data-recon-rule]:checked")].map((node) => node.dataset.reconRule);
+    });
+  });
+  const method = qs("#reconPaymentMethod");
+  if (method) method.value = state.reconciliationPaymentMethod || "PAD";
+}
+
 function parseCsv(text) {
   const rows = [];
   let row = [];
@@ -1638,6 +1672,14 @@ function paymentCsvRows(rows) {
       description: pick(row, ["description", "memo", "details", "name", "payee"]),
       amount,
       source: pick(row, ["source", "account", "institution", "card"]),
+      reference: pick(row, ["reference", "reference number", "transaction id", "confirmation", "trace"]),
+      student_id: pick(row, ["student id", "student_id", "customer id", "member id"]),
+      student_name: pick(row, ["student name", "student"]),
+      parent_name: pick(row, ["parent name", "parent", "guardian", "payer name", "payer"]),
+      email: pick(row, ["email", "email address", "payer email"]),
+      payment_method: pick(row, ["payment method", "method", "payment type"]),
+      organization_id: pick(row, ["organization id", "organization_id", "centre id", "center id"]),
+      branch_id: pick(row, ["branch id", "branch_id", "location id"]),
     };
   }).filter((row) => row.date || row.description || row.amount);
 }
@@ -1647,15 +1689,29 @@ function renderReconciliation() {
   const approved = (state.reconciliation || []).find((item) => item.match_status === "approved") || {};
   const rows = state.reconciliationPreview || [];
   const verifiedCount = rows.filter((row) => row.verified).length;
+  const summary = state.reconciliationSummary || {};
+  const stats = summary.csv || {};
+  const finance = summary.financial || {};
+  const students = summary.students || {};
   qs("#reconSummary").innerHTML = [
     `<div class="info-tile"><span>Approved Matches</span><strong>${approved.count || 0}</strong></div>`,
     `<div class="info-tile"><span>Approved Total</span><strong>${money(approved.total || 0)}</strong></div>`,
     `<div class="info-tile"><span>Saved Payer Aliases</span><strong>${state.payer_aliases.length}</strong></div>`,
     `<div class="info-tile"><span>Ready to Add</span><strong>${verifiedCount} / ${rows.length}</strong></div>`,
-    `<div class="info-tile"><span>Upload Mode</span><strong>PAD Only</strong></div>`,
+    `<div class="info-tile"><span>Upload Mode</span><strong>${escapeHtml(state.reconciliationPaymentMethod || "PAD")}</strong></div>`,
+    `<div class="info-tile"><span>Total Rows</span><strong>${stats.total_rows ?? rows.length}</strong></div>`,
+    `<div class="info-tile"><span>Manual Review</span><strong>${stats.manual_review_rows ?? 0}</strong></div>`,
+    `<div class="info-tile"><span>Rejected</span><strong>${stats.rejected_rows ?? 0}</strong></div>`,
+    `<div class="info-tile"><span>Expected</span><strong>${money(finance.expected_amount || 0)}</strong></div>`,
+    `<div class="info-tile"><span>CSV Total</span><strong>${money(finance.csv_amount || 0)}</strong></div>`,
+    `<div class="info-tile"><span>Verified</span><strong>${money(finance.verified_amount || 0)}</strong></div>`,
+    `<div class="info-tile"><span>Difference</span><strong>${money(finance.difference || 0)}</strong></div>`,
+    `<div class="info-tile"><span>Matched Students</span><strong>${students.matched_students ?? 0}</strong></div>`,
+    `<div class="info-tile"><span>Outstanding Students</span><strong>${students.outstanding_students ?? 0}</strong></div>`,
   ].join("");
   qs("#reconReadyCount").textContent = `${verifiedCount} verified`;
   qs("#applyVerifiedRows").disabled = verifiedCount === 0;
+  qs("#downloadExceptionReport").disabled = !rows.length;
 
   if (!rows.length) {
     qs("#reconciliationTable").innerHTML = `<tbody><tr><td class="empty-state">Upload a bank or credit-card CSV to preview matches.</td></tr></tbody>`;
@@ -1669,9 +1725,9 @@ function renderReconciliation() {
     const selectedStudentId = row.selected_student_id || best.student_id || "";
     const selectedCandidate = (row.candidates || []).find((candidate) => String(candidate.student_id) === String(selectedStudentId)) || best;
     const monthValue = row.selected_month || row.month_label || "";
-    const blocked = warnings.length || selectedCandidate?.already_paid;
+    const blocked = warnings.length || selectedCandidate?.already_paid || row.rejected;
     const buttonClass = row.verified ? "verify-action verified" : blocked ? "verify-action blocked" : "verify-action needs-review";
-    const buttonLabel = row.verified ? (row.manually_verified ? "Verified Now to ADD" : "Verified to ADD") : blocked ? "Already Paid / Review" : "Verify and Correct";
+    const buttonLabel = row.verified ? (row.manually_verified ? "Verified Now to ADD" : "Verified to ADD") : blocked ? "Manual Review Required" : "Verify and Correct";
     return [
       row.date,
       escapeHtml(row.description),
@@ -1860,6 +1916,13 @@ async function restoreSelectedBackup() {
   await load();
 }
 
+async function seedDemoData() {
+  if (!confirm("Seed demo data for this organization? Use this only for testing or a new evaluation branch.")) return;
+  const result = await api("/api/demo/seed", { method: "POST", body: JSON.stringify({}) });
+  toast(`Demo data ready: ${result.students_created || 0} students, ${result.staff_created || 0} staff`);
+  await load();
+}
+
 async function readCsvFile(file) {
   if (!file) return [];
   const text = await file.text();
@@ -1870,12 +1933,23 @@ async function handlePaymentUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
   state.reconciliationFileName = file.name;
+  state.reconciliationPaymentMethod = qs("#reconPaymentMethod")?.value || "PAD";
+  state.reconciliationMatchRules = [...document.querySelectorAll("[data-recon-rule]:checked")].map((node) => node.dataset.reconRule);
   const rows = paymentCsvRows(await readCsvFile(file));
   if (!rows.length) {
     toast("No payment rows found in this CSV");
     return;
   }
-  const result = await api("/api/reconciliation/preview", { method: "POST", body: JSON.stringify({ rows, file_name: file.name }) });
+  const result = await api("/api/reconciliation/preview", {
+    method: "POST",
+    body: JSON.stringify({
+      rows,
+      file_name: file.name,
+      payment_method: state.reconciliationPaymentMethod,
+      match_rules: state.reconciliationMatchRules,
+    }),
+  });
+  state.reconciliationSummary = result.summary || null;
   state.reconciliationPreview = (result.rows || []).map((row) => ({
     ...row,
     selected_student_id: row.best_match?.student_id || "",
@@ -1929,6 +2003,35 @@ function updateReconSelection(index) {
   renderReconciliation();
 }
 
+function downloadExceptionReport() {
+  const rows = (state.reconciliationPreview || []).filter((row) => !row.verified || row.rejected || (row.warnings || []).length);
+  const headers = ["status", "date", "description", "amount", "source", "suggested_student", "parent_guardian", "month", "confidence", "reason"];
+  const csvRows = rows.map((row) => {
+    const candidate = row.best_match || {};
+    const status = row.rejected ? "Rejected" : (row.warnings || []).length ? "Manual Review" : "Outstanding / Not Verified";
+    return {
+      status,
+      date: row.date || "",
+      description: row.description || "",
+      amount: row.amount || 0,
+      source: row.source || "",
+      suggested_student: candidate.student_name || "",
+      parent_guardian: candidate.parent_guardian || "",
+      month: row.month_label || "",
+      confidence: candidate.confidence || "",
+      reason: [...(candidate.reasons || []), ...(row.warnings || [])].join("; "),
+    };
+  });
+  const escapeCsv = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const csv = [headers.join(","), ...csvRows.map((row) => headers.map((header) => escapeCsv(row[header])).join(","))].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `smp-reconciliation-exceptions-${state.reconciliationPaymentMethod || "payment"}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 function verifyReconciliationRow(index) {
   const row = state.reconciliationPreview[index];
   if (!row) return;
@@ -1943,8 +2046,8 @@ function verifyReconciliationRow(index) {
     toast("Select the fee month before verifying");
     return;
   }
-  if (selectedCandidate.payment_method && selectedCandidate.payment_method !== "PAD") {
-    toast("PAD upload can only update PAD students");
+  if (selectedCandidate.payment_method && selectedCandidate.payment_method !== state.reconciliationPaymentMethod) {
+    toast(`${state.reconciliationPaymentMethod} upload can only update ${state.reconciliationPaymentMethod} students`);
     return;
   }
   if (selectedCandidate.already_paid || Number(selectedCandidate.current_paid || 0) > 0) {
@@ -1987,6 +2090,8 @@ async function postReconciliationRow(row) {
       score: candidate.score || 0,
       notes: (candidate.reasons || []).join("; "),
       file_name: state.reconciliationFileName,
+      payment_method: state.reconciliationPaymentMethod,
+      match_rules: state.reconciliationMatchRules,
     }),
   });
 }
@@ -2136,12 +2241,20 @@ qs("#userForm").addEventListener("submit", addUser);
 qs('#settingsForm [name="institution_name"]').addEventListener("change", applyInstitutionDefaults);
 qs('#settingsForm [name="institution_name"]').addEventListener("blur", applyInstitutionDefaults);
 qs("#restoreBackup").addEventListener("click", restoreSelectedBackup);
+qs("#seedDemoData")?.addEventListener("click", seedDemoData);
 qs("#feeImportCsv").addEventListener("change", handleFeeImportCsv);
 qs("#applyFeeImport").addEventListener("click", applyFeeImport);
 qs("#paymentCsv").addEventListener("change", handlePaymentUpload);
+qs("#reconPaymentMethod")?.addEventListener("change", (event) => {
+  state.reconciliationPaymentMethod = event.target.value;
+  state.reconciliationPreview = [];
+  state.reconciliationSummary = null;
+  renderReconciliation();
+});
 qs("#batchCsv").addEventListener("change", handleBatchCsv);
 qs("#applyBatchImport").addEventListener("click", applyBatchImport);
 qs("#applyVerifiedRows").addEventListener("click", applyVerifiedRows);
+qs("#downloadExceptionReport").addEventListener("click", downloadExceptionReport);
 qs("#authForm")?.addEventListener("submit", sendMagicLink);
 qs("#googleLogin")?.addEventListener("click", signInWithGoogle);
 qs("#signOut")?.addEventListener("click", signOut);

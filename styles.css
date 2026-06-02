@@ -1379,6 +1379,28 @@ tr:hover td { background: #fbfdff; }
   margin-bottom: 16px;
 }
 
+.recon-rules {
+  margin-bottom: 16px;
+}
+
+.rule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.rule-grid label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfdff;
+  font-weight: 800;
+  color: #33404c;
+}
+
 .verify-action {
   min-width: 140px;
   padding: 8px 10px;

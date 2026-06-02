@@ -232,8 +232,26 @@
           <h2>Payment Reconciliation</h2>
           <span>Upload bank or credit-card CSV files, review matches, and post payments to Fee Tracker.</span>
         </div>
-        <label class="file-button">Upload Payment CSV<input id="paymentCsv" type="file" accept=".csv,text/csv"></label>
+        <div class="toolbar">
+          <label class="inline-control">Upload Type
+            <select id="reconPaymentMethod" class="compact-select">
+              <option value="PAD">PAD</option>
+              <option value="E-Transfer">E-Transfer</option>
+              <option value="Credit Card">Credit Card</option>
+            </select>
+          </label>
+          <label class="file-button">Upload Payment CSV<input id="paymentCsv" type="file" accept=".csv,text/csv"></label>
+        </div>
       </div>
+      <section class="surface recon-rules">
+        <div class="section-title">
+          <div>
+            <h2>Matching Rules</h2>
+            <span>Select the fields available in this CSV before uploading.</span>
+          </div>
+        </div>
+        <div id="reconRuleChoices" class="rule-grid"></div>
+      </section>
       <div class="mini-grid recon-summary" id="reconSummary"></div>
       <section class="surface">
         <div class="section-title">
@@ -247,6 +265,7 @@
           <table id="reconciliationTable"></table>
         </div>
         <div class="actions reconciliation-actions">
+          <button id="downloadExceptionReport" type="button" class="ghost">Download Exception Report</button>
           <button id="applyVerifiedRows" type="button">Data is Verified and Ready to Add</button>
         </div>
       </section>
@@ -320,6 +339,10 @@
               <button type="submit">Save Centre Setup</button>
             </div>
           </form>
+          <div class="setup-tools">
+            <button id="seedDemoData" type="button" class="ghost">Seed Demo Data</button>
+            <p class="muted-note">Adds sample students, staff, payer aliases, and payment history for the current organization.</p>
+          </div>
         </section>
         <section class="surface">
           <div class="section-title">
