@@ -1,3 +1,5 @@
+const DEFAULT_RECON_RULES = ["parent_name", "payment_amount", "payment_date", "payment_method"];
+
 let state = {
   students: [],
   fee_tracker: [],
@@ -22,7 +24,7 @@ let state = {
   reconciliationSummary: null,
   reconciliationFileName: "",
   reconciliationPaymentMethod: "PAD",
-  reconciliationMatchRules: ["parent_name", "payment_amount", "payment_date", "payment_method"],
+  reconciliationMatchRules: [...DEFAULT_RECON_RULES],
   feeImportRows: [],
   feeImportPreview: [],
   batchImportRows: [],
@@ -1320,7 +1322,8 @@ function renderBatch() {
 function renderReconciliationRules() {
   const container = qs("#reconRuleChoices");
   if (!container) return;
-  const selected = new Set(state.reconciliationMatchRules || []);
+  if (!state.reconciliationMatchRules?.length) state.reconciliationMatchRules = [...DEFAULT_RECON_RULES];
+  const selected = new Set(state.reconciliationMatchRules);
   container.innerHTML = RECON_RULES.map(([id, label]) => `
     <label>
       <input type="checkbox" data-recon-rule="${id}" ${selected.has(id) ? "checked" : ""}>
@@ -1935,6 +1938,7 @@ async function handlePaymentUpload(event) {
   state.reconciliationFileName = file.name;
   state.reconciliationPaymentMethod = qs("#reconPaymentMethod")?.value || "PAD";
   state.reconciliationMatchRules = [...document.querySelectorAll("[data-recon-rule]:checked")].map((node) => node.dataset.reconRule);
+  if (!state.reconciliationMatchRules.length) state.reconciliationMatchRules = [...DEFAULT_RECON_RULES];
   const rows = paymentCsvRows(await readCsvFile(file));
   if (!rows.length) {
     toast("No payment rows found in this CSV");
