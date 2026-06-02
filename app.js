@@ -56,14 +56,25 @@ async function api(path, options = {}) {
     headers,
     ...options,
   });
-  const data = await res.json();
+  const text = await res.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch (_error) {
+    throw new Error(`Server returned an invalid response for ${path}`);
+  }
   if (!res.ok || data.ok === false) throw new Error(data.error || "Request failed");
   return data;
 }
 
 async function initAuth() {
   const res = await fetch("/api/config", { headers: { "Content-Type": "application/json" } });
-  appConfig = await res.json();
+  const text = await res.text();
+  try {
+    appConfig = text ? JSON.parse(text) : {};
+  } catch (_error) {
+    throw new Error("Server configuration could not be loaded. Please restart the SMP server.");
+  }
   if (!appConfig.auth_required) {
     renderAuthState();
     return true;
@@ -107,6 +118,24 @@ function currentUserRole() {
   const user = (state.users || []).find((item) => String(item.email || "").toLowerCase() === email);
   if (user?.role) return user.role;
   return authSession ? "Pending access" : "";
+}
+
+function canDeleteStudentRecords() {
+  return String(currentUserRole() || "").toLowerCase() === "admin";
+}
+
+function paymentMethodLabel(value) {
+  const method = String(value || "").trim();
+  if (!method) return "Unspecified";
+  const normalized = method.replace(/[\s_-]+/g, "").toLowerCase();
+  const labels = {
+    etransfer: "E-Transfer",
+    pad: "PAD",
+    cash: "Cash",
+    creditcard: "Credit Card",
+    cheque: "Cheque",
+  };
+  return labels[normalized] || method;
 }
 
 function renderAuthState() {
@@ -336,7 +365,7 @@ function renderDashboard() {
   const currentMonth = state.settings.current_month || "May-26";
   const currentRevenue = rows.reduce((sum, row) => sum + (row.months[currentMonth] || 0), 0);
   const currentUnpaid = rows.filter((row) => isCurrentMonthOverdue(row));
-  const currentUnpaidTotal = currentUnpaid.reduce((sum, row) => sum + (row.std_monthly_fee || 0), 0);
+  const currentUnpaidTotal = currentUnpaid.reduce((sum, row) => sum + (row.balance || row.std_monthly_fee || 0), 0);
   const duplicateActiveCount = (state.students || []).filter((row) => isActiveDuplicateName(row)).length;
   const subjectMetrics = Object.entries(d.subject_breakdown || {}).slice(0, 4).map(([subject, count]) => metric(`${subject} Students`, count));
   qs("#metrics").innerHTML = [
@@ -365,25 +394,40 @@ function renderDashboard() {
 
   const byMethod = {};
   for (const row of rows) {
-    const method = row.payment_method || "Unspecified";
-    byMethod[method] = (byMethod[method] || 0) + (row.months[currentMonth] || 0);
+    const method = paymentMethodLabel(row.payment_method);
+    if (!byMethod[method]) {
+      byMethod[method] = { studentCount: 0, expectedRevenue: 0, collectedRevenue: 0, outstandingBalance: 0 };
+    }
+    byMethod[method].studentCount += 1;
+    byMethod[method].expectedRevenue += row.std_monthly_fee || 0;
+    byMethod[method].collectedRevenue += row.months[currentMonth] || 0;
+    byMethod[method].outstandingBalance += row.balance || 0;
   }
-  const entries = Object.entries(byMethod).sort((a, b) => b[1] - a[1]);
-  const methodMax = Math.max(...entries.map(([, v]) => v), 1);
-  qs("#paymentMix").innerHTML = entries.map(([method, value]) => `
-    <div class="mix-item">
-      <strong>${method}</strong>
-      <div class="mix-track"><div class="mix-fill" style="width:${Math.round((value / methodMax) * 100)}%"></div></div>
-      <span>${money(value)}</span>
+  const entries = Object.entries(byMethod).sort((a, b) => b[1].expectedRevenue - a[1].expectedRevenue);
+  qs("#paymentMix").innerHTML = entries.map(([method, value]) => {
+    const collectionPct = value.expectedRevenue > 0 ? Math.min(100, Math.round((value.collectedRevenue / value.expectedRevenue) * 100)) : 0;
+    return `
+    <div class="mix-item payment-mix-detail">
+      <div class="mix-heading">
+        <strong>${escapeHtml(method)}</strong>
+        <span>${number(value.studentCount)} students</span>
+      </div>
+      <div class="mix-stats">
+        <span>Expected <strong>${money(value.expectedRevenue)}</strong></span>
+        <span>Collected <strong>${money(value.collectedRevenue)}</strong></span>
+      </div>
+      <div class="mix-track" title="${collectionPct}% collected"><div class="mix-fill" style="width:${collectionPct}%"></div></div>
+      <small>Outstanding ${money(value.outstandingBalance)}</small>
     </div>
-  `).join("");
+  `;
+  }).join("");
 
   qs("#unpaidList").innerHTML = currentUnpaid.length
     ? currentUnpaid
         .map((row) => `
           <div class="unpaid-item">
             <strong>${row.student_name}</strong>
-            <span>${row.parent_guardian || "No guardian"} - ${subjectText(row.subjects)} - Expected ${money(row.std_monthly_fee)}</span>
+            <span>${row.parent_guardian || "No guardian"} - ${subjectText(row.subjects)} - Outstanding ${money(row.balance || row.std_monthly_fee)}</span>
           </div>
         `)
         .join("")
@@ -664,6 +708,9 @@ async function savePayment(input) {
 function renderRoster() {
   const term = qs("#search").value.toLowerCase();
   const filter = qs("#rosterStatusFilter").value;
+  const deleteAction = canDeleteStudentRecords()
+    ? (id) => `<button class="small danger" data-review-delete="${id}">Review/Delete</button>`
+    : () => "";
   const rows = state.students
     .filter((s) => filter === "all" || s.status.toUpperCase() === "C")
     .filter((s) => JSON.stringify(s).toLowerCase().includes(term))
@@ -680,11 +727,11 @@ function renderRoster() {
       s.payment_method,
       s.phone || "",
       s.email || "",
-      `<div class="row-actions"><button class="small" data-profile="${s.id}">Profile</button><button class="small danger" data-delete="${s.id}">Delete</button></div>`,
+      `<div class="row-actions"><button class="small" data-profile="${s.id}">Profile</button>${deleteAction(s.id)}</div>`,
     ]);
   renderTable(qs("#rosterTable"), ["#", "Student Name", "Parent / Guardian", "Status", "Enrol Date", "Subjects", "Last Modification", "Rate Type", "STD Fee", "Pay Method", "Phone", "Email", "Actions"], rows);
   document.querySelectorAll("[data-profile]").forEach((button) => button.addEventListener("click", () => showStudentProfile(button.dataset.profile)));
-  document.querySelectorAll("[data-delete]").forEach((button) => button.addEventListener("click", () => deleteStudent(button.dataset.delete)));
+  document.querySelectorAll("[data-review-delete]").forEach((button) => button.addEventListener("click", () => showStudentDeleteReview(button.dataset.reviewDelete)));
 }
 
 function isStudentOverdue(studentId) {
@@ -742,6 +789,69 @@ function showStudentProfile(id) {
     closeProfile();
     editStudent(id);
   });
+}
+
+function paymentTimeline(student, fee) {
+  const enrolDate = student.enrol_date ? new Date(`${student.enrol_date}T00:00:00`) : null;
+  const timelineMonths = state.months.filter((m) => {
+    const d = monthDate(m);
+    return !enrolDate || !d || d >= new Date(enrolDate.getFullYear(), enrolDate.getMonth(), 1);
+  });
+  return timelineMonths.map((m) => `<span class="${fee.months[m] > 0 ? "paid" : ""}" title="${m}: ${money(fee.months[m])}">${m}</span>`).join("");
+}
+
+function showStudentDeleteReview(id) {
+  const student = state.students.find((s) => String(s.id) === String(id));
+  const fee = state.fee_tracker.find((s) => String(s.id) === String(id));
+  if (!student || !fee) {
+    toast("Student record was not found");
+    return;
+  }
+  const currentMonth = state.settings.current_month || "May-26";
+  qs("#studentProfile").innerHTML = `
+    <div class="section-title">
+      <div>
+        <h2>Review/Delete Student</h2>
+        <span>Read-only student profile before permanent deletion</span>
+      </div>
+      <button type="button" class="ghost" id="cancelDeleteReviewTop">Cancel</button>
+    </div>
+    <div class="profile-summary">
+      <div><span>Student Name</span><strong>${escapeHtml(student.student_name)}</strong></div>
+      <div><span>Parent / Guardian</span><strong>${escapeHtml(student.parent_guardian || "-")}</strong></div>
+      <div><span>Status</span><strong>${escapeHtml(student.status)}</strong></div>
+      <div><span>Subjects</span><strong>${escapeHtml(subjectText(student.subjects))}</strong></div>
+      <div><span>Rate Type</span><strong>${escapeHtml(student.rate_type || "-")}</strong></div>
+      <div><span>Monthly Fee</span><strong>${money(student.std_monthly_fee)}</strong></div>
+      <div><span>Payment Method</span><strong>${escapeHtml(student.payment_method || "-")}</strong></div>
+      <div><span>Enrol Date</span><strong>${escapeHtml(student.enrol_date || "-")}</strong></div>
+      <div><span>Phone</span><strong>${escapeHtml(student.phone || "-")}</strong></div>
+      <div><span>Email</span><strong>${escapeHtml(student.email || "-")}</strong></div>
+      <div><span>Siblings</span><strong>${escapeHtml(student.siblings || "-")}</strong></div>
+      <div><span>Last Modification</span><strong>${escapeHtml(student.last_modification || "-")}</strong></div>
+    </div>
+    <div class="profile-block">
+      <h3>Notes</h3>
+      <p>${escapeHtml(student.notes || "No notes recorded.")}</p>
+    </div>
+    <div class="profile-block">
+      <h3>Current Month Balance</h3>
+      <p>${escapeHtml(currentMonth)} payment: <strong>${money(fee.months[currentMonth] || 0)}</strong><br>Outstanding balance: <strong>${money(fee.balance || 0)}</strong></p>
+    </div>
+    <div class="profile-block">
+      <h3>Payment Timeline</h3>
+      <div class="timeline">${paymentTimeline(student, fee)}</div>
+      <p>Total paid: <strong>${money(fee.total_paid)}</strong> - Balance: <strong>${money(fee.balance)}</strong></p>
+    </div>
+    <div class="review-actions">
+      <button type="button" class="danger" id="confirmDeleteStudent">Delete Student</button>
+      <button type="button" class="ghost" id="cancelDeleteReview">Cancel</button>
+    </div>
+  `;
+  qs("#studentProfile").classList.remove("collapsed");
+  qs("#cancelDeleteReviewTop").addEventListener("click", closeProfile);
+  qs("#cancelDeleteReview").addEventListener("click", closeProfile);
+  qs("#confirmDeleteStudent").addEventListener("click", () => deleteStudent(id));
 }
 
 function closeProfile() {
@@ -1589,9 +1699,10 @@ function editStudent(id) {
 }
 
 async function deleteStudent(id) {
-  if (!confirm("Delete this student record?")) return;
+  if (!confirm("Are you sure you want to permanently delete this student record?")) return;
   await api(`/api/students/${id}`, { method: "DELETE" });
-  toast("Record deleted");
+  toast("Student record has been successfully deleted.");
+  closeProfile();
   await load();
 }
 

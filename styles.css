@@ -993,6 +993,34 @@ body[data-admin-area="staff"] #staffAdministration {
   align-items: center;
 }
 
+.payment-mix-detail {
+  grid-template-columns: 1fr;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfdff;
+}
+
+.mix-heading,
+.mix-stats {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.mix-heading span,
+.mix-stats span,
+.payment-mix-detail small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.mix-stats strong {
+  color: var(--ink);
+}
+
 .mix-track {
   height: 12px;
   background: #e9eef3;
@@ -1618,6 +1646,14 @@ pre {
 .timeline span.paid {
   background: rgba(43,147,72,.14);
   color: var(--good);
+}
+
+.review-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
 }
 
 .modal-backdrop {

@@ -2002,11 +2002,15 @@ def save_staff_punch(conn, data):
 
 def fee_tracker(conn):
     payments = get_payments(conn)
+    settings = get_settings(conn)
+    current_month = settings.get("current_month") or current_month_label()
     rows = []
     for student in get_students(conn):
         month_values = {month: payments.get(str(student["id"]), {}).get(month, 0) for month in MONTHS}
         total_paid = sum(month_values.values())
-        balance = max(0, float(student["std_monthly_fee"] or 0) - total_paid) if student["status"].lower() == "c" else 0
+        monthly_fee = float(student["std_monthly_fee"] or 0)
+        current_month_paid = float(month_values.get(current_month, 0) or 0)
+        balance = 0 if student["status"].lower() != "c" or current_month_paid > 0 else monthly_fee
         rows.append(
             {
                 **student,
@@ -2016,6 +2020,8 @@ def fee_tracker(conn):
                 "months": month_values,
                 "total_paid": total_paid,
                 "balance": balance,
+                "current_month_paid": current_month_paid,
+                "current_month_balance": balance,
             }
         )
     return rows
@@ -2038,7 +2044,17 @@ def dashboard(conn, current_month="May-26"):
     by_method = {}
     for row in active:
         method = payment_method_label(row["payment_method"])
-        by_method[method] = by_method.get(method, 0) + row["months"].get(current_month, 0)
+        if method not in by_method:
+            by_method[method] = {
+                "student_count": 0,
+                "expected_revenue": 0,
+                "collected_revenue": 0,
+                "outstanding_balance": 0,
+            }
+        by_method[method]["student_count"] += 1
+        by_method[method]["expected_revenue"] += float(row["std_monthly_fee"] or 0)
+        by_method[method]["collected_revenue"] += float(row["months"].get(current_month, 0) or 0)
+        by_method[method]["outstanding_balance"] += float(row.get("balance") or 0)
     subject_breakdown = {}
     for row in active:
         for subject in subject_list(row["subjects"]):
