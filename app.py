@@ -1210,6 +1210,10 @@ def payment_method_label(value):
     return labels.get(normalized, method)
 
 
+def is_pad_payment_method(value):
+    return payment_method_label(value).upper() == "PAD"
+
+
 def subjects_text(subjects):
     return ", ".join(subject_list(subjects))
 
@@ -1411,6 +1415,7 @@ def score_payment_match(row, student, aliases, payments):
 
     prev_month = previous_month_label(month_label)
     prev_paid = float(payments.get(str(student["id"]), {}).get(prev_month, 0) or 0) if prev_month else 0
+    current_paid = float(payments.get(str(student["id"]), {}).get(month_label, 0) or 0) if month_label else 0
     enrol_date = str(student.get("enrol_date") or "")
     month_date = month_to_date(month_label)
     is_new_enrolment = bool(enrol_date and month_label and enrol_date.startswith(month_date.strftime("%Y-%m")))
@@ -1430,6 +1435,10 @@ def score_payment_match(row, student, aliases, payments):
         score += 8
         reasons.append("description is similar to guardian name")
 
+    if current_paid > 0:
+        score = max(0, score - 25)
+        reasons.append(f"{month_label} already has a payment recorded")
+
     return {
         "student_id": student["id"],
         "student_name": student["student_name"],
@@ -1442,6 +1451,9 @@ def score_payment_match(row, student, aliases, payments):
         "expected_fee": expected,
         "previous_month": prev_month,
         "previous_paid": prev_paid,
+        "current_paid": current_paid,
+        "already_paid": current_paid > 0,
+        "payment_method": payment_method_label(student.get("payment_method", "")),
     }
 
 
@@ -1460,6 +1472,7 @@ def preview_reconciliation(rows):
     aliases = {}
     for row in alias_rows:
         aliases.setdefault(str(row["student_id"]), []).append(row["alias"])
+    pad_students = [student for student in students if str(student.get("status", "")).upper() == "C" and is_pad_payment_method(student.get("payment_method"))]
 
     previews = []
     for index, row in enumerate(rows, start=1):
@@ -1471,18 +1484,25 @@ def preview_reconciliation(rows):
             "source": str(row.get("source") or row.get("account") or "").strip(),
         }
         matches = sorted(
-            [score_payment_match(normalized, student, aliases, payments) for student in students],
+            [score_payment_match(normalized, student, aliases, payments) for student in pad_students],
             key=lambda match: match["score"],
             reverse=True,
         )[:5]
         best = matches[0] if matches else None
+        warnings = []
+        if not pad_students:
+            warnings.append("No active PAD students are available for matching")
+        if best and best.get("already_paid"):
+            warnings.append(f"{best['student_name']} already has {best['month_label']} payment recorded")
         previews.append(
             {
                 **normalized,
                 "month_label": best["month_label"] if best else transaction_month_label(normalized["date"]),
                 "best_match": best,
                 "candidates": matches,
-                "suggestion": "auto-fill" if best and best["confidence"] == "high" else "review",
+                "warnings": warnings,
+                "pad_only": True,
+                "suggestion": "auto-fill" if best and best["confidence"] == "high" and not warnings else "review",
             }
         )
     return previews
@@ -2599,11 +2619,50 @@ class Handler(SimpleHTTPRequestHandler):
                 with db() as conn:
                     org_id = current_org_id(conn) if PG_MODE else None
                     if PG_MODE:
-                        student = conn.execute("SELECT id::text AS id FROM public.students WHERE id=%s AND organization_id=%s", (student_id, org_id)).fetchone()
+                        student = conn.execute(
+                            "SELECT id::text AS id, status, payment_method FROM public.students WHERE id=%s AND organization_id=%s",
+                            (student_id, org_id),
+                        ).fetchone()
                     else:
                         student = conn.execute("SELECT * FROM students WHERE id=?", (int(student_id),)).fetchone()
                     if not student:
                         raise ValueError("Student was not found")
+                    student_data = rowdict(student)
+                    if str(student_data.get("status", "")).upper() != "C":
+                        raise ValueError("Only active students can be updated from PAD reconciliation")
+                    if not is_pad_payment_method(student_data.get("payment_method")):
+                        raise ValueError("PAD upload can only update students with PAD payment method")
+                    existing_payment = float(get_payments(conn).get(str(student_id), {}).get(month_label, 0) or 0)
+                    if existing_payment > 0:
+                        raise ValueError(f"{month_label} already has a payment recorded for this student")
+                    if PG_MODE:
+                        existing_import = conn.execute(
+                            """
+                            SELECT 1
+                            FROM public.payment_import_rows
+                            WHERE organization_id=%s AND student_id=%s AND month_label=%s
+                              AND ABS(amount - %s) < 0.01
+                              AND lower(coalesce(description,''))=lower(%s)
+                              AND match_status='approved'
+                            LIMIT 1
+                            """,
+                            (org_id, student_id, month_label, amount, description),
+                        ).fetchone()
+                    else:
+                        existing_import = conn.execute(
+                            """
+                            SELECT 1
+                            FROM payment_import_rows
+                            WHERE student_id=? AND month_label=?
+                              AND ABS(amount - ?) < 0.01
+                              AND lower(coalesce(description,''))=lower(?)
+                              AND match_status='approved'
+                            LIMIT 1
+                            """,
+                            (int(student_id), month_label, amount, description),
+                        ).fetchone()
+                    if existing_import:
+                        raise ValueError("This PAD transaction was already imported")
                     update_payment_amount(conn, student_id, month_label, amount, "reconciliation")
                     if description:
                         alias = description[:120]

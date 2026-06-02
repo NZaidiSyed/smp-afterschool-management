@@ -1630,6 +1630,7 @@ function renderReconciliation() {
     `<div class="info-tile"><span>Approved Total</span><strong>${money(approved.total || 0)}</strong></div>`,
     `<div class="info-tile"><span>Saved Payer Aliases</span><strong>${state.payer_aliases.length}</strong></div>`,
     `<div class="info-tile"><span>Ready to Add</span><strong>${verifiedCount} / ${rows.length}</strong></div>`,
+    `<div class="info-tile"><span>Upload Mode</span><strong>PAD Only</strong></div>`,
   ].join("");
   qs("#reconReadyCount").textContent = `${verifiedCount} verified`;
   qs("#applyVerifiedRows").disabled = verifiedCount === 0;
@@ -1641,12 +1642,14 @@ function renderReconciliation() {
   const body = rows.map((row, index) => {
     const best = row.best_match || {};
     const confidence = best.confidence || "low";
-    const reasons = (best.reasons || []).join("; ") || "No strong matching reason yet";
+    const warnings = row.warnings || [];
+    const reasons = [...(best.reasons || []), ...warnings].join("; ") || "No strong matching reason yet";
     const selectedStudentId = row.selected_student_id || best.student_id || "";
     const selectedCandidate = (row.candidates || []).find((candidate) => String(candidate.student_id) === String(selectedStudentId)) || best;
     const monthValue = row.selected_month || row.month_label || "";
-    const buttonClass = row.verified ? "verify-action verified" : "verify-action needs-review";
-    const buttonLabel = row.verified ? (row.manually_verified ? "Verified Now to ADD" : "Verified to ADD") : "Verify and Correct";
+    const blocked = warnings.length || selectedCandidate?.already_paid;
+    const buttonClass = row.verified ? "verify-action verified" : blocked ? "verify-action blocked" : "verify-action needs-review";
+    const buttonLabel = row.verified ? (row.manually_verified ? "Verified Now to ADD" : "Verified to ADD") : blocked ? "Already Paid / Review" : "Verify and Correct";
     return [
       row.date,
       escapeHtml(row.description),
@@ -1656,15 +1659,16 @@ function renderReconciliation() {
         ${(row.candidates || []).map((candidate) => `<option value="${candidate.student_id}" ${String(candidate.student_id) === String(selectedStudentId) ? "selected" : ""}>${escapeHtml(candidate.student_name)} - ${escapeHtml(candidate.parent_guardian || "No guardian")} - ${candidate.score}%</option>`).join("")}
       </select>`,
       escapeHtml(selectedCandidate?.parent_guardian || "-"),
+      escapeHtml(selectedCandidate?.payment_method || "PAD"),
       money(selectedCandidate?.expected_fee || 0),
       `<select data-recon-month="${index}">${state.months.map((month) => `<option value="${month}" ${month === monthValue ? "selected" : ""}>${month}</option>`).join("")}</select>`,
-      selectedCandidate?.previous_month ? `${selectedCandidate.previous_month}: ${money(selectedCandidate.previous_paid || 0)}` : "-",
+      selectedCandidate?.previous_month ? `${selectedCandidate.previous_month}: ${money(selectedCandidate.previous_paid || 0)} / Current: ${money(selectedCandidate.current_paid || 0)}` : "-",
       `<span class="confidence ${confidence}">${confidence}</span>`,
       `<span class="muted-note">${escapeHtml(reasons)}</span>`,
       `<button class="${buttonClass}" data-verify-recon="${index}">${buttonLabel}</button>`,
     ];
   });
-  renderTable(qs("#reconciliationTable"), ["CSV Date", "CSV Description", "CSV Amount", "CSV Source", "Suggested Student", "Parent / Guardian", "Expected Fee", "Fee Month", "Previous Month", "Confidence", "Match Reason", "Validation"], body);
+  renderTable(qs("#reconciliationTable"), ["CSV Date", "CSV Description", "CSV Amount", "CSV Source", "Suggested Student", "Parent / Guardian", "Pay Method", "Expected Fee", "Fee Month", "Previous / Current", "Confidence", "Match Reason", "Validation"], body);
   document.querySelectorAll("[data-recon-student]").forEach((select) => select.addEventListener("change", () => updateReconSelection(Number(select.dataset.reconStudent))));
   document.querySelectorAll("[data-recon-month]").forEach((select) => select.addEventListener("change", () => updateReconSelection(Number(select.dataset.reconMonth))));
   document.querySelectorAll("[data-verify-recon]").forEach((button) => button.addEventListener("click", () => verifyReconciliationRow(Number(button.dataset.verifyRecon))));
@@ -1847,7 +1851,7 @@ async function handlePaymentUpload(event) {
     ...row,
     selected_student_id: row.best_match?.student_id || "",
     selected_month: row.month_label || "",
-    verified: row.best_match?.confidence === "high",
+    verified: row.best_match?.confidence === "high" && !(row.warnings || []).length && !row.best_match?.already_paid,
     manually_verified: false,
   }));
   renderReconciliation();
@@ -1901,12 +1905,21 @@ function verifyReconciliationRow(index) {
   if (!row) return;
   const selectedStudentId = qs(`[data-recon-student="${index}"]`)?.value || row.selected_student_id || row.best_match?.student_id || "";
   const selectedMonth = qs(`[data-recon-month="${index}"]`)?.value || row.selected_month || row.month_label || "";
+  const selectedCandidate = (row.candidates || []).find((item) => String(item.student_id) === String(selectedStudentId)) || row.best_match || {};
   if (!selectedStudentId) {
     toast("Select a student before applying");
     return;
   }
   if (!selectedMonth) {
     toast("Select the fee month before verifying");
+    return;
+  }
+  if (selectedCandidate.payment_method && selectedCandidate.payment_method !== "PAD") {
+    toast("PAD upload can only update PAD students");
+    return;
+  }
+  if (selectedCandidate.already_paid || Number(selectedCandidate.current_paid || 0) > 0) {
+    toast(`${selectedMonth} already has a payment for this PAD student`);
     return;
   }
   row.selected_student_id = selectedStudentId;

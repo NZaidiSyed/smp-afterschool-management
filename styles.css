@@ -1393,6 +1393,10 @@ tr:hover td { background: #fbfdff; }
   background: #c1121f;
 }
 
+.verify-action.blocked {
+  background: #7a8694;
+}
+
 .reconciliation-actions {
   justify-content: flex-end;
 }
