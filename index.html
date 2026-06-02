@@ -250,7 +250,24 @@
             <span>Select the fields available in this CSV before uploading.</span>
           </div>
         </div>
-        <div id="reconRuleChoices" class="rule-grid"></div>
+        <div id="reconRuleChoices" class="rule-grid">
+          <label>
+            <input type="checkbox" data-recon-rule="parent_name" checked>
+            <span>Parent Name</span>
+          </label>
+          <label>
+            <input type="checkbox" data-recon-rule="payment_amount" checked>
+            <span>Payment Amount</span>
+          </label>
+          <label>
+            <input type="checkbox" data-recon-rule="payment_date" checked>
+            <span>Payment Date</span>
+          </label>
+          <label>
+            <input type="checkbox" data-recon-rule="payment_method" checked>
+            <span>Payment Method</span>
+          </label>
+        </div>
       </section>
       <div class="mini-grid recon-summary" id="reconSummary"></div>
       <section class="surface">
