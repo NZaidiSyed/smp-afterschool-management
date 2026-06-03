@@ -1743,6 +1743,32 @@ pre {
   color: var(--muted);
 }
 
+#reconciliationTable input[type="text"],
+#reconciliationTable input:not([type]) {
+  min-width: 150px;
+}
+
+.compact-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+button.danger,
+.ghost.danger {
+  border-color: #fecaca;
+  color: #991b1b;
+}
+
 #toast {
   position: fixed;
   right: 18px;

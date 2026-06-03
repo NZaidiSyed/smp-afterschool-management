@@ -1535,6 +1535,10 @@ def score_payment_match(row, student, aliases, payments, match_rules=None, uploa
             reasons.append("email match")
 
     expected = float(student.get("std_monthly_fee") or 0)
+    if amount <= 0:
+        reasons.append("zero amount row is review-only and will not post")
+    if expected <= 0:
+        reasons.append("student has zero standard fee and is not a posting candidate")
     if "payment_amount" in rules and expected and abs(amount - expected) <= 0.01:
         score += 25
         reasons.append("amount matches standard monthly fee")
@@ -1576,13 +1580,18 @@ def score_payment_match(row, student, aliases, payments, match_rules=None, uploa
         score = max(0, score - 25)
         reasons.append(f"{month_label} already has a payment recorded")
 
+    confidence = "high" if score >= 75 else "medium" if score >= 50 else "low"
+    if amount <= 0 or expected <= 0:
+        confidence = "low"
+        score = min(score, 49)
+
     return {
         "student_id": student["id"],
         "student_name": student["student_name"],
         "parent_guardian": student.get("parent_guardian", ""),
         "month_label": month_label,
         "score": min(score, 100),
-        "confidence": "high" if score >= 75 else "medium" if score >= 50 else "low",
+        "confidence": confidence,
         "reasons": reasons,
         "alias": alias_hit,
         "expected_fee": expected,
@@ -1648,6 +1657,7 @@ def preview_reconciliation(rows, payment_method="PAD", match_rules=None):
         student for student in students
         if str(student.get("status", "")).upper() == "C"
         and payment_method_label(student.get("payment_method")) == upload_method
+        and float(student.get("std_monthly_fee") or 0) > 0
     ]
 
     previews = []
@@ -1674,6 +1684,8 @@ def preview_reconciliation(rows, payment_method="PAD", match_rules=None):
         )[:5]
         best = matches[0] if matches else None
         warnings = []
+        if float(normalized.get("amount") or 0) <= 0:
+            warnings.append("Zero amount rows are not posted. Review only.")
         if not method_students:
             warnings.append(f"No active {upload_method} students are available for matching")
         if best and best.get("already_paid"):
@@ -3056,13 +3068,19 @@ class Handler(SimpleHTTPRequestHandler):
                 description = str(payload.get("description") or "").strip()
                 source = str(payload.get("source") or "").strip()
                 upload_method = payment_method_label(payload.get("payment_method") or "PAD")
+                roster_update_approved = bool(payload.get("roster_update_approved"))
+                corrected_student_name = str(payload.get("corrected_student_name") or "").strip()
+                corrected_parent_name = str(payload.get("corrected_parent_name") or "").strip()
+                transaction_date = normalize_date(payload.get("date") or "")
                 if not student_id or month_label not in MONTHS:
                     raise ValueError("Student and month are required before applying a match")
+                if amount <= 0:
+                    raise ValueError("Zero amount rows cannot be posted to Fee Tracker")
                 with db() as conn:
                     org_id = current_org_id(conn) if PG_MODE else None
                     if PG_MODE:
                         student = conn.execute(
-                            "SELECT id::text AS id, status, payment_method FROM public.students WHERE id=%s AND organization_id=%s",
+                            "SELECT * FROM public.students WHERE id=%s AND organization_id=%s",
                             (student_id, org_id),
                         ).fetchone()
                     else:
@@ -3105,6 +3123,60 @@ class Handler(SimpleHTTPRequestHandler):
                         ).fetchone()
                     if existing_import:
                         raise ValueError("This PAD transaction was already imported")
+                    before_student = dict(student_data)
+                    roster_changes = {}
+                    if roster_update_approved:
+                        if corrected_student_name and corrected_student_name != str(student_data.get("student_name") or ""):
+                            roster_changes["student_name"] = corrected_student_name
+                        if corrected_parent_name and corrected_parent_name != str(student_data.get("parent_guardian") or ""):
+                            roster_changes["parent_guardian"] = corrected_parent_name
+                    if roster_changes:
+                        modification_note = f"{datetime.now().strftime('%Y-%m-%d')}: Payment reconciliation corrected {', '.join(roster_changes.keys())}"
+                        if PG_MODE:
+                            conn.execute(
+                                """
+                                UPDATE public.students
+                                SET student_name=COALESCE(NULLIF(%s,''), student_name),
+                                    parent_guardian=COALESCE(NULLIF(%s,''), parent_guardian),
+                                    last_modification=%s,
+                                    updated_at=now()
+                                WHERE id=%s AND organization_id=%s
+                                """,
+                                (
+                                    roster_changes.get("student_name", ""),
+                                    roster_changes.get("parent_guardian", ""),
+                                    modification_note,
+                                    student_id,
+                                    org_id,
+                                ),
+                            )
+                        else:
+                            conn.execute(
+                                """
+                                UPDATE students
+                                SET student_name=COALESCE(NULLIF(?,''), student_name),
+                                    parent_guardian=COALESCE(NULLIF(?,''), parent_guardian),
+                                    last_modification=?,
+                                    updated_at=CURRENT_TIMESTAMP
+                                WHERE id=?
+                                """,
+                                (
+                                    roster_changes.get("student_name", ""),
+                                    roster_changes.get("parent_guardian", ""),
+                                    modification_note,
+                                    int(student_id),
+                                ),
+                            )
+                        record_audit(
+                            conn,
+                            "update",
+                            "student",
+                            student_id,
+                            "Roster name correction from payment reconciliation",
+                            before=before_student,
+                            after={**before_student, **roster_changes, "last_modification": modification_note},
+                            actor_email=self.actor_email(),
+                        )
                     update_payment_amount(conn, student_id, month_label, amount, "reconciliation", self.actor_email())
                     if description:
                         alias = description[:120]
@@ -3143,7 +3215,7 @@ class Handler(SimpleHTTPRequestHandler):
                                 import_id,
                                 org_id,
                                 student_id,
-                                str(payload.get("date") or "").strip(),
+                                transaction_date,
                                 description,
                                 amount,
                                 source,
@@ -3168,7 +3240,7 @@ class Handler(SimpleHTTPRequestHandler):
                             (
                                 cur.lastrowid,
                                 int(student_id),
-                                str(payload.get("date") or "").strip(),
+                                transaction_date,
                                 description,
                                 amount,
                                 source,

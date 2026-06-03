@@ -1,4 +1,6 @@
 const DEFAULT_RECON_RULES = ["parent_name", "payment_amount", "payment_date", "payment_method"];
+const RECON_SESSION_KEY = "smp.reconciliation.pending.v1";
+const RECON_SESSION_TTL_MS = 30 * 60 * 1000;
 
 let state = {
   students: [],
@@ -58,6 +60,45 @@ const RECON_RULES = [
 const money = (value) => new Intl.NumberFormat("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 }).format(value || 0);
 const number = (value) => new Intl.NumberFormat("en-CA", { maximumFractionDigits: 2 }).format(value || 0);
 const qs = (selector, root = document) => root.querySelector(selector);
+
+function saveReconciliationSession() {
+  if (!state.reconciliationPreview?.length) {
+    localStorage.removeItem(RECON_SESSION_KEY);
+    return;
+  }
+  localStorage.setItem(RECON_SESSION_KEY, JSON.stringify({
+    saved_at: Date.now(),
+    file_name: state.reconciliationFileName,
+    payment_method: state.reconciliationPaymentMethod,
+    match_rules: state.reconciliationMatchRules,
+    summary: state.reconciliationSummary,
+    rows: state.reconciliationPreview,
+  }));
+}
+
+function restoreReconciliationSession() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RECON_SESSION_KEY) || "null");
+    if (!saved?.rows?.length) return;
+    if (Date.now() - Number(saved.saved_at || 0) > RECON_SESSION_TTL_MS) {
+      localStorage.removeItem(RECON_SESSION_KEY);
+      return;
+    }
+    state.reconciliationFileName = saved.file_name || state.reconciliationFileName;
+    state.reconciliationPaymentMethod = saved.payment_method || state.reconciliationPaymentMethod;
+    state.reconciliationMatchRules = saved.match_rules?.length ? saved.match_rules : state.reconciliationMatchRules;
+    state.reconciliationSummary = saved.summary || state.reconciliationSummary;
+    state.reconciliationPreview = saved.rows || [];
+  } catch {
+    localStorage.removeItem(RECON_SESSION_KEY);
+  }
+}
+
+function clearReconciliationSession() {
+  state.reconciliationPreview = [];
+  state.reconciliationSummary = null;
+  localStorage.removeItem(RECON_SESSION_KEY);
+}
 
 function toast(message) {
   const node = qs("#toast");
@@ -231,6 +272,7 @@ async function switchAccount() {
 
 async function load() {
   state = await api("/api/bootstrap");
+  restoreReconciliationSession();
   hydrateMonthSelectors();
   renderAll();
 }
@@ -1691,7 +1733,9 @@ function renderReconciliation() {
   if (!qs("#reconciliationTable")) return;
   const approved = (state.reconciliation || []).find((item) => item.match_status === "approved") || {};
   const rows = state.reconciliationPreview || [];
-  const verifiedCount = rows.filter((row) => row.verified).length;
+  const activeRows = rows.filter((row) => !row.excluded);
+  const excludedCount = rows.filter((row) => row.excluded).length;
+  const verifiedCount = activeRows.filter((row) => row.verified).length;
   const summary = state.reconciliationSummary || {};
   const stats = summary.csv || {};
   const finance = summary.financial || {};
@@ -1700,7 +1744,8 @@ function renderReconciliation() {
     `<div class="info-tile"><span>Approved Matches</span><strong>${approved.count || 0}</strong></div>`,
     `<div class="info-tile"><span>Approved Total</span><strong>${money(approved.total || 0)}</strong></div>`,
     `<div class="info-tile"><span>Saved Payer Aliases</span><strong>${state.payer_aliases.length}</strong></div>`,
-    `<div class="info-tile"><span>Ready to Add</span><strong>${verifiedCount} / ${rows.length}</strong></div>`,
+    `<div class="info-tile"><span>Ready to Add</span><strong>${verifiedCount} / ${activeRows.length}</strong></div>`,
+    `<div class="info-tile"><span>Excluded Rows</span><strong>${excludedCount}</strong></div>`,
     `<div class="info-tile"><span>Upload Mode</span><strong>${escapeHtml(state.reconciliationPaymentMethod || "PAD")}</strong></div>`,
     `<div class="info-tile"><span>Total Rows</span><strong>${stats.total_rows ?? rows.length}</strong></div>`,
     `<div class="info-tile"><span>Manual Review</span><strong>${stats.manual_review_rows ?? 0}</strong></div>`,
@@ -1723,17 +1768,20 @@ function renderReconciliation() {
   const body = rows.map((row, index) => {
     const best = row.best_match || {};
     const confidence = best.confidence || "low";
-    const warnings = row.warnings || [];
+    const warnings = [...(row.warnings || [])];
+    if (Number(row.amount || 0) <= 0) warnings.push("Zero amount: not postable");
     const reasons = [...(best.reasons || []), ...warnings].join("; ") || "No strong matching reason yet";
     const selectedStudentId = row.selected_student_id || best.student_id || "";
     const selectedCandidate = (row.candidates || []).find((candidate) => String(candidate.student_id) === String(selectedStudentId)) || best;
     const monthValue = row.selected_month || row.month_label || "";
-    const blocked = warnings.length || selectedCandidate?.already_paid || row.rejected;
+    const blocked = row.excluded || warnings.length || selectedCandidate?.already_paid || row.rejected || Number(row.amount || 0) <= 0;
     const buttonClass = row.verified ? "verify-action verified" : blocked ? "verify-action blocked" : "verify-action needs-review";
-    const buttonLabel = row.verified ? (row.manually_verified ? "Verified Now to ADD" : "Verified to ADD") : blocked ? "Manual Review Required" : "Verify and Correct";
+    const buttonLabel = row.excluded ? "Excluded" : row.verified ? (row.manually_verified ? "Verified Now to ADD" : "Verified to ADD") : blocked ? "Manual Review Required" : "Verify and Correct";
     return [
       row.date,
       escapeHtml(row.description),
+      `<input data-recon-student-name="${index}" value="${escapeHtml(row.corrected_student_name ?? row.student_name ?? "")}" placeholder="CSV student">`,
+      `<input data-recon-parent-name="${index}" value="${escapeHtml(row.corrected_parent_name ?? row.parent_name ?? row.description ?? "")}" placeholder="CSV parent/payor">`,
       money(row.amount),
       escapeHtml(row.source || "-"),
       `<select data-recon-student="${index}">
@@ -1746,12 +1794,17 @@ function renderReconciliation() {
       selectedCandidate?.previous_month ? `${selectedCandidate.previous_month}: ${money(selectedCandidate.previous_paid || 0)} / Current: ${money(selectedCandidate.current_paid || 0)}` : "-",
       `<span class="confidence ${confidence}">${confidence}</span>`,
       `<span class="muted-note">${escapeHtml(reasons)}</span>`,
-      `<button class="${buttonClass}" data-verify-recon="${index}">${buttonLabel}</button>`,
+      `<label class="compact-check"><input type="checkbox" data-roster-update="${index}" ${row.roster_update_approved ? "checked" : ""}> Update roster names</label>`,
+      `<div class="row-actions"><button class="${buttonClass}" data-verify-recon="${index}" ${row.excluded ? "disabled" : ""}>${buttonLabel}</button><button class="ghost danger" data-exclude-recon="${index}" type="button">${row.excluded ? "Restore" : "Delete Row"}</button></div>`,
     ];
   });
-  renderTable(qs("#reconciliationTable"), ["CSV Date", "CSV Description", "CSV Amount", "CSV Source", "Suggested Student", "Parent / Guardian", "Pay Method", "Expected Fee", "Fee Month", "Previous / Current", "Confidence", "Match Reason", "Validation"], body);
+  renderTable(qs("#reconciliationTable"), ["CSV Date", "CSV Description", "CSV Student", "CSV Parent / Payor", "CSV Amount", "CSV Source", "Suggested Student", "Parent / Guardian", "Pay Method", "Expected Fee", "Fee Month", "Previous / Current", "Confidence", "Match Reason", "Roster Correction", "Validation"], body);
   document.querySelectorAll("[data-recon-student]").forEach((select) => select.addEventListener("change", () => updateReconSelection(Number(select.dataset.reconStudent))));
   document.querySelectorAll("[data-recon-month]").forEach((select) => select.addEventListener("change", () => updateReconSelection(Number(select.dataset.reconMonth))));
+  document.querySelectorAll("[data-recon-student-name]").forEach((input) => input.addEventListener("input", () => updateReconCorrection(Number(input.dataset.reconStudentName))));
+  document.querySelectorAll("[data-recon-parent-name]").forEach((input) => input.addEventListener("input", () => updateReconCorrection(Number(input.dataset.reconParentName))));
+  document.querySelectorAll("[data-roster-update]").forEach((input) => input.addEventListener("change", () => updateReconCorrection(Number(input.dataset.rosterUpdate))));
+  document.querySelectorAll("[data-exclude-recon]").forEach((button) => button.addEventListener("click", () => toggleExcludeReconciliationRow(Number(button.dataset.excludeRecon))));
   document.querySelectorAll("[data-verify-recon]").forEach((button) => button.addEventListener("click", () => verifyReconciliationRow(Number(button.dataset.verifyRecon))));
 }
 
@@ -1958,9 +2011,14 @@ async function handlePaymentUpload(event) {
     ...row,
     selected_student_id: row.best_match?.student_id || "",
     selected_month: row.month_label || "",
-    verified: row.best_match?.confidence === "high" && !(row.warnings || []).length && !row.best_match?.already_paid,
+    corrected_student_name: row.student_name || "",
+    corrected_parent_name: row.parent_name || row.description || "",
+    roster_update_approved: false,
+    excluded: false,
+    verified: Number(row.amount || 0) > 0 && row.best_match?.confidence === "high" && !(row.warnings || []).length && !row.best_match?.already_paid,
     manually_verified: false,
   }));
+  saveReconciliationSession();
   renderReconciliation();
   toast(`${state.reconciliationPreview.length} transaction${state.reconciliationPreview.length === 1 ? "" : "s"} ready for review`);
 }
@@ -2004,7 +2062,30 @@ function updateReconSelection(index) {
   row.selected_month = month?.value || row.month_label || "";
   row.verified = false;
   row.manually_verified = false;
+  saveReconciliationSession();
   renderReconciliation();
+}
+
+function updateReconCorrection(index) {
+  const row = state.reconciliationPreview[index];
+  if (!row) return;
+  row.corrected_student_name = qs(`[data-recon-student-name="${index}"]`)?.value || "";
+  row.corrected_parent_name = qs(`[data-recon-parent-name="${index}"]`)?.value || "";
+  row.roster_update_approved = Boolean(qs(`[data-roster-update="${index}"]`)?.checked);
+  row.verified = false;
+  row.manually_verified = false;
+  saveReconciliationSession();
+}
+
+function toggleExcludeReconciliationRow(index) {
+  const row = state.reconciliationPreview[index];
+  if (!row) return;
+  row.excluded = !row.excluded;
+  row.verified = false;
+  row.manually_verified = false;
+  saveReconciliationSession();
+  renderReconciliation();
+  toast(row.excluded ? "Row excluded from posting" : "Row restored to review queue");
 }
 
 function downloadExceptionReport() {
@@ -2039,6 +2120,15 @@ function downloadExceptionReport() {
 function verifyReconciliationRow(index) {
   const row = state.reconciliationPreview[index];
   if (!row) return;
+  updateReconCorrection(index);
+  if (row.excluded) {
+    toast("Restore this row before verifying");
+    return;
+  }
+  if (Number(row.amount || 0) <= 0) {
+    toast("Zero amount rows cannot be posted");
+    return;
+  }
   const selectedStudentId = qs(`[data-recon-student="${index}"]`)?.value || row.selected_student_id || row.best_match?.student_id || "";
   const selectedMonth = qs(`[data-recon-month="${index}"]`)?.value || row.selected_month || row.month_label || "";
   const selectedCandidate = (row.candidates || []).find((item) => String(item.student_id) === String(selectedStudentId)) || row.best_match || {};
@@ -2062,6 +2152,7 @@ function verifyReconciliationRow(index) {
   row.selected_month = selectedMonth;
   row.verified = true;
   row.manually_verified = true;
+  saveReconciliationSession();
   renderReconciliation();
   toast("Row verified and ready to add");
 }
@@ -2085,6 +2176,9 @@ async function postReconciliationRow(row) {
   if (!selectedStudentId || !selectedMonth || !row.verified) {
     throw new Error("Verify each row before adding");
   }
+  if (row.excluded || Number(row.amount || 0) <= 0) {
+    throw new Error("Excluded or zero amount rows cannot be posted");
+  }
   await api("/api/reconciliation/apply", {
     method: "POST",
     body: JSON.stringify({
@@ -2096,6 +2190,9 @@ async function postReconciliationRow(row) {
       file_name: state.reconciliationFileName,
       payment_method: state.reconciliationPaymentMethod,
       match_rules: state.reconciliationMatchRules,
+      corrected_student_name: row.corrected_student_name || "",
+      corrected_parent_name: row.corrected_parent_name || "",
+      roster_update_approved: Boolean(row.roster_update_approved),
     }),
   });
 }
@@ -2103,20 +2200,37 @@ async function postReconciliationRow(row) {
 async function applyVerifiedRows() {
   const verifiedRows = (state.reconciliationPreview || [])
     .map((row, index) => ({ row, index }))
-    .filter(({ row }) => row.verified && (row.selected_student_id || row.best_match?.student_id) && (row.selected_month || row.month_label));
+    .filter(({ row }) => !row.excluded && Number(row.amount || 0) > 0 && row.verified && (row.selected_student_id || row.best_match?.student_id) && (row.selected_month || row.month_label));
   if (!verifiedRows.length) {
     toast("No verified payment rows are ready");
     return;
   }
-  if (!confirm(`Add ${verifiedRows.length} verified payment row${verifiedRows.length === 1 ? "" : "s"} to Fee Tracker?`)) return;
+  const excludedCount = (state.reconciliationPreview || []).filter((row) => row.excluded).length;
+  const zeroCount = (state.reconciliationPreview || []).filter((row) => Number(row.amount || 0) <= 0 && !row.excluded).length;
+  const reviewCount = (state.reconciliationPreview || []).filter((row) => !row.excluded && !row.verified).length;
+  const postTotal = verifiedRows.reduce((sum, { row }) => sum + Number(row.amount || 0), 0);
+  const rosterUpdates = verifiedRows.filter(({ row }) => row.roster_update_approved).length;
+  const summary = [
+    `Verified rows to post: ${verifiedRows.length}`,
+    `Total to post: ${money(postTotal)}`,
+    `Rows still needing review: ${reviewCount}`,
+    `Excluded/deleted rows: ${excludedCount}`,
+    `Zero amount review rows: ${zeroCount}`,
+    `Roster name corrections approved: ${rosterUpdates}`,
+    "",
+    "Post only after the bank total and selected students are correct."
+  ].join("\n");
+  if (!confirm(summary)) return;
+  if (!confirm("Final approval: post verified payments to Fee Tracker and save approved roster corrections?")) return;
   const remaining = [];
   for (const row of state.reconciliationPreview) {
-    if (row.verified) await postReconciliationRow(row);
+    if (!row.excluded && Number(row.amount || 0) > 0 && row.verified) await postReconciliationRow(row);
     else remaining.push(row);
   }
   toast("Verified payments added to Fee Tracker");
   await load();
   state.reconciliationPreview = remaining;
+  saveReconciliationSession();
   renderReconciliation();
 }
 
@@ -2251,8 +2365,7 @@ qs("#applyFeeImport").addEventListener("click", applyFeeImport);
 qs("#paymentCsv").addEventListener("change", handlePaymentUpload);
 qs("#reconPaymentMethod")?.addEventListener("change", (event) => {
   state.reconciliationPaymentMethod = event.target.value;
-  state.reconciliationPreview = [];
-  state.reconciliationSummary = null;
+  clearReconciliationSession();
   renderReconciliation();
 });
 qs("#batchCsv").addEventListener("change", handleBatchCsv);
