@@ -207,7 +207,7 @@ def normalize_date(value):
             return (datetime(1899, 12, 30) + timedelta(days=serial)).strftime("%Y-%m-%d")
     except ValueError:
         pass
-    for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%m/%d/%y", "%d/%m/%y", "%b %d %Y", "%d %b %Y", "%Y/%m/%d"]:
+    for fmt in ["%Y-%m-%d", "%Y-%b-%d", "%m/%d/%Y", "%d/%m/%Y", "%m/%d/%y", "%d/%m/%y", "%b %d %Y", "%d %b %Y", "%Y/%m/%d"]:
         try:
             return datetime.strptime(text[:10] if fmt == "%Y-%m-%d" else text, fmt).strftime("%Y-%m-%d")
         except ValueError:
@@ -1436,7 +1436,7 @@ def transaction_month_label(value):
     text = str(value or "").strip()
     if not text:
         return ""
-    for fmt in ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%m/%d/%y", "%d/%m/%y", "%b %d %Y", "%d %b %Y"]:
+    for fmt in ["%Y-%m-%d", "%Y-%b-%d", "%m/%d/%Y", "%d/%m/%Y", "%m/%d/%y", "%d/%m/%y", "%b %d %Y", "%d %b %Y"]:
         try:
             parsed = datetime.strptime(text[:10] if fmt == "%Y-%m-%d" else text, fmt)
             label = parsed.strftime("%b-%y")

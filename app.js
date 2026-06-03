@@ -1667,24 +1667,24 @@ async function applyBatchImport() {
 
 function paymentCsvRows(rows) {
   return rows.map((row) => {
-    const debit = normalizeMoney(pick(row, ["debit", "withdrawal"]));
-    const credit = normalizeMoney(pick(row, ["credit", "deposit"]));
-    const amount = Math.abs(normalizeMoney(pick(row, ["amount"])) || credit || debit);
+    const debit = normalizeMoney(pick(row, ["debit", "withdrawal", "withdrawal amount"]));
+    const credit = normalizeMoney(pick(row, ["credit", "deposit", "deposit amount"]));
+    const amount = Math.abs(normalizeMoney(pick(row, ["amount", "payment amount", "paid amount", "transaction amount"])) || credit || debit);
     return {
-      date: pick(row, ["date", "transaction date", "posted date"]),
-      description: pick(row, ["description", "memo", "details", "name", "payee"]),
+      date: pick(row, ["date", "transaction date", "posted date", "payment date", "paid date", "process date"]),
+      description: pick(row, ["description", "memo", "details", "name", "payee", "payor", "payee/payor name", "payer name"]),
       amount,
       source: pick(row, ["source", "account", "institution", "card"]),
       reference: pick(row, ["reference", "reference number", "transaction id", "confirmation", "trace"]),
       student_id: pick(row, ["student id", "student_id", "customer id", "member id"]),
       student_name: pick(row, ["student name", "student"]),
-      parent_name: pick(row, ["parent name", "parent", "guardian", "payer name", "payer"]),
+      parent_name: pick(row, ["parent name", "parent", "guardian", "payer name", "payer", "payor", "payee/payor name"]),
       email: pick(row, ["email", "email address", "payer email"]),
       payment_method: pick(row, ["payment method", "method", "payment type"]),
       organization_id: pick(row, ["organization id", "organization_id", "centre id", "center id"]),
       branch_id: pick(row, ["branch id", "branch_id", "location id"]),
     };
-  }).filter((row) => row.date || row.description || row.amount);
+  }).filter((row) => row.date || row.description || row.amount || row.student_name || row.parent_name || row.payment_method);
 }
 
 function renderReconciliation() {
