@@ -77,6 +77,7 @@ DEFAULT_SETTINGS = {
     "current_month": "May-26",
     "subjects_offered": "Math\nEnglish",
 }
+STUDENT_SCHEDULE_WEEKDAYS = ["Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
 NS = {
     "m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
@@ -716,6 +717,7 @@ def ensure_meta_defaults():
         if "last_modification" not in student_columns:
             conn.execute("ALTER TABLE students ADD COLUMN last_modification TEXT")
         ensure_student_audit_tables(conn)
+        ensure_student_schedule_tables(conn)
         for key, value in DEFAULT_SETTINGS.items():
             conn.execute("INSERT OR IGNORE INTO app_meta(key,value) VALUES (?,?)", (key, value))
         conn.execute(
@@ -999,6 +1001,141 @@ def record_audit(conn, action, entity_type, entity_id=None, summary="", before=N
         """,
         (entity_type, str(entity_id or ""), action, actor_email, summary, before_json, after_json),
     )
+
+
+def ensure_student_schedule_tables(conn):
+    if PG_MODE:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS public.student_schedules (
+                id uuid primary key default gen_random_uuid(),
+                organization_id uuid not null references public.organizations(id) on delete cascade,
+                student_id uuid not null references public.students(id) on delete cascade,
+                weekday text not null,
+                start_time time not null,
+                end_time time not null,
+                active boolean not null default true,
+                created_at timestamptz not null default now(),
+                updated_at timestamptz not null default now()
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_student_schedules_org_student ON public.student_schedules(organization_id, student_id)")
+        return
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS student_schedules (
+            id INTEGER PRIMARY KEY,
+            student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+            weekday TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_student_schedules_student ON student_schedules(student_id)")
+
+
+def normalize_time_value(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    for fmt in ["%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M%p"]:
+        try:
+            return datetime.strptime(text.upper(), fmt).strftime("%H:%M")
+        except ValueError:
+            continue
+    raise ValueError(f"Invalid schedule time: {text}")
+
+
+def normalize_student_schedules(value):
+    schedules = value if isinstance(value, list) else []
+    cleaned = []
+    seen_days = set()
+    for item in schedules:
+        if not isinstance(item, dict):
+            continue
+        weekday = str(item.get("weekday") or "").strip()
+        start_time = normalize_time_value(item.get("start_time"))
+        end_time = normalize_time_value(item.get("end_time"))
+        if not weekday and not start_time and not end_time:
+            continue
+        if weekday not in STUDENT_SCHEDULE_WEEKDAYS:
+            raise ValueError("Student schedule day must be Tuesday through Saturday")
+        if not start_time or not end_time:
+            raise ValueError("Schedule start and end time are required")
+        if start_time >= end_time:
+            raise ValueError("Schedule end time must be after start time")
+        if weekday in seen_days:
+            raise ValueError("Use each schedule day only once per student")
+        seen_days.add(weekday)
+        cleaned.append({"weekday": weekday, "start_time": start_time, "end_time": end_time})
+    if len(cleaned) > 2:
+        raise ValueError("Each student can have a maximum of two weekly schedule days")
+    return cleaned
+
+
+def schedule_display(schedules):
+    return "; ".join(f"{item['weekday'][:3]} {item['start_time']}-{item['end_time']}" for item in schedules)
+
+
+def get_student_schedules(conn, student_ids=None):
+    ensure_student_schedule_tables(conn)
+    if PG_MODE:
+        org_id = current_org_id(conn)
+        rows = conn.execute(
+            """
+            SELECT id::text AS id, student_id::text AS student_id, weekday,
+                   to_char(start_time, 'HH24:MI') AS start_time,
+                   to_char(end_time, 'HH24:MI') AS end_time,
+                   active
+            FROM public.student_schedules
+            WHERE organization_id=%s AND active=true
+            ORDER BY student_id, start_time
+            """,
+            (org_id,),
+        ).fetchall()
+    else:
+        if student_ids:
+            ids = [int(item) for item in student_ids]
+            placeholders = ",".join("?" for _ in ids)
+            rows = conn.execute(
+                f"SELECT * FROM student_schedules WHERE active=1 AND student_id IN ({placeholders}) ORDER BY student_id, start_time",
+                ids,
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT * FROM student_schedules WHERE active=1 ORDER BY student_id, start_time").fetchall()
+    grouped = {}
+    for row in rows:
+        item = rowdict(row)
+        grouped.setdefault(str(item["student_id"]), []).append(item)
+    return grouped
+
+
+def save_student_schedules(conn, student_id, schedules):
+    ensure_student_schedule_tables(conn)
+    cleaned = normalize_student_schedules(schedules)
+    if PG_MODE:
+        org_id = current_org_id(conn)
+        conn.execute("DELETE FROM public.student_schedules WHERE organization_id=%s AND student_id=%s", (org_id, str(student_id)))
+        for item in cleaned:
+            conn.execute(
+                """
+                INSERT INTO public.student_schedules(organization_id, student_id, weekday, start_time, end_time)
+                VALUES (%s,%s,%s,%s,%s)
+                """,
+                (org_id, str(student_id), item["weekday"], item["start_time"], item["end_time"]),
+            )
+        return
+    conn.execute("DELETE FROM student_schedules WHERE student_id=?", (int(student_id),))
+    for item in cleaned:
+        conn.execute(
+            "INSERT INTO student_schedules(student_id, weekday, start_time, end_time) VALUES (?,?,?,?)",
+            (int(student_id), item["weekday"], item["start_time"], item["end_time"]),
+        )
 
 
 def ensure_staff_tables(conn):
@@ -1384,6 +1521,7 @@ def normalize_student(data):
         "email": str(data.get("email", "")).strip(),
         "siblings": str(data.get("siblings", "")).strip(),
         "notes": str(data.get("notes", "")).strip(),
+        "schedules": normalize_student_schedules(data.get("schedules")),
     }
 
 
@@ -1416,6 +1554,9 @@ def student_modification_note(old, new):
             different = str(old_value or "").strip() != str(new_value or "").strip()
         if different:
             changed.append(label)
+    old_schedules = old.get("schedules", []) if isinstance(old, dict) else []
+    if schedule_display(old_schedules) != schedule_display(new.get("schedules", [])):
+        changed.append("Weekly Schedule")
     if not changed:
         return old["last_modification"] if "last_modification" in old.keys() else ""
     return f"{datetime.now().strftime('%Y-%m-%d')}: " + ", ".join(changed)
@@ -1467,7 +1608,23 @@ def meaningful_tokens(value):
     return [token for token in clean_match_text(value).split() if len(token) >= 3 and token not in ignored]
 
 
-DEFAULT_RECON_MATCH_RULES = {"parent_name", "payment_amount", "payment_date", "payment_method"}
+DEFAULT_RECON_MATCH_RULES = {"student_name", "parent_name", "payment_amount", "payment_date", "payment_method"}
+
+
+def comma_name_variant(value):
+    text = str(value or "").strip()
+    if "," not in text:
+        return ""
+    left, right = [part.strip() for part in text.split(",", 1)]
+    return f"{right} {left}".strip()
+
+
+def token_overlap_score(left, right):
+    left_tokens = set(meaningful_tokens(left))
+    right_tokens = set(meaningful_tokens(right))
+    if not left_tokens or not right_tokens:
+        return 0
+    return len(left_tokens & right_tokens) / max(len(left_tokens), len(right_tokens))
 
 
 def score_payment_match(row, student, aliases, payments, match_rules=None, upload_method="PAD"):
@@ -1476,8 +1633,13 @@ def score_payment_match(row, student, aliases, payments, match_rules=None, uploa
     amount = money(row.get("amount"))
     month_label = transaction_month_label(row.get("date") or row.get("transaction_date"))
     score = 0
+    identity_score = 0
     reasons = []
-    row_text = clean_match_text(" ".join(str(row.get(key, "")) for key in ["description", "source", "student_name", "parent_name", "email", "reference"]))
+    row_identity_text = " ".join(str(row.get(key, "")) for key in ["description", "source", "student_name", "parent_name", "email", "reference"])
+    row_text = clean_match_text(row_identity_text)
+    csv_student_text = clean_match_text(row.get("student_name", ""))
+    csv_parent_text = clean_match_text(row.get("parent_name", "") or row.get("description", ""))
+    csv_parent_reversed = clean_match_text(comma_name_variant(row.get("parent_name", "") or row.get("description", "")))
 
     if "payment_method" in rules:
         row_method = payment_method_label(row.get("payment_method") or upload_method)
@@ -1490,14 +1652,21 @@ def score_payment_match(row, student, aliases, payments, match_rules=None, uploa
 
     parent = student.get("parent_guardian", "")
     parent_text = clean_match_text(parent)
-    if "parent_name" in rules and parent_text and parent_text in row_text:
+    parent_identity_texts = [text for text in {parent_text, clean_match_text(comma_name_variant(parent))} if text]
+    if "parent_name" in rules and parent_identity_texts and any(text in row_text or text in csv_parent_reversed for text in parent_identity_texts):
         score += 38
+        identity_score += 38
         reasons.append("parent/guardian full name found")
     elif "parent_name" in rules:
         matched_tokens = [token for token in meaningful_tokens(parent) if token in row_text]
         if matched_tokens:
             score += min(32, len(matched_tokens) * 14)
+            identity_score += min(32, len(matched_tokens) * 14)
             reasons.append("parent/guardian name token match")
+        elif parent_text and token_overlap_score(parent, f"{row.get('parent_name', '')} {row.get('description', '')}") >= 0.6:
+            score += 24
+            identity_score += 24
+            reasons.append("parent/guardian close token match")
 
     if "parent_name" in rules:
         alias_hit = ""
@@ -1506,6 +1675,7 @@ def score_payment_match(row, student, aliases, payments, match_rules=None, uploa
             if alias_text and alias_text in row_text:
                 alias_hit = alias
                 score += 45
+                identity_score += 45
                 reasons.append(f"saved payer alias: {alias}")
                 break
     else:
@@ -1515,23 +1685,35 @@ def score_payment_match(row, student, aliases, payments, match_rules=None, uploa
         csv_student_id = clean_match_text(row.get("student_id", ""))
         if csv_student_id and csv_student_id in {clean_match_text(student.get("id")), clean_match_text(student.get("number"))}:
             score += 55
+            identity_score += 55
             reasons.append("student ID exact match")
 
     if "student_name" in rules:
         student_name_text = clean_match_text(student.get("student_name", ""))
-        if student_name_text and student_name_text in row_text:
-            score += 35
+        if student_name_text and csv_student_text and student_name_text == csv_student_text:
+            score += 48
+            identity_score += 48
+            reasons.append("CSV student name exact match")
+        elif student_name_text and student_name_text in row_text:
+            score += 40
+            identity_score += 40
             reasons.append("student full name found")
         else:
             student_tokens = [token for token in meaningful_tokens(student.get("student_name", "")) if token in row_text]
             if student_tokens:
                 score += min(24, len(student_tokens) * 12)
+                identity_score += min(24, len(student_tokens) * 12)
                 reasons.append("student name token match")
+            elif student_name_text and csv_student_text and SequenceMatcher(None, student_name_text, csv_student_text).ratio() >= 0.78:
+                score += 30
+                identity_score += 30
+                reasons.append("student name close match")
 
     if "email" in rules:
         email = clean_match_text(student.get("email", ""))
         if email and email in row_text:
             score += 30
+            identity_score += 30
             reasons.append("email match")
 
     expected = float(student.get("std_monthly_fee") or 0)
@@ -1566,6 +1748,7 @@ def score_payment_match(row, student, aliases, payments, match_rules=None, uploa
 
     if "parent_name" in rules and parent_text and SequenceMatcher(None, parent_text, row_text).ratio() >= 0.55:
         score += 8
+        identity_score += 8
         reasons.append("description is similar to guardian name")
 
     if "organization_id" in rules and str(row.get("organization_id") or "").strip():
@@ -1579,6 +1762,11 @@ def score_payment_match(row, student, aliases, payments, match_rules=None, uploa
     if current_paid > 0:
         score = max(0, score - 25)
         reasons.append(f"{month_label} already has a payment recorded")
+
+    has_csv_identity = any(str(row.get(key) or "").strip() for key in ("student_id", "student_name", "parent_name", "email", "description"))
+    if has_csv_identity and identity_score == 0:
+        score = min(score, 44)
+        reasons.append("no student or parent identity match")
 
     confidence = "high" if score >= 75 else "medium" if score >= 50 else "low"
     if amount <= 0 or expected <= 0:
@@ -1682,7 +1870,7 @@ def preview_reconciliation(rows, payment_method="PAD", match_rules=None):
             key=lambda match: match["score"],
             reverse=True,
         )[:5]
-        best = matches[0] if matches else None
+        best = matches[0] if matches and matches[0]["score"] >= 50 else None
         warnings = []
         if float(normalized.get("amount") or 0) <= 0:
             warnings.append("Zero amount rows are not posted. Review only.")
@@ -1902,9 +2090,19 @@ def get_students(conn, include_deleted=False):
             """,
             (current_org_id(conn),),
         ).fetchall()
-        return [display_student(row) for row in rows]
+        students = [display_student(row) for row in rows]
+        schedules = get_student_schedules(conn, [student["id"] for student in students])
+        for student in students:
+            student["schedules"] = schedules.get(str(student["id"]), [])
+            student["weekly_schedule"] = schedule_display(student["schedules"])
+        return students
     where = "" if include_deleted else "WHERE deleted_at IS NULL"
-    return [rowdict(row) for row in conn.execute(f"SELECT * FROM students {where} ORDER BY number, student_name")]
+    students = [rowdict(row) for row in conn.execute(f"SELECT * FROM students {where} ORDER BY number, student_name")]
+    schedules = get_student_schedules(conn, [student["id"] for student in students])
+    for student in students:
+        student["schedules"] = schedules.get(str(student["id"]), [])
+        student["weekly_schedule"] = schedule_display(student["schedules"])
+    return students
 
 
 def get_audit_logs(conn, limit=75):
@@ -1945,7 +2143,7 @@ def production_readiness(conn):
     required = [
         "students", "payments", "app_users", "rates", "payer_aliases",
         "payment_imports", "payment_import_rows", "student_status_changes",
-        "audit_logs", "staff_members", "staff_schedules", "staff_shift_punches",
+        "audit_logs", "student_schedules", "staff_members", "staff_schedules", "staff_shift_punches",
     ]
     if PG_MODE:
         org_count = conn.execute("SELECT count(*) AS c FROM public.organizations").fetchone()["c"]
@@ -2529,6 +2727,7 @@ def insert_student_record(conn, student, number, actor_email="system"):
             ),
         ).fetchone()
         student_id = row["id"]
+        save_student_schedules(conn, student_id, student.get("schedules", []))
         execute_many(
             conn,
             """
@@ -2572,6 +2771,7 @@ def insert_student_record(conn, student, number, actor_email="system"):
             note,
         ),
     )
+    save_student_schedules(conn, cur.lastrowid, student.get("schedules", []))
     for month in MONTHS:
         conn.execute("INSERT INTO payments(student_id, month_label, amount) VALUES (?,?,0)", (cur.lastrowid, month))
     record_audit(
@@ -2634,6 +2834,7 @@ def ensure_pg_defaults():
         ensure_access_tables(conn)
         ensure_status_change_table(conn)
         ensure_student_audit_tables(conn)
+        ensure_student_schedule_tables(conn)
         ensure_staff_tables(conn)
         for subject in ["Math", "English"]:
             conn.execute(
@@ -3491,6 +3692,7 @@ class Handler(SimpleHTTPRequestHandler):
                             current_org_id(conn),
                         ),
                     )
+                    save_student_schedules(conn, match.group(1), student.get("schedules", []))
                     record_status_change(conn, match.group(1), old_status, student["status"], modification_note)
                     record_audit(
                         conn,
@@ -3528,6 +3730,7 @@ class Handler(SimpleHTTPRequestHandler):
                             int(match.group(1)),
                         ),
                     )
+                    save_student_schedules(conn, int(match.group(1)), student.get("schedules", []))
                     record_status_change(conn, int(match.group(1)), old_status, student["status"], modification_note)
                     record_audit(
                         conn,

@@ -92,6 +92,18 @@ create table if not exists public.student_status_changes (
   notes text
 );
 
+create table if not exists public.student_schedules (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  student_id uuid not null references public.students(id) on delete cascade,
+  weekday text not null check (weekday in ('Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday')),
+  start_time time not null,
+  end_time time not null,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.audit_logs (
   id uuid primary key default gen_random_uuid(),
   organization_id uuid references public.organizations(id) on delete cascade,
@@ -212,6 +224,7 @@ create index if not exists students_org_status_idx on public.students(organizati
 create index if not exists students_org_deleted_idx on public.students(organization_id, deleted_at);
 create index if not exists payments_org_month_idx on public.payments(organization_id, month_label);
 create index if not exists status_changes_org_month_idx on public.student_status_changes(organization_id, changed_month);
+create index if not exists student_schedules_org_student_idx on public.student_schedules(organization_id, student_id);
 create index if not exists audit_logs_org_created_idx on public.audit_logs(organization_id, created_at desc);
 create index if not exists staff_members_org_active_idx on public.staff_members(organization_id, active);
 create index if not exists staff_schedules_org_staff_idx on public.staff_schedules(organization_id, staff_id);
@@ -225,6 +238,7 @@ alter table public.app_users enable row level security;
 alter table public.students enable row level security;
 alter table public.payments enable row level security;
 alter table public.student_status_changes enable row level security;
+alter table public.student_schedules enable row level security;
 alter table public.audit_logs enable row level security;
 alter table public.staff_members enable row level security;
 alter table public.staff_schedules enable row level security;
@@ -296,6 +310,15 @@ create policy "members can view students"
 
 create policy "managers can manage students"
   on public.students for all
+  using (public.has_org_role(organization_id, array['owner', 'admin', 'manager']))
+  with check (public.has_org_role(organization_id, array['owner', 'admin', 'manager']));
+
+create policy "members can view student schedules"
+  on public.student_schedules for select
+  using (public.is_org_member(organization_id));
+
+create policy "managers can manage student schedules"
+  on public.student_schedules for all
   using (public.has_org_role(organization_id, array['owner', 'admin', 'manager']))
   with check (public.has_org_role(organization_id, array['owner', 'admin', 'manager']));
 

@@ -1,4 +1,4 @@
-const DEFAULT_RECON_RULES = ["parent_name", "payment_amount", "payment_date", "payment_method"];
+const DEFAULT_RECON_RULES = ["student_name", "parent_name", "payment_amount", "payment_date", "payment_method"];
 const RECON_SESSION_KEY = "smp.reconciliation.pending.v1";
 const RECON_SESSION_TTL_MS = 30 * 60 * 1000;
 
@@ -43,9 +43,11 @@ let feeMonthOffset = 0;
 let reportSelectedMonths = [];
 let activeAdminArea = "student";
 let activeStaffView = "staff-dashboard";
+let reconSearchRenderTimer = null;
 const FEE_PAST_MONTHS = 1;
 const FEE_FUTURE_MONTHS = 2;
 const FEE_MONTH_WINDOW = FEE_PAST_MONTHS + 1 + FEE_FUTURE_MONTHS;
+const PRESENCE_WEEKDAYS = ["Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const RECON_RULES = [
   ["student_id", "Student ID"],
   ["student_name", "Student Name"],
@@ -290,6 +292,7 @@ function renderAll() {
   renderDashboard();
   renderFeeTracker();
   renderRoster();
+  renderPresence();
   renderReporting();
   renderSettings();
   renderBatch();
@@ -378,6 +381,145 @@ function subjectList(value) {
 
 function subjectText(value) {
   return subjectList(value).join(", ");
+}
+
+function scheduleText(student) {
+  return student.weekly_schedule || (student.schedules || [])
+    .map((item) => `${String(item.weekday || "").slice(0, 3)} ${item.start_time}-${item.end_time}`)
+    .join("; ") || "-";
+}
+
+function timeToMinutes(value) {
+  const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function minutesToTimeLabel(minutes) {
+  if (minutes == null) return "-";
+  const hour24 = Math.floor(minutes / 60);
+  const minute = minutes % 60;
+  const suffix = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = hour24 % 12 || 12;
+  return `${hour12}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+function presenceEntries() {
+  const weekdayRank = Object.fromEntries(PRESENCE_WEEKDAYS.map((day, index) => [day, index]));
+  return (state.students || [])
+    .filter((student) => !student.deleted_at && String(student.status || "").toUpperCase() === "C")
+    .flatMap((student) => (student.schedules || []).map((schedule) => {
+      const startMinutes = timeToMinutes(schedule.start_time);
+      const endMinutes = timeToMinutes(schedule.end_time);
+      return {
+        student_id: student.id,
+        student_name: student.student_name || "-",
+        weekday: schedule.weekday,
+        start_time: schedule.start_time,
+        end_time: schedule.end_time,
+        startMinutes,
+        endMinutes,
+      };
+    }))
+    .filter((entry) => PRESENCE_WEEKDAYS.includes(entry.weekday) && entry.startMinutes != null && entry.endMinutes != null && entry.startMinutes < entry.endMinutes)
+    .sort((a, b) => (weekdayRank[a.weekday] - weekdayRank[b.weekday]) || a.startMinutes - b.startMinutes || a.student_name.localeCompare(b.student_name));
+}
+
+function presenceBlocks(entries) {
+  if (!entries.length) return [];
+  const minStart = Math.floor(Math.min(...entries.map((entry) => entry.startMinutes)) / 30) * 30;
+  const maxEnd = Math.ceil(Math.max(...entries.map((entry) => entry.endMinutes)) / 30) * 30;
+  const blocks = [];
+  for (let minutes = minStart; minutes < maxEnd; minutes += 30) blocks.push(minutes);
+  return blocks;
+}
+
+function renderPresence() {
+  if (!qs("#presenceTable")) return;
+  const selectedDay = qs("#presenceDayFilter")?.value || "all";
+  const allEntries = presenceEntries();
+  const visibleEntries = selectedDay === "all" ? allEntries : allEntries.filter((entry) => entry.weekday === selectedDay);
+  const activeScheduledStudents = new Set(allEntries.map((entry) => String(entry.student_id)));
+  const dayCounts = PRESENCE_WEEKDAYS.map((day) => ({
+    day,
+    count: allEntries.filter((entry) => entry.weekday === day).length,
+  }));
+  const blocks = presenceBlocks(allEntries);
+  const daySeries = PRESENCE_WEEKDAYS.map((day) => ({
+    day,
+    counts: blocks.map((block) => allEntries.filter((entry) => entry.weekday === day && entry.startMinutes <= block && entry.endMinutes > block).length),
+  }));
+  const maxCount = Math.max(1, ...daySeries.flatMap((series) => series.counts));
+  const peak = daySeries.flatMap((series) => series.counts.map((count, index) => ({ day: series.day, count, block: blocks[index] })))
+    .sort((a, b) => b.count - a.count)[0] || { day: "-", count: 0, block: null };
+  const quietest = [...dayCounts].sort((a, b) => a.count - b.count)[0] || { day: "-", count: 0 };
+
+  qs("#presenceMetrics").innerHTML = [
+    metric("Scheduled Students", activeScheduledStudents.size, "accent"),
+    metric("Weekly Visits", allEntries.length, "success"),
+    metric("Peak Time", `${peak.day} ${minutesToTimeLabel(peak.block)}`, peak.count ? "warning" : ""),
+    metric("Peak Students", peak.count, peak.count ? "warning" : ""),
+    metric("Quietest Day", quietest.day, ""),
+    metric("Quietest Visits", quietest.count, ""),
+  ].join("");
+
+  const chartDays = selectedDay === "all" ? daySeries : daySeries.filter((series) => series.day === selectedDay);
+  qs("#presenceChart").innerHTML = allEntries.length ? chartDays.map((series) => {
+    const width = 640;
+    const height = 170;
+    const left = 42;
+    const right = 16;
+    const top = 14;
+    const bottom = 34;
+    const usableWidth = width - left - right;
+    const usableHeight = height - top - bottom;
+    const points = series.counts.map((count, index) => {
+      const x = left + (blocks.length === 1 ? usableWidth / 2 : (index / (blocks.length - 1)) * usableWidth);
+      const y = top + usableHeight - (count / maxCount) * usableHeight;
+      return `${x},${y}`;
+    }).join(" ");
+    const labels = blocks.map((block, index) => {
+      const x = left + (blocks.length === 1 ? usableWidth / 2 : (index / (blocks.length - 1)) * usableWidth);
+      return index % 2 === 0 ? `<text x="${x}" y="${height - 10}" text-anchor="middle">${minutesToTimeLabel(block).replace(":00 ", " ")}</text>` : "";
+    }).join("");
+    const dots = series.counts.map((count, index) => {
+      const x = left + (blocks.length === 1 ? usableWidth / 2 : (index / (blocks.length - 1)) * usableWidth);
+      const y = top + usableHeight - (count / maxCount) * usableHeight;
+      return `<circle cx="${x}" cy="${y}" r="4"><title>${series.day} ${minutesToTimeLabel(blocks[index])}: ${count} student${count === 1 ? "" : "s"}</title></circle>`;
+    }).join("");
+    return `
+      <div class="presence-chart-card">
+        <div class="presence-chart-title"><strong>${series.day}</strong><span>${series.counts.reduce((sum, count) => Math.max(sum, count), 0)} peak students</span></div>
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${series.day} scheduled student traffic">
+          <line x1="${left}" y1="${top + usableHeight}" x2="${width - right}" y2="${top + usableHeight}" class="axis"></line>
+          <line x1="${left}" y1="${top}" x2="${left}" y2="${top + usableHeight}" class="axis"></line>
+          <text x="10" y="${top + 5}" class="axis-label">${maxCount}</text>
+          <text x="10" y="${top + usableHeight}" class="axis-label">0</text>
+          <polyline points="${points}" class="presence-line"></polyline>
+          ${dots}
+          ${labels}
+        </svg>
+      </div>
+    `;
+  }).join("") : `<div class="empty-state">No active student schedules have been entered yet.</div>`;
+
+  renderTable(
+    qs("#presenceTable"),
+    ["Day", "Time", "Student Name"],
+    visibleEntries.map((entry) => [
+      escapeHtml(entry.weekday),
+      `${escapeHtml(minutesToTimeLabel(entry.startMinutes))} - ${escapeHtml(minutesToTimeLabel(entry.endMinutes))}`,
+      escapeHtml(entry.student_name),
+    ])
+  );
+
+  const maxDayCount = Math.max(1, ...dayCounts.map((item) => item.count));
+  qs("#presenceDayLoad").innerHTML = dayCounts.map((item) => `
+    <div class="presence-load-row">
+      <div><strong>${item.day}</strong><span>${item.count} scheduled visit${item.count === 1 ? "" : "s"}</span></div>
+      <div class="presence-load-track"><span style="width:${Math.max(4, Math.round((item.count / maxDayCount) * 100))}%"></span></div>
+    </div>
+  `).join("");
 }
 
 function renderSubjectChoices(selected = "") {
@@ -791,6 +933,7 @@ function renderRoster() {
       `<span class="status-badge ${s.deleted_at ? "inactive" : s.status.toUpperCase() === "C" ? "current" : "inactive"}">${s.deleted_at ? "Deleted" : s.status}</span>`,
       s.enrol_date,
       subjectText(s.subjects),
+      scheduleText(s),
       s.last_modification || "",
       s.rate_type,
       money(s.std_monthly_fee),
@@ -799,7 +942,7 @@ function renderRoster() {
       s.email || "",
       `<div class="row-actions"><button class="small" data-profile="${s.id}">Profile</button>${s.deleted_at && canDeleteStudentRecords() ? `<button class="small" data-restore-student="${s.id}">Restore</button>` : deleteAction(s.id)}</div>`,
     ]);
-  renderTable(qs("#rosterTable"), ["#", "Student Name", "Parent / Guardian", "Status", "Enrol Date", "Subjects", "Last Modification", "Rate Type", "STD Fee", "Pay Method", "Phone", "Email", "Actions"], rows);
+  renderTable(qs("#rosterTable"), ["#", "Student Name", "Parent / Guardian", "Status", "Enrol Date", "Subjects", "Weekly Schedule", "Last Modification", "Rate Type", "STD Fee", "Pay Method", "Phone", "Email", "Actions"], rows);
   document.querySelectorAll("[data-profile]").forEach((button) => button.addEventListener("click", () => showStudentProfile(button.dataset.profile)));
   document.querySelectorAll("[data-review-delete]").forEach((button) => button.addEventListener("click", () => showStudentDeleteReview(button.dataset.reviewDelete)));
   document.querySelectorAll("[data-restore-student]").forEach((button) => button.addEventListener("click", () => restoreStudent(button.dataset.restoreStudent)));
@@ -831,6 +974,7 @@ function showStudentProfile(id) {
       <div><span>Status</span><strong>${student.status}</strong></div>
       <div><span>Deleted</span><strong>${student.deleted_at || "No"}</strong></div>
       <div><span>Subjects</span><strong>${subjectText(student.subjects)}</strong></div>
+      <div><span>Weekly Schedule</span><strong>${escapeHtml(scheduleText(student))}</strong></div>
       <div><span>Rate Type</span><strong>${student.rate_type}</strong></div>
       <div><span>Monthly Fee</span><strong>${money(student.std_monthly_fee)}</strong></div>
       <div><span>Payment</span><strong>${student.payment_method || "-"}</strong></div>
@@ -963,6 +1107,26 @@ function selectedSubjectValues() {
 
 function setSelectedSubjects(value) {
   renderSubjectChoices(value);
+}
+
+function setScheduleRows(schedules = []) {
+  [0, 1].forEach((index) => {
+    const item = schedules[index] || {};
+    const weekday = qs(`[data-schedule-weekday="${index}"]`);
+    const start = qs(`[data-schedule-start="${index}"]`);
+    const end = qs(`[data-schedule-end="${index}"]`);
+    if (weekday) weekday.value = item.weekday || "";
+    if (start) start.value = item.start_time || "";
+    if (end) end.value = item.end_time || "";
+  });
+}
+
+function collectScheduleRows() {
+  return [0, 1].map((index) => ({
+    weekday: qs(`[data-schedule-weekday="${index}"]`)?.value || "",
+    start_time: qs(`[data-schedule-start="${index}"]`)?.value || "",
+    end_time: qs(`[data-schedule-end="${index}"]`)?.value || "",
+  })).filter((item) => item.weekday || item.start_time || item.end_time);
 }
 
 function renderBillingAndAccess() {
@@ -1739,32 +1903,88 @@ function paymentCsvRows(rows) {
   };
 }
 
+function reconSearchText(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function reconTokens(value) {
+  return reconSearchText(value).split(/\s+/).filter((token) => token.length >= 2);
+}
+
+function reconCommaVariant(value) {
+  const text = String(value || "").trim();
+  if (!text.includes(",")) return "";
+  const [left, right] = text.split(",", 2).map((part) => part.trim());
+  return `${right} ${left}`.trim();
+}
+
+function reconCandidateHasIdentity(candidate) {
+  const reasonText = (candidate?.reasons || []).join(" ").toLowerCase();
+  return /student|parent|guardian|alias|email|search|manual/.test(reasonText) && !/no student or parent identity match/.test(reasonText);
+}
+
+function reconMeaningfulCandidate(candidate) {
+  return Boolean(candidate?.student_id) && (Number(candidate.score || 0) >= 50 || reconCandidateHasIdentity(candidate));
+}
+
+function reconSearchScore(student, query, row = {}) {
+  const queryText = reconSearchText([
+    query,
+    reconCommaVariant(query),
+    row.student_name,
+    row.parent_name,
+    reconCommaVariant(row.parent_name),
+    row.description,
+    reconCommaVariant(row.description),
+  ].filter(Boolean).join(" "));
+  if (!queryText) return 0;
+  const studentText = reconSearchText(student.student_name || "");
+  const parentText = reconSearchText(`${student.parent_guardian || ""} ${reconCommaVariant(student.parent_guardian || "")}`);
+  const haystack = reconSearchText(`${student.student_name || ""} ${student.parent_guardian || ""} ${reconCommaVariant(student.parent_guardian || "")} ${student.email || ""}`);
+  if (studentText && reconSearchText(row.student_name) && studentText === reconSearchText(row.student_name)) return 100;
+  if (parentText && reconSearchText(row.parent_name) && parentText.includes(reconSearchText(row.parent_name))) return 95;
+  if (haystack.includes(queryText)) return 100;
+  const tokens = reconTokens(queryText);
+  if (!tokens.length) return 0;
+  const hits = tokens.filter((token) => haystack.includes(token)).length;
+  const base = Math.round((hits / tokens.length) * 80);
+  const studentHits = reconTokens(row.student_name).filter((token) => studentText.includes(token)).length;
+  const parentHits = reconTokens(row.parent_name || row.description).filter((token) => parentText.includes(token)).length;
+  return Math.max(base, Math.min(100, studentHits * 35 + parentHits * 18));
+}
+
 function reconciliationStudentOptions(row) {
-  const query = String(row.student_search || row.corrected_student_name || row.student_name || row.parent_name || "").toLowerCase().trim();
-  const existing = new Map((row.candidates || []).map((candidate) => [String(candidate.student_id), candidate]));
+  const manualQuery = String(row.student_search || "").trim();
+  const query = String(manualQuery || row.corrected_student_name || row.student_name || row.parent_name || row.description || "").trim();
+  const existing = new Map((row.candidates || []).filter(reconMeaningfulCandidate).map((candidate) => [String(candidate.student_id), candidate]));
+  if (row.best_match && reconMeaningfulCandidate(row.best_match)) existing.set(String(row.best_match.student_id), row.best_match);
   const rosterMatches = (state.students || [])
     .filter((student) => String(student.status || "").toUpperCase() === "C")
-    .filter((student) => !state.reconciliationPaymentMethod || !student.payment_method || student.payment_method === state.reconciliationPaymentMethod)
-    .filter((student) => {
-      if (!query) return false;
-      return `${student.student_name || ""} ${student.parent_guardian || ""}`.toLowerCase().includes(query);
-    })
-    .slice(0, 15)
-    .map((student) => ({
+    .map((student) => ({ student, score: reconSearchScore(student, query, manualQuery ? {} : row) }))
+    .filter((item) => item.score >= 30)
+    .sort((a, b) => b.score - a.score || String(a.student.student_name || "").localeCompare(String(b.student.student_name || "")))
+    .slice(0, 25)
+    .map(({ student, score }) => ({
       student_id: student.id,
       student_name: student.student_name,
       parent_guardian: student.parent_guardian,
       payment_method: student.payment_method,
       expected_fee: Number(student.std_monthly_fee || 0),
-      score: existing.has(String(student.id)) ? existing.get(String(student.id)).score : 0,
+      score: existing.has(String(student.id)) ? Math.max(existing.get(String(student.id)).score || 0, score) : score,
       current_paid: 0,
       already_paid: false,
-      reasons: existing.get(String(student.id))?.reasons || ["manual student search selection"],
+      reasons: existing.get(String(student.id))?.reasons || ["smart roster search match"],
     }));
   for (const match of rosterMatches) {
     if (!existing.has(String(match.student_id))) existing.set(String(match.student_id), match);
   }
-  return [...existing.values()];
+  return [...existing.values()].sort((a, b) => Number(b.score || 0) - Number(a.score || 0) || String(a.student_name || "").localeCompare(String(b.student_name || "")));
+}
+
+function reconciliationCanCreateStudent(row, options) {
+  if (row.excluded || Number(row.amount || 0) <= 0) return false;
+  if (row.best_match && reconMeaningfulCandidate(row.best_match)) return false;
+  return !(options || []).some(reconMeaningfulCandidate);
 }
 
 function renderReconciliation() {
@@ -1799,6 +2019,8 @@ function renderReconciliation() {
   qs("#reconReadyCount").textContent = `${verifiedCount} verified`;
   qs("#applyVerifiedRows").disabled = verifiedCount === 0;
   qs("#downloadExceptionReport").disabled = !rows.length;
+  qs("#selectRosterUpdates").disabled = !rows.length;
+  qs("#verifyEligibleRows").disabled = !rows.length;
 
   if (!rows.length) {
     qs("#reconciliationTable").innerHTML = `<tbody><tr><td class="empty-state">Upload a bank or credit-card CSV to preview matches.</td></tr></tbody>`;
@@ -1811,8 +2033,9 @@ function renderReconciliation() {
     if (Number(row.amount || 0) <= 0) warnings.push("Zero amount: not postable");
     const reasons = [...(best.reasons || []), ...warnings].join("; ") || "No strong matching reason yet";
     const options = reconciliationStudentOptions(row);
-    const selectedStudentId = row.selected_student_id || best.student_id || "";
-    const selectedCandidate = options.find((candidate) => String(candidate.student_id) === String(selectedStudentId)) || best;
+    const selectedStudentId = row.selected_student_id || (confidence === "high" ? best.student_id : "");
+    const selectedCandidate = selectedStudentId ? (options.find((candidate) => String(candidate.student_id) === String(selectedStudentId)) || best) : {};
+    const showCreateStudent = reconciliationCanCreateStudent(row, options);
     const monthValue = row.selected_month || row.month_label || "";
     const blocked = row.excluded || warnings.length || selectedCandidate?.already_paid || row.rejected || Number(row.amount || 0) <= 0;
     const buttonClass = row.verified ? "verify-action verified" : blocked ? "verify-action blocked" : "verify-action needs-review";
@@ -1826,6 +2049,7 @@ function renderReconciliation() {
       escapeHtml(row.source || "-"),
       `<input data-recon-search="${index}" value="${escapeHtml(row.student_search || "")}" placeholder="Search roster student">`,
       `<select data-recon-student="${index}">
+        <option value="">Select student for posting</option>
         ${options.map((candidate) => `<option value="${candidate.student_id}" ${String(candidate.student_id) === String(selectedStudentId) ? "selected" : ""}>${escapeHtml(candidate.student_name)} - ${escapeHtml(candidate.parent_guardian || "No guardian")} - ${candidate.score || "manual"}%</option>`).join("")}
       </select>`,
       escapeHtml(selectedCandidate?.parent_guardian || "-"),
@@ -1836,7 +2060,7 @@ function renderReconciliation() {
       `<span class="confidence ${confidence}">${confidence}</span>`,
       `<span class="muted-note">${escapeHtml(reasons)}</span>`,
       `<label class="compact-check"><input type="checkbox" data-roster-update="${index}" ${row.roster_update_approved ? "checked" : ""}> Update roster names</label>`,
-      `<div class="row-actions"><button class="${buttonClass}" data-verify-recon="${index}" ${row.excluded ? "disabled" : ""}>${buttonLabel}</button><button class="ghost danger" data-exclude-recon="${index}" type="button">${row.excluded ? "Restore" : "Delete Row"}</button></div>`,
+      `<div class="row-actions"><button class="${buttonClass}" data-verify-recon="${index}" ${row.excluded ? "disabled" : ""}>${buttonLabel}</button>${showCreateStudent ? `<button class="ghost" data-create-recon-student="${index}" type="button">Create Student</button>` : ""}<button class="ghost danger" data-exclude-recon="${index}" type="button">${row.excluded ? "Restore" : "Delete Row"}</button></div>`,
     ];
   });
   renderTable(qs("#reconciliationTable"), ["CSV Date", "CSV Description", "CSV Student", "CSV Parent / Payor", "CSV Amount", "CSV Source", "Find Student", "Suggested Student", "Parent / Guardian", "Pay Method", "Expected Fee", "Fee Month", "Previous / Current", "Confidence", "Match Reason", "Roster Correction", "Validation"], body);
@@ -1846,6 +2070,7 @@ function renderReconciliation() {
   document.querySelectorAll("[data-recon-student-name]").forEach((input) => input.addEventListener("input", () => updateReconCorrection(Number(input.dataset.reconStudentName))));
   document.querySelectorAll("[data-recon-parent-name]").forEach((input) => input.addEventListener("input", () => updateReconCorrection(Number(input.dataset.reconParentName))));
   document.querySelectorAll("[data-roster-update]").forEach((input) => input.addEventListener("change", () => updateReconCorrection(Number(input.dataset.rosterUpdate))));
+  document.querySelectorAll("[data-create-recon-student]").forEach((button) => button.addEventListener("click", () => createStudentFromReconciliationRow(Number(button.dataset.createReconStudent))));
   document.querySelectorAll("[data-exclude-recon]").forEach((button) => button.addEventListener("click", () => toggleExcludeReconciliationRow(Number(button.dataset.excludeRecon))));
   document.querySelectorAll("[data-verify-recon]").forEach((button) => button.addEventListener("click", () => verifyReconciliationRow(Number(button.dataset.verifyRecon))));
 }
@@ -1875,6 +2100,7 @@ function editStudent(id) {
     if (form.elements[key]) form.elements[key].value = value ?? "";
   });
   setSelectedSubjects(student.subjects);
+  setScheduleRows(student.schedules || []);
   qs("#formTitle").textContent = "Modify Student";
 }
 
@@ -1897,6 +2123,7 @@ function clearStudentForm() {
   qs("#studentForm").reset();
   qs("#studentForm").elements.id.value = "";
   setSelectedSubjects("");
+  setScheduleRows([]);
   qs("#formTitle").textContent = "Add Student";
   qs("#studentForm").classList.add("collapsed");
 }
@@ -1906,6 +2133,7 @@ function showAddStudentForm() {
   qs("#studentForm").elements.id.value = "";
   closeWorkflow();
   setSelectedSubjects("");
+  setScheduleRows([]);
   qs("#studentForm").classList.remove("collapsed");
   qs("#formTitle").textContent = "Add Student";
 }
@@ -2053,7 +2281,7 @@ async function handlePaymentUpload(event) {
   state.reconciliationSummary = result.summary || null;
   state.reconciliationPreview = (result.rows || []).map((row) => ({
     ...row,
-    selected_student_id: row.best_match?.student_id || "",
+    selected_student_id: row.best_match?.confidence === "high" ? row.best_match?.student_id || "" : "",
     selected_month: row.month_label || "",
     corrected_student_name: row.student_name || "",
     corrected_parent_name: row.parent_name || row.description || "",
@@ -2117,7 +2345,8 @@ function updateReconSearch(index) {
   row.verified = false;
   row.manually_verified = false;
   saveReconciliationSession();
-  renderReconciliation();
+  clearTimeout(reconSearchRenderTimer);
+  reconSearchRenderTimer = setTimeout(renderReconciliation, 450);
 }
 
 function updateReconCorrection(index) {
@@ -2129,6 +2358,129 @@ function updateReconCorrection(index) {
   row.verified = false;
   row.manually_verified = false;
   saveReconciliationSession();
+}
+
+function reconciliationSelectedCandidate(row) {
+  const selectedStudentId = row?.selected_student_id || "";
+  if (!selectedStudentId) return {};
+  return (row.candidates || []).find((item) => String(item.student_id) === String(selectedStudentId)) || {};
+}
+
+function reconciliationEligibility(row) {
+  if (!row) return { ok: false, reason: "Row was not found" };
+  if (row.excluded) return { ok: false, reason: "Excluded row" };
+  if (Number(row.amount || 0) <= 0) return { ok: false, reason: "Zero amount rows cannot be posted" };
+  if (!row.selected_student_id) return { ok: false, reason: "Student must be selected" };
+  if (!(row.selected_month || row.month_label)) return { ok: false, reason: "Fee month must be selected" };
+  const candidate = reconciliationSelectedCandidate(row);
+  if (!candidate.student_id) return { ok: false, reason: "Selected student is not in the candidate list" };
+  if (candidate.payment_method && candidate.payment_method !== state.reconciliationPaymentMethod) {
+    return { ok: false, reason: `${state.reconciliationPaymentMethod} upload can only update ${state.reconciliationPaymentMethod} students` };
+  }
+  if (candidate.already_paid || Number(candidate.current_paid || 0) > 0) {
+    return { ok: false, reason: `${row.selected_month || row.month_label} already has a payment for this student` };
+  }
+  if (row.rejected || (row.warnings || []).length) return { ok: false, reason: "Row has warnings or was rejected" };
+  return { ok: true, candidate };
+}
+
+function selectAllRosterUpdates() {
+  let count = 0;
+  (state.reconciliationPreview || []).forEach((row) => {
+    if (row.excluded || Number(row.amount || 0) <= 0) return;
+    const hasCorrection = String(row.corrected_student_name || row.student_name || "").trim()
+      || String(row.corrected_parent_name || row.parent_name || row.description || "").trim();
+    if (!hasCorrection) return;
+    row.roster_update_approved = true;
+    count += 1;
+  });
+  saveReconciliationSession();
+  renderReconciliation();
+  toast(`${count} roster correction checkbox${count === 1 ? "" : "es"} selected`);
+}
+
+function verifyAllEligibleRows() {
+  let verified = 0;
+  let skipped = 0;
+  (state.reconciliationPreview || []).forEach((row) => {
+    const eligibility = reconciliationEligibility(row);
+    if (!eligibility.ok) {
+      skipped += 1;
+      return;
+    }
+    row.verified = true;
+    row.manually_verified = true;
+    verified += 1;
+  });
+  saveReconciliationSession();
+  renderReconciliation();
+  toast(`${verified} row${verified === 1 ? "" : "s"} verified. ${skipped} skipped for review.`);
+}
+
+function reconciliationDateToIso(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const direct = new Date(text);
+  if (!Number.isNaN(direct.getTime())) return direct.toISOString().slice(0, 10);
+  const match = text.match(/^(\d{4})-([A-Za-z]{3})-(\d{1,2})$/);
+  if (!match) return "";
+  const months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const monthIndex = months.indexOf(match[2].toLowerCase());
+  if (monthIndex < 0) return "";
+  return `${match[1]}-${String(monthIndex + 1).padStart(2, "0")}-${String(Number(match[3])).padStart(2, "0")}`;
+}
+
+async function createStudentFromReconciliationRow(index) {
+  const row = state.reconciliationPreview[index];
+  if (!row) return;
+  updateReconCorrection(index);
+  const studentName = String(row.corrected_student_name || row.student_name || "").trim();
+  const parentName = String(row.corrected_parent_name || row.parent_name || row.description || "").trim();
+  if (!studentName) {
+    toast("Enter the student name before creating a roster record");
+    return;
+  }
+  if (!confirm(`Create new active Student Roster record for ${studentName}?`)) return;
+  const created = await api("/api/students", {
+    method: "POST",
+    body: JSON.stringify({
+      student_name: studentName,
+      parent_guardian: parentName,
+      status: "C",
+      enrol_date: reconciliationDateToIso(row.date),
+      subjects: [],
+      rate_type: "Regular",
+      std_monthly_fee: Number(row.amount || 0),
+      payment_method: state.reconciliationPaymentMethod || row.payment_method || "PAD",
+      phone: "",
+      email: row.email || "",
+      siblings: "",
+      notes: `Created from ${state.reconciliationPaymentMethod || "payment"} reconciliation`,
+      schedules: [],
+    }),
+  });
+  const candidate = {
+    student_id: created.id,
+    student_name: studentName,
+    parent_guardian: parentName,
+    payment_method: state.reconciliationPaymentMethod || row.payment_method || "PAD",
+    expected_fee: Number(row.amount || 0),
+    score: 100,
+    confidence: "high",
+    current_paid: 0,
+    already_paid: false,
+    reasons: ["created from reconciliation row"],
+  };
+  row.candidates = [candidate, ...(row.candidates || []).filter((item) => String(item.student_id) !== String(created.id))];
+  row.best_match = candidate;
+  row.selected_student_id = String(created.id);
+  row.selected_month = row.selected_month || row.month_label || "";
+  row.roster_update_approved = false;
+  row.verified = false;
+  row.manually_verified = false;
+  saveReconciliationSession();
+  renderReconciliation();
+  toast(`Student created and selected for ${studentName}`);
 }
 
 function toggleExcludeReconciliationRow(index) {
@@ -2175,35 +2527,15 @@ function verifyReconciliationRow(index) {
   const row = state.reconciliationPreview[index];
   if (!row) return;
   updateReconCorrection(index);
-  if (row.excluded) {
-    toast("Restore this row before verifying");
-    return;
-  }
-  if (Number(row.amount || 0) <= 0) {
-    toast("Zero amount rows cannot be posted");
-    return;
-  }
-  const selectedStudentId = qs(`[data-recon-student="${index}"]`)?.value || row.selected_student_id || row.best_match?.student_id || "";
+  const selectedStudentId = qs(`[data-recon-student="${index}"]`)?.value || row.selected_student_id || "";
   const selectedMonth = qs(`[data-recon-month="${index}"]`)?.value || row.selected_month || row.month_label || "";
-  const selectedCandidate = (row.candidates || []).find((item) => String(item.student_id) === String(selectedStudentId)) || row.best_match || {};
-  if (!selectedStudentId) {
-    toast("Select a student before applying");
-    return;
-  }
-  if (!selectedMonth) {
-    toast("Select the fee month before verifying");
-    return;
-  }
-  if (selectedCandidate.payment_method && selectedCandidate.payment_method !== state.reconciliationPaymentMethod) {
-    toast(`${state.reconciliationPaymentMethod} upload can only update ${state.reconciliationPaymentMethod} students`);
-    return;
-  }
-  if (selectedCandidate.already_paid || Number(selectedCandidate.current_paid || 0) > 0) {
-    toast(`${selectedMonth} already has a payment for this PAD student`);
-    return;
-  }
   row.selected_student_id = selectedStudentId;
   row.selected_month = selectedMonth;
+  const eligibility = reconciliationEligibility(row);
+  if (!eligibility.ok) {
+    toast(eligibility.reason);
+    return;
+  }
   row.verified = true;
   row.manually_verified = true;
   saveReconciliationSession();
@@ -2224,15 +2556,14 @@ async function applyReconciliation(index) {
 }
 
 async function postReconciliationRow(row) {
-  const selectedStudentId = row.selected_student_id || row.best_match?.student_id || "";
+  const selectedStudentId = row.selected_student_id || "";
   const selectedMonth = row.selected_month || row.month_label || "";
-  const candidate = (row.candidates || []).find((item) => String(item.student_id) === String(selectedStudentId)) || row.best_match || {};
+  const candidate = (row.candidates || []).find((item) => String(item.student_id) === String(selectedStudentId)) || {};
   if (!selectedStudentId || !selectedMonth || !row.verified) {
     throw new Error("Verify each row before adding");
   }
-  if (row.excluded || Number(row.amount || 0) <= 0) {
-    throw new Error("Excluded or zero amount rows cannot be posted");
-  }
+  const eligibility = reconciliationEligibility(row);
+  if (!eligibility.ok) throw new Error(eligibility.reason);
   await api("/api/reconciliation/apply", {
     method: "POST",
     body: JSON.stringify({
@@ -2254,7 +2585,7 @@ async function postReconciliationRow(row) {
 async function applyVerifiedRows() {
   const verifiedRows = (state.reconciliationPreview || [])
     .map((row, index) => ({ row, index }))
-    .filter(({ row }) => !row.excluded && Number(row.amount || 0) > 0 && row.verified && (row.selected_student_id || row.best_match?.student_id) && (row.selected_month || row.month_label));
+    .filter(({ row }) => !row.excluded && Number(row.amount || 0) > 0 && row.verified && row.selected_student_id && (row.selected_month || row.month_label));
   if (!verifiedRows.length) {
     toast("No verified payment rows are ready");
     return;
@@ -2339,6 +2670,7 @@ qs("#feeCurrentMonths").addEventListener("click", () => {
   renderFeeTracker();
 });
 qs("#rosterStatusFilter").addEventListener("change", renderRoster);
+qs("#presenceDayFilter")?.addEventListener("change", renderPresence);
 qs("#resetForm").addEventListener("click", clearStudentForm);
 qs("#openStudentWorkflow").addEventListener("click", openStudentWorkflow);
 qs("#closeWorkflow").addEventListener("click", closeWorkflow);
@@ -2377,6 +2709,7 @@ qs("#studentForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = formData(event.currentTarget);
   data.subjects = selectedSubjectValues();
+  data.schedules = collectScheduleRows();
   const id = data.id;
   delete data.id;
   await api(id ? `/api/students/${id}` : "/api/students", { method: id ? "PUT" : "POST", body: JSON.stringify(data) });
@@ -2425,6 +2758,8 @@ qs("#reconPaymentMethod")?.addEventListener("change", (event) => {
 qs("#batchCsv").addEventListener("change", handleBatchCsv);
 qs("#applyBatchImport").addEventListener("click", applyBatchImport);
 qs("#applyVerifiedRows").addEventListener("click", applyVerifiedRows);
+qs("#selectRosterUpdates")?.addEventListener("click", selectAllRosterUpdates);
+qs("#verifyEligibleRows")?.addEventListener("click", verifyAllEligibleRows);
 qs("#downloadExceptionReport").addEventListener("click", downloadExceptionReport);
 qs("#authForm")?.addEventListener("submit", sendMagicLink);
 qs("#googleLogin")?.addEventListener("click", signInWithGoogle);

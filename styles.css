@@ -433,6 +433,119 @@ body[data-admin-area="staff"] #staffAdministration {
 
 .surface { padding: 18px; }
 
+.presence-metrics {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(140px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.presence-chart {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.presence-chart-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdff;
+  padding: 12px;
+}
+
+.presence-chart-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.presence-chart-title strong {
+  font-size: 15px;
+}
+
+.presence-chart-title span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.presence-chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.presence-chart text {
+  fill: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.presence-chart .axis {
+  stroke: #cfd9e4;
+  stroke-width: 1.5;
+}
+
+.presence-chart .axis-label {
+  fill: #748190;
+}
+
+.presence-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.presence-chart circle {
+  fill: white;
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.presence-day-load {
+  display: grid;
+  gap: 12px;
+}
+
+.presence-load-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 170px) 1fr;
+  gap: 12px;
+  align-items: center;
+}
+
+.presence-load-row strong,
+.presence-load-row span {
+  display: block;
+}
+
+.presence-load-row span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  margin-top: 3px;
+}
+
+.presence-load-track {
+  height: 14px;
+  border-radius: 999px;
+  background: #e8eef2;
+  overflow: hidden;
+}
+
+.presence-load-track span {
+  display: block;
+  height: 100%;
+  margin: 0;
+  background: linear-gradient(90deg, var(--accent), #35b8ad);
+  border-radius: inherit;
+}
+
 .staffbase-shell {
   display: flex;
   min-height: calc(100vh - 210px);
@@ -1757,6 +1870,26 @@ pre {
   white-space: nowrap;
 }
 
+.schedule-fieldset {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfdff;
+}
+
+.schedule-fieldset legend {
+  padding: 0 6px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.schedule-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
 .row-actions {
   display: flex;
   gap: 8px;
@@ -1789,12 +1922,12 @@ button.danger,
 }
 
 @media (max-width: 980px) {
-  .admin-area-switch, .metrics, .dashboard-grid, .report-layout, .idea-grid, .split { grid-template-columns: 1fr; }
+  .admin-area-switch, .metrics, .presence-metrics, .dashboard-grid, .report-layout, .idea-grid, .split { grid-template-columns: 1fr; }
   .topbar { align-items: flex-start; flex-direction: column; }
   .header-actions { align-items: flex-start; }
   .account-card { text-align: left; }
   .auth-actions { justify-content: flex-start; }
   .form-grid { grid-template-columns: 1fr; }
-  .settings-form, .rate-form, .discount-form, .user-form, .mini-grid, .role-grid, .restore-panel, .workflow-choices { grid-template-columns: 1fr; }
+  .settings-form, .rate-form, .discount-form, .user-form, .mini-grid, .role-grid, .restore-panel, .workflow-choices, .schedule-grid, .presence-load-row { grid-template-columns: 1fr; }
   .wide { max-width: calc(100vw - 36px); }
 }

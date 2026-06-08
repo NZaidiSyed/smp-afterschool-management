@@ -74,6 +74,7 @@
     <button class="tab active" data-tab="dashboard">Dashboard</button>
     <button class="tab" data-tab="fee">Fee Tracker</button>
     <button class="tab" data-tab="roster">Student Roster</button>
+    <button class="tab" data-tab="presence">Student Presence</button>
     <button class="tab" data-tab="reporting">Reporting</button>
     <button class="tab" data-tab="reconciliation">Payment Reconciliation</button>
     <button class="tab" data-tab="batch">New Enrolment Batch</button>
@@ -170,6 +171,55 @@
         <div class="empty-state">Staff Administration is limited to Admin and Office Manager.</div>
       </section>
       <iframe id="staffbaseFrame" class="staffbase-frame" title="Staff Administration" src="staffbase.html"></iframe>
+    </section>
+
+    <section id="presence" class="panel">
+      <div class="section-title page-title">
+        <div>
+          <h2>Student Presence</h2>
+          <span>Schedule-based centre traffic from active Student Roster records</span>
+        </div>
+        <div class="toolbar">
+          <label class="inline-control">Day
+            <select id="presenceDayFilter" class="compact-select">
+              <option value="all">All Days</option>
+              <option>Tuesday</option>
+              <option>Wednesday</option>
+              <option>Thursday</option>
+              <option>Friday</option>
+              <option>Saturday</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <div class="presence-metrics" id="presenceMetrics"></div>
+      <section class="surface">
+        <div class="section-title">
+          <div>
+            <h2>Busy Times by Day</h2>
+            <span>Number of scheduled students in each time block</span>
+          </div>
+        </div>
+        <div id="presenceChart" class="presence-chart"></div>
+      </section>
+      <div class="dashboard-grid lower-grid">
+        <section class="surface">
+          <div class="section-title">
+            <h2>Daily Schedule</h2>
+            <span>Student name and scheduled timing only</span>
+          </div>
+          <div class="table-wrap">
+            <table id="presenceTable"></table>
+          </div>
+        </section>
+        <section class="surface">
+          <div class="section-title">
+            <h2>Day Load</h2>
+            <span>Compare quieter and busier days</span>
+          </div>
+          <div id="presenceDayLoad" class="presence-day-load"></div>
+        </section>
+      </div>
     </section>
 
     <section id="reporting" class="panel">
@@ -282,6 +332,8 @@
           <table id="reconciliationTable"></table>
         </div>
         <div class="actions reconciliation-actions">
+          <button id="selectRosterUpdates" type="button" class="ghost">Select All Roster Updates</button>
+          <button id="verifyEligibleRows" type="button" class="ghost">Verify All Eligible Rows</button>
           <button id="downloadExceptionReport" type="button" class="ghost">Download Exception Report</button>
           <button id="applyVerifiedRows" type="button">Data is Verified and Ready to Add</button>
         </div>
@@ -330,6 +382,34 @@
           <label>Phone<input name="phone"></label>
           <label>Email<input type="email" name="email"></label>
           <label>Siblings<input name="siblings"></label>
+          <fieldset class="schedule-fieldset full">
+            <legend>Weekly Schedule</legend>
+            <p class="muted-note">Select one or two centre days from Tuesday to Saturday.</p>
+            <div class="schedule-grid" data-schedule-row="0">
+              <label>Day<select data-schedule-weekday="0">
+                <option value="">Select day</option>
+                <option>Tuesday</option>
+                <option>Wednesday</option>
+                <option>Thursday</option>
+                <option>Friday</option>
+                <option>Saturday</option>
+              </select></label>
+              <label>Start Time<input type="time" data-schedule-start="0"></label>
+              <label>End Time<input type="time" data-schedule-end="0"></label>
+            </div>
+            <div class="schedule-grid" data-schedule-row="1">
+              <label>Day<select data-schedule-weekday="1">
+                <option value="">Optional second day</option>
+                <option>Tuesday</option>
+                <option>Wednesday</option>
+                <option>Thursday</option>
+                <option>Friday</option>
+                <option>Saturday</option>
+              </select></label>
+              <label>Start Time<input type="time" data-schedule-start="1"></label>
+              <label>End Time<input type="time" data-schedule-end="1"></label>
+            </div>
+          </fieldset>
           <label>Notes / Discounts<textarea name="notes"></textarea></label>
           <div class="actions full">
             <button type="submit">Save Record</button>
