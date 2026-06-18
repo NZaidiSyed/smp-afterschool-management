@@ -41,7 +41,7 @@ let authSession = null;
 let supabasePersistenceMode = null;
 let feeMonthOffset = 0;
 let reportSelectedMonths = [];
-let activeAdminArea = "student";
+let activeAdminArea = "choice";
 let activeStaffView = "staff-dashboard";
 let reconSearchRenderTimer = null;
 const FEE_PAST_MONTHS = 1;
@@ -278,6 +278,11 @@ async function switchAccount() {
 
 async function load() {
   state = await api("/api/bootstrap");
+  if (!state.activePresenceSubTab) {
+    const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    const validDays = ["Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    state.activePresenceSubTab = validDays.includes(todayName) ? todayName : "Tuesday";
+  }
   restoreReconciliationSession();
   hydrateMonthSelectors();
   renderAll();
@@ -303,26 +308,46 @@ function renderAll() {
 
 function hasStaffAccess() {
   const role = String(state.current_user?.role || "").toLowerCase();
-  return Boolean(state.can_access_staff || ["admin", "owner", "office manager"].includes(role));
+  return Boolean(state.can_access_staff || ["admin", "administrator", "owner", "principal_owner", "office manager", "office_manager"].includes(role));
 }
 
 function renderAdminAreas() {
-  const staffButton = qs("#staffAdminArea");
   const canOpenStaff = hasStaffAccess();
-  if (staffButton) {
-    staffButton.disabled = !canOpenStaff;
-    staffButton.title = canOpenStaff ? "Open Staff Administration" : "Staff Administration is limited to Admin and Office Manager";
+  
+  if (!canOpenStaff && (activeAdminArea === "staff" || activeAdminArea === "choice")) {
+    activeAdminArea = "student";
   }
-  if (!canOpenStaff && activeAdminArea === "staff") activeAdminArea = "student";
+  
   document.body.dataset.adminArea = activeAdminArea;
+  
+  const choicePanel = qs("#adminChoicePanel");
+  if (choicePanel) {
+    choicePanel.classList.toggle("collapsed", activeAdminArea !== "choice");
+  }
+  
+  const choiceStaffBtn = qs("#choiceStaffAdmin");
+  if (choiceStaffBtn) {
+    choiceStaffBtn.style.display = canOpenStaff ? "flex" : "none";
+  }
+  
   qs("#studentTabs")?.classList.toggle("collapsed", activeAdminArea !== "student");
-  qs("#staffAdministration")?.classList.toggle("active", activeAdminArea === "staff");
-  qs("#staffAdministration")?.classList.toggle("collapsed", activeAdminArea !== "staff");
+  
+  const staffPanel = qs("#staffAdministration");
+  if (staffPanel) {
+    staffPanel.classList.toggle("active", activeAdminArea === "staff");
+    staffPanel.classList.toggle("collapsed", activeAdminArea !== "staff");
+  }
+  
   document.querySelectorAll("main > section.panel:not(#staffAdministration)").forEach((panel) => {
     panel.classList.toggle("area-hidden", activeAdminArea !== "student");
   });
-  qs("#studentAdminArea")?.classList.toggle("active", activeAdminArea === "student");
-  qs("#staffAdminArea")?.classList.toggle("active", activeAdminArea === "staff");
+  
+  const switchModuleBtn = qs("#switchModule");
+  if (switchModuleBtn) {
+    const shouldShowSwitch = canOpenStaff && (activeAdminArea === "student" || activeAdminArea === "staff");
+    switchModuleBtn.style.display = shouldShowSwitch ? "inline-flex" : "none";
+  }
+  renderStaffAdministration();
 }
 
 function switchAdminArea(area) {
@@ -426,11 +451,20 @@ function presenceEntries() {
 }
 
 function presenceBlocks(entries) {
-  if (!entries.length) return [];
-  const minStart = Math.floor(Math.min(...entries.map((entry) => entry.startMinutes)) / 30) * 30;
-  const maxEnd = Math.ceil(Math.max(...entries.map((entry) => entry.endMinutes)) / 30) * 30;
+  const startStr = state.settings?.operating_start || "15:00";
+  const endStr = state.settings?.operating_end || "20:00";
+  let minStart = timeToMinutes(startStr);
+  let maxEnd = timeToMinutes(endStr);
+  if (minStart == null) minStart = 15 * 60; // 3:00 PM
+  if (maxEnd == null) maxEnd = 20 * 60; // 8:00 PM
+  if (minStart >= maxEnd) {
+    minStart = 15 * 60;
+    maxEnd = 20 * 60;
+  }
   const blocks = [];
-  for (let minutes = minStart; minutes < maxEnd; minutes += 30) blocks.push(minutes);
+  for (let minutes = minStart; minutes < maxEnd; minutes += 30) {
+    blocks.push(minutes);
+  }
   return blocks;
 }
 
@@ -440,10 +474,15 @@ function renderPresence() {
   const allEntries = presenceEntries();
   const visibleEntries = selectedDay === "all" ? allEntries : allEntries.filter((entry) => entry.weekday === selectedDay);
   const activeScheduledStudents = new Set(allEntries.map((entry) => String(entry.student_id)));
-  const dayCounts = PRESENCE_WEEKDAYS.map((day) => ({
-    day,
-    count: allEntries.filter((entry) => entry.weekday === day).length,
-  }));
+  const dayCounts = PRESENCE_WEEKDAYS.map((day) => {
+    const dayEntries = allEntries.filter((entry) => entry.weekday === day);
+    const distinctStudents = new Set(dayEntries.map((entry) => String(entry.student_id))).size;
+    return {
+      day,
+      count: dayEntries.length,
+      studentsCount: distinctStudents,
+    };
+  });
   const blocks = presenceBlocks(allEntries);
   const daySeries = PRESENCE_WEEKDAYS.map((day) => ({
     day,
@@ -452,15 +491,15 @@ function renderPresence() {
   const maxCount = Math.max(1, ...daySeries.flatMap((series) => series.counts));
   const peak = daySeries.flatMap((series) => series.counts.map((count, index) => ({ day: series.day, count, block: blocks[index] })))
     .sort((a, b) => b.count - a.count)[0] || { day: "-", count: 0, block: null };
-  const quietest = [...dayCounts].sort((a, b) => a.count - b.count)[0] || { day: "-", count: 0 };
+  const quietest = [...dayCounts].sort((a, b) => a.count - b.count)[0] || { day: "-", count: 0, studentsCount: 0 };
 
   qs("#presenceMetrics").innerHTML = [
     metric("Scheduled Students", activeScheduledStudents.size, "accent"),
-    metric("Weekly Visits", allEntries.length, "success"),
+    metric("Weekly Visits", `${allEntries.length} (${activeScheduledStudents.size} students)`, "success"),
     metric("Peak Time", `${peak.day} ${minutesToTimeLabel(peak.block)}`, peak.count ? "warning" : ""),
     metric("Peak Students", peak.count, peak.count ? "warning" : ""),
     metric("Quietest Day", quietest.day, ""),
-    metric("Quietest Visits", quietest.count, ""),
+    metric("Quietest Visits", `${quietest.count} (${quietest.studentsCount} students)`, ""),
   ].join("");
 
   const chartDays = selectedDay === "all" ? daySeries : daySeries.filter((series) => series.day === selectedDay);
@@ -503,11 +542,16 @@ function renderPresence() {
     `;
   }).join("") : `<div class="empty-state">No active student schedules have been entered yet.</div>`;
 
+  const activeSubTab = state.activePresenceSubTab || "Tuesday";
+  document.querySelectorAll("#presenceSubtabs .subtab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.day === activeSubTab);
+  });
+  const tableEntries = allEntries.filter((entry) => entry.weekday === activeSubTab);
+
   renderTable(
     qs("#presenceTable"),
-    ["Day", "Time", "Student Name"],
-    visibleEntries.map((entry) => [
-      escapeHtml(entry.weekday),
+    ["Time", "Student Name"],
+    tableEntries.map((entry) => [
       `${escapeHtml(minutesToTimeLabel(entry.startMinutes))} - ${escapeHtml(minutesToTimeLabel(entry.endMinutes))}`,
       escapeHtml(entry.student_name),
     ])
@@ -516,7 +560,7 @@ function renderPresence() {
   const maxDayCount = Math.max(1, ...dayCounts.map((item) => item.count));
   qs("#presenceDayLoad").innerHTML = dayCounts.map((item) => `
     <div class="presence-load-row">
-      <div><strong>${item.day}</strong><span>${item.count} scheduled visit${item.count === 1 ? "" : "s"}</span></div>
+      <div><strong>${item.day}</strong><span>${item.count} scheduled visit${item.count === 1 ? "" : "s"} (${item.studentsCount} student${item.studentsCount === 1 ? "" : "s"})</span></div>
       <div class="presence-load-track"><span style="width:${Math.max(4, Math.round((item.count / maxDayCount) * 100))}%"></span></div>
     </div>
   `).join("");
@@ -1299,8 +1343,8 @@ function staffbaseDefaultSchedules() {
         staff_id: staffId,
         weekday,
         shift_type: shiftType,
-        start_time: shiftType === "Off" ? "" : "15:30",
-        end_time: shiftType === "Off" ? "" : "18:30",
+        start_time: shiftType === "Off" ? "" : (state.settings?.operating_start || "15:00"),
+        end_time: shiftType === "Off" ? "" : (state.settings?.operating_end || "20:00"),
         location: shiftType === "Teaching" ? `Room ${100 + Number(staffId.replace("sample-", ""))}` : shiftType === "Meeting" ? "Staff Room" : shiftType === "Supervision" ? "Main Hallway" : "Office",
         published: true,
       };
@@ -1335,6 +1379,44 @@ function renderStaffAdministration() {
   const canOpenStaff = hasStaffAccess();
   qs("#staffLockedState")?.classList.toggle("collapsed", canOpenStaff);
   frame.classList.toggle("collapsed", !canOpenStaff);
+  
+  if (canOpenStaff && activeAdminArea === "staff") {
+    const email = currentUserEmail();
+    const name = currentUserName();
+    const role = currentUserRole();
+    let mappedRole = "staff";
+    const roleLower = String(role || "").toLowerCase();
+    if (roleLower === "admin" || roleLower === "administrator") {
+      mappedRole = "administrator";
+    } else if (roleLower === "owner" || roleLower === "principal_owner" || roleLower === "principal") {
+      mappedRole = "principal_owner";
+    } else if (roleLower === "office manager" || roleLower === "office_manager") {
+      mappedRole = "office_manager";
+    } else if (roleLower === "office assistant" || roleLower === "office_assistant") {
+      mappedRole = "office_assistant";
+    }
+    const schoolName = state.settings.institution_name || "";
+    const subjects = state.settings.subjects_offered || "";
+    const weekdays = PRESENCE_WEEKDAYS.map(day => day.substring(0, 3)).join(",");
+
+    let src = `staffbase.html?auto_email=${encodeURIComponent(email)}&auto_name=${encodeURIComponent(name)}&auto_role=${encodeURIComponent(mappedRole)}`;
+    src += `&school_name=${encodeURIComponent(schoolName)}`;
+    src += `&subjects=${encodeURIComponent(subjects)}`;
+    src += `&weekdays=${encodeURIComponent(weekdays)}`;
+    src += `&operating_start=${encodeURIComponent(state.settings?.operating_start || "15:00")}`;
+    src += `&operating_end=${encodeURIComponent(state.settings?.operating_end || "20:00")}`;
+
+    if (authSession && authSession.access_token) {
+      src += `&access_token=${encodeURIComponent(authSession.access_token)}`;
+    }
+    if (frame.getAttribute("src") !== src) {
+      frame.setAttribute("src", src);
+    }
+  } else {
+    if (frame.getAttribute("src") !== "about:blank") {
+      frame.setAttribute("src", "about:blank");
+    }
+  }
 }
 
 function staffbaseTitle() {
@@ -2645,8 +2727,9 @@ document.querySelectorAll(".tab").forEach((tab) => {
   });
 });
 
-qs("#studentAdminArea")?.addEventListener("click", () => switchAdminArea("student"));
-qs("#staffAdminArea")?.addEventListener("click", () => switchAdminArea("staff"));
+qs("#choiceStudentAdmin")?.addEventListener("click", () => switchAdminArea("student"));
+qs("#choiceStaffAdmin")?.addEventListener("click", () => switchAdminArea("staff"));
+qs("#switchModule")?.addEventListener("click", () => switchAdminArea("choice"));
 document.querySelectorAll("[data-staff-view]").forEach((button) => {
   button.addEventListener("click", () => {
     activeStaffView = button.dataset.staffView;
@@ -2669,9 +2752,15 @@ qs("#feeCurrentMonths").addEventListener("click", () => {
   feeMonthOffset = 0;
   renderFeeTracker();
 });
-qs("#rosterStatusFilter").addEventListener("change", renderRoster);
-qs("#presenceDayFilter")?.addEventListener("change", renderPresence);
-qs("#resetForm").addEventListener("click", clearStudentForm);
+  qs("#rosterStatusFilter").addEventListener("change", renderRoster);
+  qs("#presenceDayFilter")?.addEventListener("change", renderPresence);
+  document.querySelectorAll("#presenceSubtabs .subtab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.activePresenceSubTab = btn.dataset.day;
+      renderPresence();
+    });
+  });
+  qs("#resetForm").addEventListener("click", clearStudentForm);
 qs("#openStudentWorkflow").addEventListener("click", openStudentWorkflow);
 qs("#closeWorkflow").addEventListener("click", closeWorkflow);
 qs("#chooseAdd").addEventListener("click", showAddStudentForm);
@@ -2790,6 +2879,12 @@ qs("#batchForm").addEventListener("submit", async (event) => {
 
 qs("#clearBatch").addEventListener("click", renderBatch);
 
+window.addEventListener("message", (event) => {
+  if (event.data?.type === "logout") {
+    signOut();
+  }
+});
+
 (async function start() {
   const ready = await initAuth();
   if (ready) await load();
@@ -2798,7 +2893,10 @@ qs("#clearBatch").addEventListener("click", renderBatch);
       authSession = session;
       renderAuthState();
       if (session) {
+        document.cookie = `access_token=${session.access_token}; path=/; max-age=3600; SameSite=Lax`;
         await load();
+      } else {
+        document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
       }
     });
   }

@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote, unquote, urlparse, urlunparse
+from urllib.parse import quote, unquote, urlparse, urlunparse, parse_qs
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
@@ -76,6 +76,8 @@ DEFAULT_SETTINGS = {
     "institution_details": "After-school enrolment, student roster, fee tracking, and monthly collection dashboard.",
     "current_month": "May-26",
     "subjects_offered": "Math\nEnglish",
+    "operating_start": "15:00",
+    "operating_end": "20:00",
 }
 STUDENT_SCHEDULE_WEEKDAYS = ["Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
@@ -1369,7 +1371,9 @@ def get_settings(conn):
         org_id = current_org_id(conn)
         row = conn.execute(
             """
-            SELECT name, phone, details, subjects_offered, current_month
+            SELECT name, phone, details, subjects_offered, current_month,
+                   to_char(operating_start, 'HH24:MI') AS operating_start,
+                   to_char(operating_end, 'HH24:MI') AS operating_end
             FROM public.organizations
             WHERE id=%s
             """,
@@ -1384,6 +1388,8 @@ def get_settings(conn):
                     "institution_details": row.get("details") or DEFAULT_SETTINGS["institution_details"],
                     "subjects_offered": "\n".join(row.get("subjects_offered") or ["Math", "English"]),
                     "current_month": row.get("current_month") or DEFAULT_SETTINGS["current_month"],
+                    "operating_start": row.get("operating_start") or DEFAULT_SETTINGS["operating_start"],
+                    "operating_end": row.get("operating_end") or DEFAULT_SETTINGS["operating_end"],
                 }
             )
         if month_position(values.get("current_month")) < month_position(current_month_label()):
@@ -2836,6 +2842,8 @@ def ensure_pg_defaults():
         ensure_student_audit_tables(conn)
         ensure_student_schedule_tables(conn)
         ensure_staff_tables(conn)
+        conn.execute("ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS operating_start time DEFAULT '15:00'")
+        conn.execute("ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS operating_end time DEFAULT '20:00'")
         for subject in ["Math", "English"]:
             conn.execute(
                 """
@@ -2895,6 +2903,20 @@ class Handler(SimpleHTTPRequestHandler):
             return False
         token = self.headers.get("Authorization", "").replace("Bearer ", "", 1).strip()
         if not token:
+            # Check query parameters
+            query_params = parse_qs(urlparse(self.path).query)
+            token_list = query_params.get("token") or query_params.get("access_token")
+            if token_list:
+                token = token_list[0].strip()
+        if not token:
+            # Check cookies
+            cookie_header = self.headers.get("Cookie", "")
+            for cookie in cookie_header.split(";"):
+                cookie = cookie.strip()
+                if cookie.startswith("access_token="):
+                    token = cookie.split("=", 1)[1].strip()
+                    break
+        if not token:
             self.send_json({"ok": False, "error": "Login is required"}, 401)
             return False
         try:
@@ -2937,6 +2959,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/staffbase.html" and SUPABASE_REQUIRE_AUTH:
+            if not self.require_auth() or not self.require_permission("manage_staff"):
+                return
         if parsed.path == "/api/config":
             self.send_json(
                 {
@@ -3106,7 +3131,8 @@ class Handler(SimpleHTTPRequestHandler):
                         conn.execute(
                             """
                             UPDATE public.organizations
-                            SET name=%s, phone=%s, details=%s, subjects_offered=%s, current_month=%s, updated_at=now()
+                            SET name=%s, phone=%s, details=%s, subjects_offered=%s, current_month=%s,
+                                operating_start=%s::time, operating_end=%s::time, updated_at=now()
                             WHERE id=%s
                             """,
                             (
@@ -3115,6 +3141,8 @@ class Handler(SimpleHTTPRequestHandler):
                                 str(payload.get("institution_details", DEFAULT_SETTINGS["institution_details"])),
                                 configured_subjects({"subjects_offered": str(payload.get("subjects_offered", DEFAULT_SETTINGS["subjects_offered"]))}),
                                 str(payload.get("current_month", DEFAULT_SETTINGS["current_month"])),
+                                str(payload.get("operating_start", DEFAULT_SETTINGS["operating_start"])),
+                                str(payload.get("operating_end", DEFAULT_SETTINGS["operating_end"])),
                                 current_org_id(conn),
                             ),
                         )

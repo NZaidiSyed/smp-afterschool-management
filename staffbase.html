@@ -319,9 +319,9 @@ img{display:block;max-width:100%}
 // DATA & CONSTANTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-const DEFAULT_SCHOOL = { lat: 43.7615, lng: -79.4111, radius: 300, name: 'Greenfield Academy', address: '150 Greenfield Ave, Toronto, ON M6G 3G7', website: 'www.greenfieldacademy.edu', email: 'admin@greenfield.edu', otThreshold: 8.0, openDays: ['Mon','Tue','Wed','Thu','Fri'] };
+const DEFAULT_SCHOOL = { lat: 43.7615, lng: -79.4111, radius: 300, name: 'Greenfield Academy', address: '150 Greenfield Ave, Toronto, ON M6G 3G7', website: 'www.greenfieldacademy.edu', email: 'admin@greenfield.edu', otThreshold: 8.0, openDays: ['Tue','Wed','Thu','Fri','Sat'], operatingStart: '15:00', operatingEnd: '20:00' };
 let SCHOOL = JSON.parse(localStorage.getItem('sb_school')) || DEFAULT_SCHOOL;
-if (!SCHOOL.openDays) SCHOOL.openDays = ['Mon','Tue','Wed','Thu','Fri'];
+if (!SCHOOL.openDays) SCHOOL.openDays = ['Tue','Wed','Thu','Fri','Sat'];
 const API_BASE = 'http://localhost:3000/api';
 let USE_API = false;
 
@@ -352,14 +352,114 @@ function initSchoolName() {
   if (topbarLabel) topbarLabel.innerHTML = `<i class="ti ti-building" style="font-size:13px"></i> ${name}`;
 }
 
+async function applySystemMetadata() {
+  const params = new URLSearchParams(window.location.search);
+  const paramSchoolName = params.get('school_name');
+  const paramSubjects = params.get('subjects');
+  const paramWeekdays = params.get('weekdays');
+  const paramOperatingStart = params.get('operating_start');
+  const paramOperatingEnd = params.get('operating_end');
+
+  let changed = false;
+
+  if (paramSchoolName && paramSchoolName !== SCHOOL.name) {
+    SCHOOL.name = paramSchoolName;
+    changed = true;
+  }
+
+  if (paramOperatingStart && paramOperatingStart !== SCHOOL.operatingStart) {
+    SCHOOL.operatingStart = paramOperatingStart;
+    changed = true;
+  }
+
+  if (paramOperatingEnd && paramOperatingEnd !== SCHOOL.operatingEnd) {
+    SCHOOL.operatingEnd = paramOperatingEnd;
+    changed = true;
+  }
+
+  if (paramSubjects) {
+    const newSubjects = paramSubjects.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    if (newSubjects.length > 0) {
+      const currentJSON = JSON.stringify(SUBJECTS);
+      const newJSON = JSON.stringify(newSubjects);
+      if (currentJSON !== newJSON) {
+        SUBJECTS = newSubjects;
+        localStorage.setItem('sb_subjects', JSON.stringify(SUBJECTS));
+        if (USE_API) {
+          await syncToServer('subjects', SUBJECTS);
+        }
+        changed = true;
+      }
+    }
+  }
+
+  if (paramWeekdays) {
+    const newDays = paramWeekdays.split(',').map(d => d.trim()).filter(Boolean);
+    if (newDays.length > 0) {
+      const currentJSON = JSON.stringify(SCHOOL.openDays);
+      const newJSON = JSON.stringify(newDays);
+      if (currentJSON !== newJSON) {
+        SCHOOL.openDays = newDays;
+        DAYS = newDays;
+        FULL_DAYS = DAYS.map(d => WEEKDAY_NAMES[d] || d);
+        
+        // Roster schedule safety sync
+        if (typeof USERS !== 'undefined' && typeof SCHEDULE !== 'undefined') {
+          USERS.forEach(u => {
+            if (ROLES[u.role]) {
+              if (!SCHEDULE.shifts[u.id]) SCHEDULE.shifts[u.id] = {};
+              DAYS.forEach(d => {
+                if (!SCHEDULE.shifts[u.id][d]) {
+                  SCHEDULE.shifts[u.id][d] = { type: 'Off', start: null, end: null, location: 'Office', notes: '', ack: false };
+                }
+              });
+            }
+          });
+          if (USE_API) {
+            await syncToServer('schedule', SCHEDULE);
+          } else {
+            localStorage.setItem('sb_schedule', JSON.stringify(SCHEDULE));
+          }
+        }
+
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    localStorage.setItem('sb_school', JSON.stringify(SCHOOL));
+    if (USE_API) {
+      await syncToServer('school', SCHOOL);
+    }
+  }
+}
+
 async function probeServerAndLoadData() {
+  // Check main application config for authentication requirements
+  try {
+    const configRes = await fetch('/api/config');
+    const config = await configRes.json();
+    if (config && config.auth_required) {
+      const ltAdmin = $('lt-admin');
+      if (ltAdmin) ltAdmin.style.display = 'none';
+      setLoginTab('staff');
+    }
+  } catch (e) {
+    console.warn("Could not check main app config, fallback to default tabs:", e);
+  }
+
   try {
     const res = await fetch(`${API_BASE}/health`);
+    if (!res.ok) throw new Error(`Health check returned ${res.status}`);
     const health = await res.json();
     if (health.status === 'ok') {
       console.log("Enterprise Database Connected ✓");
       const dataRes = await fetch(`${API_BASE}/data`);
+      if (!dataRes.ok) throw new Error(`Data fetch returned ${dataRes.status}`);
       const data = await dataRes.json();
+      if (!data || !data.school || !data.users) throw new Error("Invalid database payload");
+      
       SCHOOL = data.school;
       USERS = data.users;
       SUBJECTS = data.subjects;
@@ -373,14 +473,31 @@ async function probeServerAndLoadData() {
       DAYS = SCHOOL.openDays;
       FULL_DAYS = DAYS.map(d => WEEKDAY_NAMES[d]);
       USE_API = true;
+    } else {
+      throw new Error("Health status not ok");
     }
   } catch (e) {
-    console.warn("Express server offline, running in offline LocalStorage sandbox mode.");
+    console.warn("Express server error or offline, running in offline LocalStorage sandbox mode:", e.message);
     USE_API = false;
+    // Restore variables from localStorage or defaults
+    SCHOOL = JSON.parse(localStorage.getItem('sb_school')) || DEFAULT_SCHOOL;
+    if (!SCHOOL.openDays) SCHOOL.openDays = ['Tue','Wed','Thu','Fri','Sat'];
+    USERS = JSON.parse(localStorage.getItem('sb_users')) || INITIAL_USERS;
+    SUBJECTS = JSON.parse(localStorage.getItem('sb_subjects')) || DEFAULT_SUBJECTS;
+    SCHEDULE = JSON.parse(localStorage.getItem('sb_schedule')) || { published: true, publishedAt: '', week: '', weekKey: '', shifts: buildDefaultSchedule() };
+    REQUESTS = JSON.parse(localStorage.getItem('sb_requests')) || [];
+    ANNOUNCEMENTS = JSON.parse(localStorage.getItem('sb_announcements')) || [];
+    MESSAGES = JSON.parse(localStorage.getItem('sb_messages')) || [];
+    CLOCK_DATA = JSON.parse(localStorage.getItem('sb_clock_data')) || {};
+    CHECKIN_LOG = JSON.parse(localStorage.getItem('sb_checkin_log')) || [];
+    DAYS = SCHOOL.openDays || ['Tue','Wed','Thu','Fri','Sat'];
+    FULL_DAYS = DAYS.map(d => WEEKDAY_NAMES[d]);
   }
+  await applySystemMetadata();
   initSchoolName();
   renderConnectionBadge();
   if (typeof initLogin === 'function') initLogin();
+  if (typeof checkAutoLogin === 'function') checkAutoLogin();
 }
 probeServerAndLoadData();
 
@@ -443,9 +560,8 @@ const ROLES = {
   principal_owner:    { label: 'Principal/Owner', badge: 'badge-purple', perms: ['all'] },
   administrator:      { label: 'Administrator', badge: 'badge-gold', perms: ['manage_staff','schedule','timesheets','reports','approve','announce','gps_override','clock'] },
   office_manager:     { label: 'Office Manager', badge: 'badge-teal', perms: ['schedule','timesheets','reports','approve','announce','gps_override','clock'] },
-  coordinator:        { label: 'Coordinator', badge: 'badge-indigo', perms: ['schedule','timesheets','reports','approve','announce','gps_override','clock'] },
-  teaching_assistant: { label: 'Teaching Assistant', badge: 'badge-blue', perms: ['clock','request'] },
-  grader:             { label: 'Grader', badge: 'badge-orange', perms: ['clock','request'] },
+  office_assistant:   { label: 'Office Assistant', badge: 'badge-indigo', perms: ['clock','request'] },
+  staff:              { label: 'Staff', badge: 'badge-blue', perms: ['clock','request'] },
 };
 
 function can(perm) {
@@ -454,7 +570,7 @@ function can(perm) {
   return (ROLES[CU.role]?.perms || []).includes(perm);
 }
 function isManager() {
-  return CU && (CU.role === 'principal_owner' || CU.role === 'administrator' || CU.role === 'office_manager' || CU.role === 'coordinator');
+  return CU && (CU.role === 'principal_owner' || CU.role === 'administrator' || CU.role === 'office_manager');
 }
 
 // ─── USERS ──────────────────────────────────────────────────────────────────
@@ -462,13 +578,13 @@ const INITIAL_USERS = [
   { id:1, name:'Dr. Sarah Mitchell', email:'s.mitchell@greenfield.edu', role:'principal_owner', dept:'Administration', pin:'0000', password:'school2026', phone:'416-555-0001', pos:'Principal', av:'SM', active:true },
   { id:2, name:'James Harrington',   email:'j.harrington@greenfield.edu', role:'administrator', dept:'Administration', pin:'1111', password:'school2026', phone:'416-555-0002', pos:'Vice Principal', av:'JH', active:true },
   { id:3, name:'Rachel Torres',      email:'r.torres@greenfield.edu', role:'office_manager', dept:'Administration', pin:'2222', password:'school2026', phone:'416-555-0003', pos:'Office Manager', av:'RT', active:true },
-  { id:4, name:'Emily Chen',         email:'e.chen@greenfield.edu', role:'teaching_assistant', dept:'Mathematics', pin:'3333', password:'', phone:'416-555-0011', pos:'Math Teacher', av:'EC', active:true },
-  { id:5, name:'Marcus Williams',    email:'m.williams@greenfield.edu', role:'teaching_assistant', dept:'Science', pin:'4444', password:'', phone:'416-555-0012', pos:'Science Teacher', av:'MW', active:true },
-  { id:6, name:'Priya Sharma',       email:'p.sharma@greenfield.edu', role:'grader', dept:'English', pin:'5555', password:'', phone:'416-555-0013', pos:'English Teacher', av:'PS', active:true },
-  { id:7, name:"David O'Brien",     email:'d.obrien@greenfield.edu', role:'teaching_assistant', dept:'History', pin:'6666', password:'', phone:'416-555-0014', pos:'History Teacher', av:'DO', active:true },
-  { id:8, name:'Aisha Patel',        email:'a.patel@greenfield.edu', role:'grader', dept:'Arts', pin:'7777', password:'', phone:'416-555-0015', pos:'Art Teacher', av:'AP', active:true },
-  { id:9, name:'Tom Nakamura',       email:'t.nakamura@greenfield.edu', role:'teaching_assistant', dept:'PE', pin:'8888', password:'', phone:'416-555-0016', pos:'PE Teacher', av:'TN', active:true },
-  { id:10,name:'Lisa Kowalski',      email:'l.kowalski@greenfield.edu', role:'grader', dept:'Support', pin:'9999', password:'', phone:'416-555-0017', pos:'Counselor', av:'LK', active:true },
+  { id:4, name:'Emily Chen',         email:'e.chen@greenfield.edu', role:'staff', dept:'Mathematics', pin:'3333', password:'', phone:'416-555-0011', pos:'Math Teacher', av:'EC', active:true },
+  { id:5, name:'Marcus Williams',    email:'m.williams@greenfield.edu', role:'staff', dept:'Science', pin:'4444', password:'', phone:'416-555-0012', pos:'Science Teacher', av:'MW', active:true },
+  { id:6, name:'Priya Sharma',       email:'p.sharma@greenfield.edu', role:'staff', dept:'English', pin:'5555', password:'', phone:'416-555-0013', pos:'English Teacher', av:'PS', active:true },
+  { id:7, name:"David O'Brien",     email:'d.obrien@greenfield.edu', role:'staff', dept:'History', pin:'6666', password:'', phone:'416-555-0014', pos:'History Teacher', av:'DO', active:true },
+  { id:8, name:'Aisha Patel',        email:'a.patel@greenfield.edu', role:'staff', dept:'Arts', pin:'7777', password:'', phone:'416-555-0015', pos:'Art Teacher', av:'AP', active:true },
+  { id:9, name:'Tom Nakamura',       email:'t.nakamura@greenfield.edu', role:'staff', dept:'PE', pin:'8888', password:'', phone:'416-555-0016', pos:'PE Teacher', av:'TN', active:true },
+  { id:10,name:'Lisa Kowalski',      email:'l.kowalski@greenfield.edu', role:'staff', dept:'Support', pin:'9999', password:'', phone:'416-555-0017', pos:'Counselor', av:'LK', active:true },
 ];
 let USERS = JSON.parse(localStorage.getItem('sb_users')) || INITIAL_USERS;
 // Self-healing migration for existing localStorage users with old roles
@@ -476,12 +592,44 @@ let migrated = false;
 USERS.forEach(u => {
   if (u.role === 'owner') { u.role = 'principal_owner'; migrated = true; }
   else if (u.role === 'admin') { u.role = 'administrator'; migrated = true; }
-  else if (u.role === 'staff') { u.role = 'teaching_assistant'; migrated = true; }
+  else if (u.role === 'coordinator') { u.role = 'office_assistant'; migrated = true; }
+  else if (u.role === 'teaching_assistant' || u.role === 'grader') { u.role = 'staff'; migrated = true; }
 });
 if (migrated) { localStorage.setItem('sb_users', JSON.stringify(USERS)); }
 function saveUsers() {
   localStorage.setItem('sb_users', JSON.stringify(USERS));
   syncToServer('users', USERS);
+}
+
+function checkAutoLogin() {
+  const params = new URLSearchParams(window.location.search);
+  const autoEmail = params.get('auto_email');
+  const autoName = params.get('auto_name');
+  const autoRole = params.get('auto_role');
+  
+  if (autoEmail) {
+    let u = USERS.find(x => x.email && x.email.toLowerCase() === autoEmail.toLowerCase());
+    if (!u) {
+      u = {
+        id: Date.now(),
+        name: autoName || autoEmail.split('@')[0],
+        email: autoEmail.toLowerCase(),
+        role: autoRole || 'office_manager',
+        dept: 'Administration',
+        pin: '0000',
+        password: 'school2026',
+        phone: '',
+        pos: autoRole === 'administrator' ? 'Administrator' : autoRole === 'principal_owner' ? 'Principal/Owner' : autoRole === 'office_manager' ? 'Office Manager' : autoRole === 'office_assistant' ? 'Office Assistant' : 'Staff',
+        av: (autoName || autoEmail).split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2),
+        active: true
+      };
+      USERS.push(u);
+      saveUsers();
+    }
+    launchApp(u);
+    return true;
+  }
+  return false;
 }
 
 // ─── SCHEDULE ────────────────────────────────────────────────────────────────
@@ -502,7 +650,7 @@ function buildDefaultSchedule() {
     DAYS.forEach((d, i) => {
       const type = patterns[uid][i % patterns[uid].length] || 'Off';
       const locs = { Teaching: `Room ${100 + parseInt(uid)}`, Meeting: 'Staff Room', Supervision: 'Main Hallway', Planning: 'Office', 'Prof Dev': 'Off-site' };
-      shifts[uid][d] = { type, start: type === 'Off' ? null : '15:30', end: type === 'Off' ? null : '18:30', location: locs[type] || 'Office', notes: '', ack: false };
+      shifts[uid][d] = { type, start: type === 'Off' ? null : (SCHOOL.operatingStart || '15:00'), end: type === 'Off' ? null : (SCHOOL.operatingEnd || '20:00'), location: locs[type] || 'Office', notes: '', ack: false };
     });
   }
   return shifts;
@@ -673,7 +821,7 @@ function closeModal() { const m = $('modal-root'); if (m) m.remove(); }
 // ═══════════════════════════════════════════════════════════════════════════
 // Build staff select + numpad
 function initLogin() {
-  const staffUsers = USERS.filter(u => u.role === 'teaching_assistant' || u.role === 'grader');
+  const staffUsers = USERS.filter(u => u.role === 'staff' || u.role === 'office_assistant');
   const sel = $('ln-sel');
   if (!sel) return;
   sel.innerHTML = '<option value="">— Select your name —</option>';
@@ -745,12 +893,12 @@ function doAdminLogin() {
   const pass  = $('ln-pass').value;
   $('admin-err').textContent = '';
   
-  const u = USERS.find(x => x.email.toLowerCase() === email.toLowerCase());
+  const u = USERS.find(x => x.email && x.email.toLowerCase() === email.toLowerCase());
   if (!u) {
     $('admin-err').textContent = 'Account with this email does not exist.';
     return;
   }
-  if (u.role === 'teaching_assistant' || u.role === 'grader') {
+  if (u.role === 'staff' || u.role === 'office_assistant') {
     $('admin-err').textContent = 'Access Denied: Please use the PIN Pad tab to log in as Staff.';
     return;
   }
@@ -765,7 +913,7 @@ function doAdminLogin() {
 }
 
 function quickLogin(email) {
-  const u = USERS.find(x => x.email.toLowerCase() === email.toLowerCase());
+  const u = USERS.find(x => x.email && x.email.toLowerCase() === email.toLowerCase());
   $('ln-email').value = email;
   $('ln-pass').value = u ? (u.password || 'school2026') : 'school2026';
   doAdminLogin();
@@ -795,6 +943,7 @@ function doLogout() {
   $('login-screen').style.display = 'flex';
   $('ln-email').value = ''; $('ln-pass').value = '';
   $('ln-sel').value = ''; onEmpSelect();
+  window.parent.postMessage({ type: 'logout' }, '*');
 }
 
 function toggleMyPin(btn) {
@@ -917,7 +1066,7 @@ function doClock(uid, type, gpsOK, lat, lng, dist) {
 // PAGE: DASHBOARD
 // ═══════════════════════════════════════════════════════════════════════════
 function pgDashboard() {
-  const staff = USERS.filter(u => u.role === 'teaching_assistant' || u.role === 'grader');
+  const staff = USERS.filter(u => u.role === 'staff' || u.role === 'office_assistant');
   const cIn = Object.values(CLOCK_DATA).filter(d => d.status === 'in').length;
   const pending = REQUESTS.filter(r => r.status === 'pending').length;
   const unacked = Object.values(SCHEDULE.shifts).reduce((acc, s) => acc + Object.values(s).filter(sh => !sh.ack).length, 0);
@@ -1065,7 +1214,7 @@ function pgDashboard() {
 // ═══════════════════════════════════════════════════════════════════════════
 function pgSchedule() {
   if (isManager()) {
-    const staff = USERS.filter(u => u.role === 'staff');
+    const staff = USERS.filter(u => u.role === 'staff' || u.role === 'office_assistant');
     $('content-area').innerHTML = `
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:gap;gap:10px">
         <div>
@@ -1170,8 +1319,8 @@ function editShift(uid, day) {
       <select class="fc" id="es-type">${Object.keys(SHIFT_TYPES).map(t=>`<option value="${t}" ${sh.type===t?'selected':''}>${SHIFT_TYPES[t].label}</option>`).join('')}</select>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <div class="fg"><label class="fl">Start time</label><input class="fc" id="es-start" type="time" value="${sh.start||'15:30'}"></div>
-      <div class="fg"><label class="fl">End time</label><input class="fc" id="es-end" type="time" value="${sh.end||'18:30'}"></div>
+      <div class="fg"><label class="fl">Start time</label><input class="fc" id="es-start" type="time" value="${sh.start||SCHOOL.operatingStart||'15:00'}"></div>
+      <div class="fg"><label class="fl">End time</label><input class="fc" id="es-end" type="time" value="${sh.end||SCHOOL.operatingEnd||'20:00'}"></div>
     </div>
     <div class="fg"><label class="fl">Location / Room</label><input class="fc" id="es-loc" value="${sh.location||''}" placeholder="Room 101, Staff Room, Gymnasium…"></div>
     <div class="fg"><label class="fl">Notes (optional)</label><input class="fc" id="es-notes" value="${sh.notes||''}" placeholder="Any additional details…"></div>`,
@@ -1200,8 +1349,8 @@ function editShift(uid, day) {
         startInput.disabled = false;
         endInput.disabled = false;
         locInput.disabled = false;
-        if (!startInput.value) startInput.value = '15:30';
-        if (!endInput.value) endInput.value = '18:30';
+        if (!startInput.value) startInput.value = SCHOOL.operatingStart || '15:00';
+        if (!endInput.value) endInput.value = SCHOOL.operatingEnd || '20:00';
         if (locInput.value === 'Off') locInput.value = '';
       }
     };
@@ -1259,7 +1408,7 @@ function pgCheckin() {
       <!-- CONTROL PANEL (manager) / INFO (staff) -->
       <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:16px">
 
-        ${isManager() ? `
+        ${(isManager() && (CU.role === 'principal_owner' || CU.role === 'administrator')) ? `
         <!-- GPS Settings -->
         <div class="card">
           <div class="sec-hd">
@@ -1346,7 +1495,7 @@ function pgCheckin() {
 function renderMobScreen() {
   const pb = $('phone-body');
   if (!pb) return;
-  const staff = USERS.filter(u => u.role === 'staff');
+  const staff = USERS.filter(u => u.role === 'staff' || u.role === 'office_assistant');
 
   if (MOB.step === 'select') {
     pb.innerHTML = `
@@ -1511,7 +1660,7 @@ function adminClock(type) {
 // PAGE: TIMESHEETS
 // ═══════════════════════════════════════════════════════════════════════════
 function pgTimesheets(deptFilter = '') {
-  let staff = USERS.filter(u => u.role === 'staff');
+  let staff = USERS.filter(u => u.role === 'staff' || u.role === 'office_assistant');
   if (deptFilter) {
     staff = staff.filter(u => u.dept === deptFilter);
   }
@@ -1617,9 +1766,8 @@ function pgStaff() {
         <option value="principal_owner">Principal/Owner</option>
         <option value="administrator">Administrator</option>
         <option value="office_manager">Office Manager</option>
-        <option value="coordinator">Coordinator</option>
-        <option value="teaching_assistant">Teaching Assistant</option>
-        <option value="grader">Grader</option>
+        <option value="office_assistant">Office Assistant</option>
+        <option value="staff">Staff</option>
       </select>
       <select class="fc" id="staff-dept-filter" style="width:160px" onchange="filterStaff($('staff-search').value, $('staff-role-filter').value, this.value)">
         <option value="">All departments</option>
@@ -1661,7 +1809,7 @@ function renderStaffTable(list) {
 }
 function filterStaff(q, role, dept) {
   const filtered = USERS.filter(u => {
-    const matchQ = !q || u.name.toLowerCase().includes(q.toLowerCase()) || u.dept.toLowerCase().includes(q.toLowerCase()) || u.email.toLowerCase().includes(q.toLowerCase());
+    const matchQ = !q || u.name.toLowerCase().includes(q.toLowerCase()) || u.dept.toLowerCase().includes(q.toLowerCase()) || (u.email && u.email.toLowerCase().includes(q.toLowerCase()));
     const matchR = !role || u.role === role;
     const matchD = !dept || u.dept === dept;
     return matchQ && matchR && matchD;
@@ -1679,7 +1827,7 @@ function confirmDeleteStaff(id) {
   const u = USERS.find(x => x.id === id);
   if (!u) return;
   if (u.active) { toast('Only inactive/deactivated employees can be deleted.', 'err'); return; }
-  if (CU.role !== 'owner' && CU.role !== 'admin') { toast('Access Denied: Only Administrators can delete staff records.', 'err'); return; }
+  if (CU.role !== 'principal_owner' && CU.role !== 'administrator') { toast('Access Denied: Only Administrators can delete staff records.', 'err'); return; }
   
   openModal('⚠️ Permanently Delete Employee', `
     <div style="text-align:center;padding:10px 0">
@@ -1769,9 +1917,8 @@ function editStaff(id) {
           }
           roleOptions += `
             <option value="office_manager" ${u.role==='office_manager'?'selected':''}>Office Manager</option>
-            <option value="coordinator" ${u.role==='coordinator'?'selected':''}>Coordinator</option>
-            <option value="teaching_assistant" ${u.role==='teaching_assistant'?'selected':''}>Teaching Assistant</option>
-            <option value="grader" ${u.role==='grader'?'selected':''}>Grader</option>
+            <option value="office_assistant" ${u.role==='office_assistant'?'selected':''}>Office Assistant</option>
+            <option value="staff" ${u.role==='staff'?'selected':''}>Staff</option>
           `;
           return roleOptions;
         })()}
@@ -1824,9 +1971,8 @@ function showAddStaff() {
           }
           roleOptions += `
             <option value="office_manager">Office Manager</option>
-            <option value="coordinator">Coordinator</option>
-            <option value="teaching_assistant" selected>Teaching Assistant</option>
-            <option value="grader">Grader</option>
+            <option value="office_assistant">Office Assistant</option>
+            <option value="staff" selected>Staff</option>
           `;
           return roleOptions;
         })()}
@@ -1878,7 +2024,7 @@ function saveNewStaff(bypassDuplicateCheck = false) {
     id: newId, 
     name, 
     email, 
-    role: $('nf-role')?.value || 'teaching_assistant', 
+    role: $('nf-role')?.value || 'staff', 
     dept: $('nf-dept')?.value || 'Administration', 
     pin, 
     password, 
@@ -2334,7 +2480,7 @@ function postAnnouncement() {
 // PAGE: REPORTS
 // ═══════════════════════════════════════════════════════════════════════════
 function pgReports() {
-  const staff = USERS.filter(u => u.role === 'teaching_assistant' || u.role === 'grader');
+  const staff = USERS.filter(u => u.role === 'staff' || u.role === 'office_assistant');
   const getH = uid => DAYS.reduce((a,d) => a + getShiftHours(SCHEDULE.shifts[uid]?.[d]), 0);
   const totalH = staff.reduce((a,u)=>a+getH(u.id),0);
   const gpsVerified = CHECKIN_LOG.filter(l=>l.gpsOK).length;
@@ -2466,7 +2612,7 @@ function saveSchedSettings() {
   
   // Roster schedule safety sync
   USERS.forEach(u => {
-    if (u.role === 'owner' || u.role === 'admin' || u.role === 'office_manager' || u.role === 'coordinator' || u.role === 'teaching_assistant' || u.role === 'grader') {
+    if (u.role === 'principal_owner' || u.role === 'administrator' || u.role === 'office_manager' || u.role === 'office_assistant' || u.role === 'staff') {
       if (!SCHEDULE.shifts[u.id]) SCHEDULE.shifts[u.id] = {};
       DAYS.forEach(d => {
         if (!SCHEDULE.shifts[u.id][d]) {

@@ -22,6 +22,7 @@
         <em id="accountRole"></em>
       </div>
       <div class="auth-actions">
+        <button type="button" id="switchModule" class="ghost header-signout" style="display: none;">Change Module</button>
         <button type="button" id="switchAccount" class="ghost header-signout">Switch Account</button>
         <button type="button" id="signOut" class="ghost header-signout">Sign Out</button>
       </div>
@@ -59,16 +60,31 @@
     </form>
   </section>
 
-  <div class="admin-area-switch" aria-label="Administration areas">
-    <button id="studentAdminArea" type="button" class="area-button active">
-      <span>Student Administration</span>
-      <strong>Students, fees, reporting, reconciliation</strong>
-    </button>
-    <button id="staffAdminArea" type="button" class="area-button">
-      <span>Staff Administration</span>
-      <strong>Staff roster, schedule, time clock</strong>
-    </button>
-  </div>
+  <section id="adminChoicePanel" class="admin-choice-panel collapsed">
+    <div class="choice-container">
+      <p class="eyebrow">Select Administration Module</p>
+      <h2>Centre Management Portal</h2>
+      <p class="muted-note">Choose which administration area you want to manage. Your navigation context will be preserved.</p>
+      <div class="choice-cards-row">
+        <button id="choiceStudentAdmin" type="button" class="choice-card">
+          <div class="card-icon">🎓</div>
+          <div class="card-info">
+            <h3>Student Administration</h3>
+            <p>Manage student records, fee tracking, monthly collection dashboards, and payment reconciliation.</p>
+          </div>
+          <div class="card-arrow">→</div>
+        </button>
+        <button id="choiceStaffAdmin" type="button" class="choice-card">
+          <div class="card-icon">💼</div>
+          <div class="card-info">
+            <h3>Staff Administration</h3>
+            <p>Manage employee roster, weekly shift timetables, mobile check-in logs, and time-off requests.</p>
+          </div>
+          <div class="card-arrow">→</div>
+        </button>
+      </div>
+    </div>
+  </section>
 
   <nav id="studentTabs" class="tabs" aria-label="Student administration tabs">
     <button class="tab active" data-tab="dashboard">Dashboard</button>
@@ -170,7 +186,7 @@
       <section id="staffLockedState" class="surface collapsed">
         <div class="empty-state">Staff Administration is limited to Admin and Office Manager.</div>
       </section>
-      <iframe id="staffbaseFrame" class="staffbase-frame" title="Staff Administration" src="staffbase.html"></iframe>
+      <iframe id="staffbaseFrame" class="staffbase-frame" title="Staff Administration" src="about:blank"></iframe>
     </section>
 
     <section id="presence" class="panel">
@@ -207,6 +223,13 @@
           <div class="section-title">
             <h2>Daily Schedule</h2>
             <span>Student name and scheduled timing only</span>
+          </div>
+          <div class="presence-subtabs" id="presenceSubtabs" role="tablist">
+            <button type="button" class="subtab active" data-day="Tuesday">Tuesday</button>
+            <button type="button" class="subtab" data-day="Wednesday">Wednesday</button>
+            <button type="button" class="subtab" data-day="Thursday">Thursday</button>
+            <button type="button" class="subtab" data-day="Friday">Friday</button>
+            <button type="button" class="subtab" data-day="Saturday">Saturday</button>
           </div>
           <div class="table-wrap">
             <table id="presenceTable"></table>
@@ -432,6 +455,8 @@
             <label class="full">Centre Details<textarea name="institution_details"></textarea></label>
             <label class="full">Subjects Offered<textarea name="subjects_offered" id="subjectsOffered" placeholder="Math&#10;English"></textarea></label>
             <label>Dashboard Month<select name="current_month" id="settingsMonth"></select></label>
+            <label>Operating Start Time<input type="time" name="operating_start" required></label>
+            <label>Operating End Time<input type="time" name="operating_end" required></label>
             <div class="actions full">
               <button type="submit">Save Centre Setup</button>
             </div>

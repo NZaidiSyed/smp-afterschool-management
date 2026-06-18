@@ -11,20 +11,20 @@ app.use(cors());
 app.use(express.json());
 
 // ─── INITIAL DATASETS ────────────────────────────────────────────────────────
-const DEFAULT_SCHOOL = { lat: 43.7615, lng: -79.4111, radius: 300, name: 'Greenfield Academy', address: '150 Greenfield Ave, Toronto, ON M6G 3G7', website: 'www.greenfieldacademy.edu', email: 'admin@greenfield.edu', otThreshold: 8.0, openDays: ['Mon','Tue','Wed','Thu','Fri'] };
+const DEFAULT_SCHOOL = { lat: 43.7615, lng: -79.4111, radius: 300, name: 'Greenfield Academy', address: '150 Greenfield Ave, Toronto, ON M6G 3G7', website: 'www.greenfieldacademy.edu', email: 'admin@greenfield.edu', otThreshold: 8.0, openDays: ['Tue','Wed','Thu','Fri','Sat'] };
 const INITIAL_USERS = [
   { id:1, name:'Dr. Sarah Mitchell', email:'s.mitchell@greenfield.edu', role:'principal_owner', dept:'Administration', pin:'0000', password:'school2026', phone:'416-555-0001', pos:'Principal', av:'SM', active:true },
   { id:2, name:'James Harrington',   email:'j.harrington@greenfield.edu', role:'administrator', dept:'Administration', pin:'1111', password:'school2026', phone:'416-555-0002', pos:'Vice Principal', av:'JH', active:true },
   { id:3, name:'Rachel Torres',      email:'r.torres@greenfield.edu', role:'office_manager', dept:'Administration', pin:'2222', password:'school2026', phone:'416-555-0003', pos:'Office Manager', av:'RT', active:true },
-  { id:4, name:'Emily Chen',         email:'e.chen@greenfield.edu', role:'teaching_assistant', dept:'Mathematics', pin:'3333', password:'', phone:'416-555-0011', pos:'Math Teacher', av:'EC', active:true },
-  { id:5, name:'Marcus Williams',    email:'m.williams@greenfield.edu', role:'teaching_assistant', dept:'Science', pin:'4444', password:'', phone:'416-555-0012', pos:'Science Teacher', av:'MW', active:true },
-  { id:6, name:'Priya Sharma',       email:'p.sharma@greenfield.edu', role:'grader', dept:'English', pin:'5555', password:'', phone:'416-555-0013', pos:'English Teacher', av:'PS', active:true },
-  { id:7, name:"David O'Brien",     email:'d.obrien@greenfield.edu', role:'teaching_assistant', dept:'History', pin:'6666', password:'', phone:'416-555-0014', pos:'History Teacher', av:'DO', active:true },
-  { id:8, name:'Aisha Patel',        email:'a.patel@greenfield.edu', role:'grader', dept:'Arts', pin:'7777', password:'', phone:'416-555-0015', pos:'Art Teacher', av:'AP', active:true },
-  { id:9, name:'Tom Nakamura',       email:'t.nakamura@greenfield.edu', role:'teaching_assistant', dept:'PE', pin:'8888', password:'', phone:'416-555-0016', pos:'PE Teacher', av:'TN', active:true },
-  { id:10,name:'Lisa Kowalski',      email:'l.kowalski@greenfield.edu', role:'grader', dept:'Support', pin:'9999', password:'', phone:'416-555-0017', pos:'Counselor', av:'LK', active:true },
+  { id:4, name:'Emily Chen',         email:'e.chen@greenfield.edu', role:'staff', dept:'Math', pin:'3333', password:'', phone:'416-555-0011', pos:'Math Teacher', av:'EC', active:true },
+  { id:5, name:'Marcus Williams',    email:'m.williams@greenfield.edu', role:'staff', dept:'English', pin:'4444', password:'', phone:'416-555-0012', pos:'Science Teacher', av:'MW', active:true },
+  { id:6, name:'Priya Sharma',       email:'p.sharma@greenfield.edu', role:'staff', dept:'English', pin:'5555', password:'', phone:'416-555-0013', pos:'English Teacher', av:'PS', active:true },
+  { id:7, name:"David O'Brien",     email:'d.obrien@greenfield.edu', role:'staff', dept:'English', pin:'6666', password:'', phone:'416-555-0014', pos:'History Teacher', av:'DO', active:true },
+  { id:8, name:'Aisha Patel',        email:'a.patel@greenfield.edu', role:'staff', dept:'English', pin:'7777', password:'', phone:'416-555-0015', pos:'Art Teacher', av:'AP', active:true },
+  { id:9, name:'Tom Nakamura',       email:'t.nakamura@greenfield.edu', role:'staff', dept:'Math', pin:'8888', password:'', phone:'416-555-0016', pos:'PE Teacher', av:'TN', active:true },
+  { id:10,name:'Lisa Kowalski',      email:'l.kowalski@greenfield.edu', role:'staff', dept:'English', pin:'9999', password:'', phone:'416-555-0017', pos:'Counselor', av:'LK', active:true },
 ];
-const DEFAULT_SUBJECTS = ['Mathematics', 'Science', 'English', 'History', 'Arts', 'PE', 'Administration', 'Support'];
+const DEFAULT_SUBJECTS = ['Math', 'English'];
 
 function buildDefaultSchedule() {
   const patterns = {
@@ -38,7 +38,7 @@ function buildDefaultSchedule() {
     3: ['Meeting','Teaching','Planning','Teaching','Supervision'],
   };
   const shifts = {};
-  const DAYS = ['Mon','Tue','Wed','Thu','Fri'];
+  const DAYS = ['Tue','Wed','Thu','Fri','Sat'];
   for (const uid in patterns) {
     shifts[uid] = {};
     DAYS.forEach((d, i) => {

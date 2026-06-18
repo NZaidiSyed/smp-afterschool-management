@@ -3,18 +3,20 @@
     "lat": 43.7615,
     "lng": -79.4111,
     "radius": 300,
-    "name": "Greenfield Academy",
+    "name": "KUMON Cityscape Square , NE , CALGARY",
     "address": "150 Greenfield Ave, Toronto, ON M6G 3G7",
     "website": "www.greenfieldacademy.edu",
     "email": "admin@greenfield.edu",
     "otThreshold": 8,
     "openDays": [
-      "Mon",
       "Tue",
       "Wed",
       "Thu",
-      "Fri"
-    ]
+      "Fri",
+      "Sat"
+    ],
+    "operatingStart": "15:00",
+    "operatingEnd": "20:00"
   },
   "users": [
     {
@@ -159,17 +161,24 @@
       "pos": "Adminstrator",
       "av": "SZ",
       "active": true
+    },
+    {
+      "id": 1781742821501,
+      "name": "Signed in",
+      "email": "signed in",
+      "role": "administrator",
+      "dept": "Administration",
+      "pin": "0000",
+      "password": "school2026",
+      "phone": "",
+      "pos": "Administrator",
+      "av": "SI",
+      "active": true
     }
   ],
   "subjects": [
-    "Mathematics",
-    "Science",
-    "English",
-    "History",
-    "Arts",
-    "PE",
-    "Administration",
-    "Support"
+    "Math",
+    "English"
   ],
   "schedule": {
     "published": true,
@@ -177,6 +186,90 @@
     "week": "May 26 – 30, 2026",
     "weekKey": "2026-W22",
     "shifts": {
+      "1": {
+        "Tue": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Wed": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Thu": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Fri": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Sat": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        }
+      },
+      "2": {
+        "Tue": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Wed": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Thu": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Fri": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Sat": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        }
+      },
       "3": {
         "Mon": {
           "type": "Meeting",
@@ -215,6 +308,14 @@
           "start": "15:30",
           "end": "18:30",
           "location": "Main Hallway",
+          "notes": "",
+          "ack": false
+        },
+        "Sat": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
           "notes": "",
           "ack": false
         }
@@ -547,6 +648,14 @@
           "ack": false
         },
         "Fri": {
+          "type": "Off",
+          "start": null,
+          "end": null,
+          "location": "Office",
+          "notes": "",
+          "ack": false
+        },
+        "Sat": {
           "type": "Off",
           "start": null,
           "end": null,
