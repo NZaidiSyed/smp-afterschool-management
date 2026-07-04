@@ -33,6 +33,8 @@ let state = {
   batchImportRows: [],
   batchImportPreview: [],
   batchImportFileName: "",
+  rosterSortField: null,
+  rosterSortOrder: "asc",
 };
 
 let appConfig = { auth_required: false };
@@ -142,6 +144,19 @@ async function initAuth() {
   if (!appConfig.auth_required) {
     renderAuthState();
     return true;
+  }
+  
+  // Check for saved mock session first
+  const savedMock = window.localStorage.getItem("smp_mock_session") || window.sessionStorage.getItem("smp_mock_session");
+  if (savedMock) {
+    try {
+      authSession = JSON.parse(savedMock);
+      renderAuthState();
+      return true;
+    } catch (e) {
+      window.localStorage.removeItem("smp_mock_session");
+      window.sessionStorage.removeItem("smp_mock_session");
+    }
   }
   if (!window.supabase || !appConfig.supabase_url || !appConfig.supabase_anon_key) {
     qs("#authMessage").textContent = "Authentication is not ready. Check Render environment variables.";
@@ -262,6 +277,8 @@ async function signInWithGoogle() {
 }
 
 async function signOut() {
+  window.localStorage.removeItem("smp_mock_session");
+  window.sessionStorage.removeItem("smp_mock_session");
   if (supabaseClient) await supabaseClient.auth.signOut();
   window.sessionStorage.clear();
   authSession = null;
@@ -276,22 +293,158 @@ async function switchAccount() {
   await signInWithGoogle();
 }
 
+async function signInWithPassword() {
+  const email = qs("#loginEmail").value.trim().toLowerCase();
+  const password = qs("#loginPassword").value;
+  if (!email || !password) {
+    qs("#authMessage").textContent = "Please enter both email and password.";
+    return;
+  }
+  
+  qs("#authMessage").textContent = "Signing in...";
+  
+  try {
+    const res = await fetch("/api/staffbase/auth/password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      authSession = {
+        access_token: "mock-token-" + email,
+        user: {
+          email: email,
+          user_metadata: {
+            full_name: data.user.name,
+            name: data.user.name
+          }
+        }
+      };
+      
+      const keepSignedIn = Boolean(qs("#keepSignedIn")?.checked);
+      const storage = keepSignedIn ? window.localStorage : window.sessionStorage;
+      storage.setItem("smp_mock_session", JSON.stringify(authSession));
+      
+      qs("#authMessage").textContent = "";
+      renderAuthState();
+      
+      await load();
+      renderAll();
+    } else {
+      qs("#authMessage").textContent = data.error || "Login failed. Incorrect credentials.";
+    }
+  } catch (err) {
+    qs("#authMessage").textContent = "Connection error. Please try again.";
+    console.error(err);
+  }
+}
+
 async function load() {
   state = await api("/api/bootstrap");
+  state.expenses = state.expenses || [];
+  // Write EL student cache so staffbase.html can auto-populate without needing
+  // the Presence tab to have been visited first.
+  try {
+    const elCache = (state.students || [])
+      .filter(s => !s.deleted_at)
+      .map(s => ({
+        student_name: s.student_name,
+        rate_type: s.rate_type || 'R',
+        status: s.status,
+        schedules: (s.schedules || []).map(sc => ({
+          weekday: sc.weekday,
+          start: sc.start_time,
+          end: sc.end_time,
+        })),
+      }));
+    localStorage.setItem('smp_el_cache', JSON.stringify(elCache));
+  } catch(e) {}
+  if (!state.activeSettingsSubTab) {
+    state.activeSettingsSubTab = 'centre';
+  }
+  if (!state.activePlMonth) {
+    state.activePlMonth = state.settings.current_month || "May-26";
+  }
   if (!state.activePresenceSubTab) {
     const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
     const validDays = ["Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
     state.activePresenceSubTab = validDays.includes(todayName) ? todayName : "Tuesday";
   }
+
+  // Bootstrap state.staff from staffbase localStorage data so the staff views
+  // in index.html reflect real data even before the iframe fires any messages.
+  // Server data (if present) takes priority over localStorage.
+  if (!state.staff) state.staff = { members: [], schedules: [], punches: [], weekdays: [] };
+  try {
+    const sbUsers = JSON.parse(localStorage.getItem('sb_users') || 'null');
+    if (sbUsers && !state.staff.members?.length) {
+      state.staff.members = sbUsersToStaffMembers(sbUsers);
+    }
+    const sbSchedule = JSON.parse(localStorage.getItem('sb_schedule') || 'null');
+    if (sbSchedule && !state.staff.schedules?.length) {
+      state.staff.schedules = sbScheduleToStaffSchedules(sbSchedule);
+      if (sbSchedule.openDays?.length) state.staff.weekdays = sbSchedule.openDays;
+    }
+    const sbClock = JSON.parse(localStorage.getItem('sb_clock_data') || 'null');
+    if (sbClock) {
+      state.staff.punches = sbClockToStaffPunches(sbClock);
+    }
+  } catch (e) { /* localStorage may be unavailable */ }
+
   restoreReconciliationSession();
   hydrateMonthSelectors();
   renderAll();
 }
 
+function applyRoleTabVisibility() {
+  const role = String(currentUserRole() || "").toLowerCase();
+  const isStaff = role === "staff";
+  
+  const reconTab = document.querySelector('.tab[data-tab="reconciliation"]');
+  if (reconTab) reconTab.style.display = isStaff ? "none" : "inline-flex";
+
+  const batchTab = document.querySelector('.tab[data-tab="batch"]');
+  if (batchTab) batchTab.style.display = isStaff ? "none" : "inline-flex";
+
+  const settingsTab = document.querySelector('.tab[data-tab="settings"]');
+  if (settingsTab) settingsTab.style.display = isStaff ? "none" : "inline-flex";
+
+  const plTab = document.querySelector('.tab[data-tab="pl"]');
+  if (plTab) {
+    const hasPlAccess = ["admin", "office manager", "office_manager", "owner"].includes(role);
+    plTab.style.display = hasPlAccess ? "inline-flex" : "none";
+  }
+
+  // Redirect if currently on a hidden tab
+  const activeTab = document.querySelector('.tab.active');
+  if (activeTab && activeTab.style.display === "none") {
+    document.querySelectorAll(".tab, .panel").forEach((node) => node.classList.remove("active"));
+    const dashTab = document.querySelector('.tab[data-tab="dashboard"]');
+    if (dashTab) dashTab.classList.add("active");
+    const dashPanel = document.querySelector('#dashboard');
+    if (dashPanel) dashPanel.classList.add("active");
+  }
+}
+
 function renderAll() {
+  try {
+    saveTeacherAssignmentsToLocalStorage();
+  } catch (e) {
+    console.error("Error auto-calculating teacher assignments:", e);
+  }
+  const isSetupCompleted = String(state.settings?.center_setup_completed || "0") === "1";
+  if (!isSetupCompleted && activeAdminArea !== "choice") {
+    activeAdminArea = "student";
+    document.querySelectorAll(".tab, .panel").forEach((node) => node.classList.remove("active"));
+    qs("#tabCentreSetup")?.classList.add("active");
+    qs("#centre-setup")?.classList.add("active");
+  }
   renderBrand();
   renderAuthState();
-  qs("#recordCount").textContent = state.students.length;
+  applyRoleTabVisibility();
+  const recCount = qs("#recordCount");
+  if (recCount) recCount.textContent = state.students.length;
   renderAdminAreas();
   renderSubjectChoices();
   renderDashboard();
@@ -299,7 +452,9 @@ function renderAll() {
   renderRoster();
   renderPresence();
   renderReporting();
+  renderPlTab();
   renderSettings();
+  renderCentreSetup();
   renderBatch();
   renderReconciliationRules();
   renderReconciliation();
@@ -308,7 +463,7 @@ function renderAll() {
 
 function hasStaffAccess() {
   const role = String(state.current_user?.role || "").toLowerCase();
-  return Boolean(state.can_access_staff || ["admin", "administrator", "owner", "principal_owner", "office manager", "office_manager"].includes(role));
+  return Boolean(state.can_access_staff || ["admin", "administrator", "owner", "principal_owner", "office manager", "office_manager", "staff", "office assistant", "office_assistant"].includes(role));
 }
 
 function renderAdminAreas() {
@@ -319,6 +474,13 @@ function renderAdminAreas() {
   }
   
   document.body.dataset.adminArea = activeAdminArea;
+  
+  const welcomeHeading = qs("#adminChoicePanel h2");
+  if (welcomeHeading) {
+    const name = currentUserName() || "User";
+    const inst = state.settings.institution_name || "Kumon Cityscape Square";
+    welcomeHeading.textContent = `Welcome ${name} to "${inst}" School Management Programme`;
+  }
   
   const choicePanel = qs("#adminChoicePanel");
   if (choicePanel) {
@@ -352,7 +514,17 @@ function renderAdminAreas() {
 
 function switchAdminArea(area) {
   if (area === "staff" && !hasStaffAccess()) {
-    toast("Staff Administration is limited to Admin and Office Manager");
+    toast("Staff Administration is limited to Admin, Manager, and Staff");
+    return;
+  }
+  const isSetupCompleted = String(state.settings?.center_setup_completed || "0") === "1";
+  if (!isSetupCompleted && (area === "student" || area === "staff")) {
+    activeAdminArea = "student";
+    document.querySelectorAll(".tab, .panel").forEach((node) => node.classList.remove("active"));
+    qs("#tabCentreSetup")?.classList.add("active");
+    qs("#centre-setup")?.classList.add("active");
+    renderAdminAreas();
+    toast("Please complete the One-Time Centre Setup first.");
     return;
   }
   activeAdminArea = area;
@@ -365,22 +537,32 @@ function switchAdminArea(area) {
 
 function renderBrand() {
   const settings = state.settings || {};
-  qs("#institutionHeading").textContent = settings.institution_name || "SMP - After School Management Program";
-  qs("#institutionDetails").textContent = settings.institution_details || "";
+  const orgName = settings.institution_name || "SMP Kumon";
+  const branchName = settings.branch_name || "Calgary NE";
+  const branchCode = settings.branch_code;
+  
+  // Combine Organization Name and Branch Name
+  const headingText = branchName ? `${orgName} - ${branchName}` : orgName;
+  qs("#institutionHeading").textContent = headingText;
+  
+  // Append branch code to description/subtitle if it exists
+  const codeText = branchCode ? `Branch Code: ${branchCode} | ` : "";
+  qs("#institutionDetails").textContent = codeText + (settings.institution_details || "Student roster, fee tracking, and monthly collection dashboard.");
+  
   qs("#institutionPhone").textContent = settings.institution_phone ? `Phone: ${settings.institution_phone}` : "";
   qs("#institutionPhone").style.display = settings.institution_phone ? "block" : "none";
-  document.title = `SMP - ${settings.institution_name || "After School Management Program"}`;
+  document.title = `SMP - ${headingText}`;
 }
 
 function hydrateMonthSelectors() {
-  const options = state.months.map((m) => `<option value="${m}">${m}</option>`).join("");
+  const options = (state.months || []).map((m) => `<option value="${m}">${m}</option>`).join("");
   for (const selector of ["#dashboardMonth", "#settingsMonth"]) {
     const node = qs(selector);
-    if (node && node.options.length !== state.months.length) node.innerHTML = options;
+    if (node && node.options.length !== (state.months || []).length) node.innerHTML = options;
     if (node) node.value = state.settings.current_month || "May-26";
   }
   const reportMonths = qs("#reportMonths");
-  if (reportMonths && reportMonths.options.length !== state.months.length) {
+  if (reportMonths && reportMonths.options.length !== (state.months || []).length) {
     reportMonths.innerHTML = options;
   }
   if (!reportSelectedMonths.length) reportSelectedMonths = [state.settings.current_month || "May-26"];
@@ -388,6 +570,13 @@ function hydrateMonthSelectors() {
     [...reportMonths.options].forEach((option) => {
       option.selected = reportSelectedMonths.includes(option.value);
     });
+  }
+  const plMonth = qs("#plMonth");
+  if (plMonth && plMonth.options.length !== (state.months || []).length) {
+    plMonth.innerHTML = options;
+  }
+  if (plMonth) {
+    plMonth.value = state.activePlMonth || state.settings.current_month || "May-26";
   }
 }
 
@@ -444,10 +633,107 @@ function presenceEntries() {
         end_time: schedule.end_time,
         startMinutes,
         endMinutes,
+        rate_type: student.rate_type || "R",
       };
     }))
     .filter((entry) => PRESENCE_WEEKDAYS.includes(entry.weekday) && entry.startMinutes != null && entry.endMinutes != null && entry.startMinutes < entry.endMinutes)
     .sort((a, b) => (weekdayRank[a.weekday] - weekdayRank[b.weekday]) || a.startMinutes - b.startMinutes || a.student_name.localeCompare(b.student_name));
+}
+
+function saveTeacherAssignmentsToLocalStorage() {
+  const allEntries = presenceEntries();
+  const TIME_SLOTS = [
+    { label: "3:00 - 3:30", start: 15 * 60, end: 15 * 60 + 30 },
+    { label: "3:30 - 4:00", start: 15 * 60 + 30, end: 16 * 60 },
+    { label: "4:00 - 4:30", start: 16 * 60, end: 16 * 60 + 30 },
+    { label: "4:30 - 5:00", start: 16 * 60 + 30, end: 17 * 60 },
+    { label: "5:00 - 5:30", start: 17 * 60, end: 17 * 60 + 30 },
+    { label: "5:30 - 6:00", start: 17 * 60 + 30, end: 18 * 60 },
+    { label: "6:00 - 6:30", start: 18 * 60, end: 18 * 60 + 30 },
+    { label: "6:30 - 7:00", start: 18 * 60 + 30, end: 19 * 60 },
+    { label: "7:00 - 7:30", start: 19 * 60, end: 19 * 60 + 30 }
+  ];
+
+  const results = [];
+
+  PRESENCE_WEEKDAYS.forEach(day => {
+    const tableEntries = allEntries.filter((entry) => entry.weekday === day);
+    const assignments = Array.from({ length: TIME_SLOTS.length }, () => ({}));
+
+    for (let s = 0; s < TIME_SLOTS.length; s++) {
+      const slot = TIME_SLOTS[s];
+      const elStudentsInSlot = tableEntries.filter(entry => {
+        const isEL = String(entry.rate_type || "").toUpperCase() === "EL";
+        return isEL && entry.startMinutes < slot.end && entry.endMinutes > slot.start;
+      });
+
+      elStudentsInSlot.sort((a, b) => a.student_name.localeCompare(b.student_name));
+      const N = elStudentsInSlot.length;
+      if (N === 0) continue;
+
+      const assignedTeachersInSlot = new Set();
+      const studentsToPair = [...elStudentsInSlot];
+
+      if (N % 2 !== 0) {
+        let leftoverEntry = null;
+        if (s > 0) {
+          for (const entry of studentsToPair) {
+            const prevTeacher = assignments[s - 1][entry.student_id];
+            if (prevTeacher) {
+              leftoverEntry = entry;
+              break;
+            }
+          }
+        }
+        if (!leftoverEntry) {
+          leftoverEntry = studentsToPair[0];
+        }
+
+        let teacherNum;
+        if (s > 0 && assignments[s - 1][leftoverEntry.student_id]) {
+          teacherNum = assignments[s - 1][leftoverEntry.student_id];
+        } else {
+          let t = 1;
+          while (assignedTeachersInSlot.has(t)) {
+            t++;
+          }
+          teacherNum = t;
+        }
+
+        assignments[s][leftoverEntry.student_id] = teacherNum;
+        assignedTeachersInSlot.add(teacherNum);
+
+        const idx = studentsToPair.indexOf(leftoverEntry);
+        if (idx > -1) {
+          studentsToPair.splice(idx, 1);
+        }
+      }
+
+      for (let i = 0; i < studentsToPair.length; i += 2) {
+        const entry1 = studentsToPair[i];
+        const entry2 = studentsToPair[i + 1];
+        let t = 1;
+        while (assignedTeachersInSlot.has(t)) {
+          t++;
+        }
+        assignments[s][entry1.student_id] = t;
+        assignments[s][entry2.student_id] = t;
+        assignedTeachersInSlot.add(t);
+      }
+
+      elStudentsInSlot.forEach(entry => {
+        const teacherNum = assignments[s][entry.student_id] || 1;
+        results.push({
+          weekday: day,
+          slotIdx: s,
+          teacherName: "Teacher " + teacherNum,
+          studentName: entry.student_name
+        });
+      });
+    }
+  });
+
+  localStorage.setItem('sb_teacher_assignments', JSON.stringify(results));
 }
 
 function presenceBlocks(entries) {
@@ -470,6 +756,7 @@ function presenceBlocks(entries) {
 
 function renderPresence() {
   if (!qs("#presenceTable")) return;
+  saveTeacherAssignmentsToLocalStorage();
   const selectedDay = qs("#presenceDayFilter")?.value || "all";
   const allEntries = presenceEntries();
   const visibleEntries = selectedDay === "all" ? allEntries : allEntries.filter((entry) => entry.weekday === selectedDay);
@@ -548,14 +835,157 @@ function renderPresence() {
   });
   const tableEntries = allEntries.filter((entry) => entry.weekday === activeSubTab);
 
-  renderTable(
-    qs("#presenceTable"),
-    ["Time", "Student Name"],
-    tableEntries.map((entry) => [
-      `${escapeHtml(minutesToTimeLabel(entry.startMinutes))} - ${escapeHtml(minutesToTimeLabel(entry.endMinutes))}`,
-      escapeHtml(entry.student_name),
-    ])
-  );
+  const TIME_SLOTS = [
+    { label: "3:00 - 3:30", start: 15 * 60, end: 15 * 60 + 30 },
+    { label: "3:30 - 4:00", start: 15 * 60 + 30, end: 16 * 60 },
+    { label: "4:00 - 4:30", start: 16 * 60, end: 16 * 60 + 30 },
+    { label: "4:30 - 5:00", start: 16 * 60 + 30, end: 17 * 60 },
+    { label: "5:00 - 5:30", start: 17 * 60, end: 17 * 60 + 30 },
+    { label: "5:30 - 6:00", start: 17 * 60 + 30, end: 18 * 60 },
+    { label: "6:00 - 6:30", start: 18 * 60, end: 18 * 60 + 30 },
+    { label: "6:30 - 7:00", start: 18 * 60 + 30, end: 19 * 60 },
+    { label: "7:00 - 7:30", start: 19 * 60, end: 19 * 60 + 30 }
+  ];
+
+  // 1. Run dynamic teacher assignments slot-by-slot chronologically
+  const assignments = Array.from({ length: TIME_SLOTS.length }, () => ({}));
+  for (let s = 0; s < TIME_SLOTS.length; s++) {
+    const slot = TIME_SLOTS[s];
+    const elStudentsInSlot = tableEntries.filter(entry => {
+      const isEL = String(entry.rate_type || "").toUpperCase() === "EL";
+      return isEL && entry.startMinutes < slot.end && entry.endMinutes > slot.start;
+    });
+
+    // Stable sort alphabetically
+    elStudentsInSlot.sort((a, b) => a.student_name.localeCompare(b.student_name));
+    
+    const N = elStudentsInSlot.length;
+    if (N === 0) continue;
+
+    const assignedTeachersInSlot = new Set();
+    const studentsToPair = [...elStudentsInSlot];
+
+    if (N % 2 !== 0) {
+      let leftoverEntry = null;
+      if (s > 0) {
+        for (const entry of studentsToPair) {
+          const prevTeacher = assignments[s - 1][entry.student_id];
+          if (prevTeacher) {
+            leftoverEntry = entry;
+            break;
+          }
+        }
+      }
+
+      if (!leftoverEntry) {
+        leftoverEntry = studentsToPair[0];
+      }
+
+      let teacherNum;
+      if (s > 0 && assignments[s - 1][leftoverEntry.student_id]) {
+        teacherNum = assignments[s - 1][leftoverEntry.student_id];
+      } else {
+        let t = 1;
+        while (assignedTeachersInSlot.has(t)) {
+          t++;
+        }
+        teacherNum = t;
+      }
+
+      assignments[s][leftoverEntry.student_id] = teacherNum;
+      assignedTeachersInSlot.add(teacherNum);
+
+      const idx = studentsToPair.indexOf(leftoverEntry);
+      if (idx > -1) {
+        studentsToPair.splice(idx, 1);
+      }
+    }
+
+    for (let i = 0; i < studentsToPair.length; i += 2) {
+      const entry1 = studentsToPair[i];
+      const entry2 = studentsToPair[i + 1];
+
+      let t = 1;
+      while (assignedTeachersInSlot.has(t)) {
+        t++;
+      }
+
+      assignments[s][entry1.student_id] = t;
+      assignments[s][entry2.student_id] = t;
+      assignedTeachersInSlot.add(t);
+    }
+  }
+
+  // 2. Render daily presence timetable grid
+  const table = qs("#presenceTable");
+  if (table) {
+    table.className = "presence-timetable";
+    
+    let theadHtml = `
+      <thead>
+        <tr>
+          <th>Student Name</th>
+          <th>Rate Type</th>
+          ${TIME_SLOTS.map(slot => `<th>${slot.label}</th>`).join("")}
+        </tr>
+      </thead>
+    `;
+
+    const studentRows = {};
+    tableEntries.forEach(entry => {
+      if (!studentRows[entry.student_id]) {
+        studentRows[entry.student_id] = {
+          student_name: entry.student_name,
+          rate_type: entry.rate_type || "R",
+          student_id: entry.student_id,
+          scheduleItems: []
+        };
+      }
+      studentRows[entry.student_id].scheduleItems.push(entry);
+    });
+
+        const getMinStart = (student) => Math.min(...student.scheduleItems.map(item => item.startMinutes));
+    const sortedStudents = Object.values(studentRows).sort((a, b) => {
+      return getMinStart(a) - getMinStart(b) || a.student_name.localeCompare(b.student_name);
+    });
+    let tbodyHtml = "<tbody>";
+    
+    if (sortedStudents.length === 0) {
+      tbodyHtml += `<tr><td colspan="11" class="empty-state" style="text-align: center;">No students scheduled for today.</td></tr>`;
+    } else {
+      sortedStudents.forEach(student => {
+        const isEL = String(student.rate_type || "").toUpperCase() === "EL";
+        const catLabel = isEL ? "EL" : "R";
+        const catClass = isEL ? "is-el" : "is-r";
+
+        let rowHtml = `
+          <tr>
+            <td>${escapeHtml(student.student_name)}</td>
+            <td><span class="timetable-badge ${catClass}">${catLabel}</span></td>
+        `;
+
+        TIME_SLOTS.forEach((slot, sIdx) => {
+          const present = student.scheduleItems.some(item => item.startMinutes < slot.end && item.endMinutes > slot.start);
+          if (present) {
+            if (isEL) {
+              const teacher = assignments[sIdx][student.student_id] || 1;
+              rowHtml += `<td><div class="timetable-bar is-el" title="Teacher ${teacher}">Teacher ${teacher}</div></td>`;
+            } else {
+              rowHtml += `<td><div class="timetable-bar is-r"></div></td>`;
+            }
+          } else {
+            rowHtml += `<td></td>`;
+          }
+        });
+
+        rowHtml += "</tr>";
+        tbodyHtml += rowHtml;
+      });
+    }
+
+    tbodyHtml += "</tbody>";
+    table.innerHTML = theadHtml + tbodyHtml;
+  }
 
   const maxDayCount = Math.max(1, ...dayCounts.map((item) => item.count));
   qs("#presenceDayLoad").innerHTML = dayCounts.map((item) => `
@@ -590,7 +1020,7 @@ function normalizedStudentName(name) {
 }
 
 function normalizedDuplicateKey(row) {
-  return `${normalizedStudentName(row.student_name)}|${normalizedStudentName(row.parent_guardian)}`;
+  return normalizedStudentName(row.student_name);
 }
 
 function activeDuplicateNameMap() {
@@ -632,14 +1062,16 @@ function renderDashboard() {
     metric("Active Student/Parent Duplicates", duplicateActiveCount, duplicateActiveCount ? "warning" : "success"),
   ].join("");
 
-  const enrolmentMax = Math.max(...d.enrolment_totals.map((m) => m.count), 1);
-  qs("#enrolmentChart").innerHTML = d.enrolment_totals.map((m) => {
+  const enrolmentTotals = d.enrolment_totals || [];
+  const enrolmentMax = Math.max(...enrolmentTotals.map((m) => m.count), 1);
+  qs("#enrolmentChart").innerHTML = enrolmentTotals.map((m) => {
     const h = Math.max(8, Math.round((m.count / enrolmentMax) * 170));
     return `<div class="bar enrolment-bar" style="height:${h}px" title="${m.month}: ${m.count} enrolments"><strong>${m.count}</strong><span>${m.month}</span></div>`;
   }).join("");
 
-  const max = Math.max(...d.monthly_totals.map((m) => m.total), 1);
-  qs("#barChart").innerHTML = d.monthly_totals.map((m) => {
+  const monthlyTotals = d.monthly_totals || [];
+  const max = Math.max(...monthlyTotals.map((m) => m.total), 1);
+  qs("#barChart").innerHTML = monthlyTotals.map((m) => {
     const h = Math.max(8, Math.round((m.total / max) * 170));
     return `<div class="bar" style="height:${h}px" title="${m.month}: ${money(m.total)}"><strong>${money(m.total)}</strong><span>${m.month}</span></div>`;
   }).join("");
@@ -729,12 +1161,14 @@ function reportStatusChangeRows() {
 
 function renderReporting() {
   if (!qs("#reporting")) return;
+
   const rows = reportEnrolmentRows();
   const statusRows = reportStatusChangeRows();
   const selected = selectedReportMonths();
   const active = rows.filter((row) => String(row.status || "").toUpperCase() === "C");
   const units = rows.reduce((sum, row) => sum + (row.subject_units || 0), 0);
   const monthlyFee = rows.reduce((sum, row) => sum + (row.std_monthly_fee || 0), 0);
+  const monthlyFeeDeduction = statusRows.reduce((sum, row) => sum + (row.std_monthly_fee || 0), 0);
   qs("#enrolmentReportSummary").innerHTML = [
     `<div class="info-tile"><span>Selected Months</span><strong>${selected.length}</strong></div>`,
     `<div class="info-tile"><span>Enrolments</span><strong>${rows.length}</strong></div>`,
@@ -742,6 +1176,7 @@ function renderReporting() {
     `<div class="info-tile"><span>C to D Changes</span><strong>${statusRows.length}</strong></div>`,
     `<div class="info-tile"><span>Subject Units</span><strong>${number(units)}</strong></div>`,
     `<div class="info-tile"><span>Monthly Fee Added</span><strong>${money(monthlyFee)}</strong></div>`,
+    `<div class="info-tile" style="border-color:#fda29b;background:#fef3f2"><span>Monthly Fee Deduction</span><strong style="color:#b42318">${money(monthlyFeeDeduction)}</strong></div>`,
   ].join("");
 
   renderTable(
@@ -810,6 +1245,173 @@ function renderReporting() {
       <p>${detail}</p>
     </div>
   `).join("");
+}
+
+function renderPlTab() {
+  const activeMonth = state.activePlMonth || state.settings.current_month || "May-26";
+  
+  const plMonth = qs("#plMonth");
+  if (plMonth) plMonth.value = activeMonth;
+  
+  const kpiLabel = qs("#plKpiMonthLabel");
+  if (kpiLabel) kpiLabel.textContent = `For Selected Month (${activeMonth})`;
+
+  let expenseRecord = (state.expenses || []).find((e) => e.month_label === activeMonth);
+  let isCopied = false;
+  let copiedFromLabel = "";
+
+  if (!expenseRecord) {
+    const monthIndex = state.months.indexOf(activeMonth);
+    if (monthIndex > 0) {
+      copiedFromLabel = state.months[monthIndex - 1];
+      expenseRecord = (state.expenses || []).find((e) => e.month_label === copiedFromLabel);
+      if (expenseRecord) {
+        isCopied = true;
+      }
+    }
+  }
+
+  const finalRecord = expenseRecord || {
+    rent_expense: 0.00,
+    royalty_expense: 0.00,
+    utilities_expense: 0.00,
+    misc_expense: 0.00,
+    misc_details: ""
+  };
+
+  if (document.activeElement !== qs("#plRent")) qs("#plRent").value = Number(finalRecord.rent_expense || 0).toFixed(2);
+  if (document.activeElement !== qs("#plRoyalty")) qs("#plRoyalty").value = Number(finalRecord.royalty_expense || 0).toFixed(2);
+  if (document.activeElement !== qs("#plUtilities")) qs("#plUtilities").value = Number(finalRecord.utilities_expense || 0).toFixed(2);
+  if (document.activeElement !== qs("#plMisc")) qs("#plMisc").value = Number(finalRecord.misc_expense || 0).toFixed(2);
+  if (document.activeElement !== qs("#plMiscDetails")) qs("#plMiscDetails").value = finalRecord.misc_details || "";
+
+  const copyIndicator = qs("#plFormCopyIndicator");
+  if (copyIndicator) {
+    if (isCopied) {
+      copyIndicator.textContent = `Showing values copied from ${copiedFromLabel} (Unsaved)`;
+      copyIndicator.style.display = "block";
+    } else {
+      copyIndicator.style.display = "none";
+    }
+  }
+
+  const revenue = state.fee_tracker.reduce((sum, row) => sum + (row.months[activeMonth] || 0), 0);
+  const rent = finalRecord.rent_expense ? Number(finalRecord.rent_expense) : 0;
+  const royalty = finalRecord.royalty_expense ? Number(finalRecord.royalty_expense) : 0;
+  const utilities = finalRecord.utilities_expense ? Number(finalRecord.utilities_expense) : 0;
+  const misc = finalRecord.misc_expense ? Number(finalRecord.misc_expense) : 0;
+  const totalExpenses = rent + royalty + utilities + misc;
+  const netProfit = revenue - totalExpenses;
+  const marginPercent = revenue > 0 ? (netProfit / revenue) * 100 : 0;
+
+  const metricsContainer = qs("#plMetrics");
+  if (metricsContainer) {
+    metricsContainer.innerHTML = [
+      metric("Total Revenue", money(revenue), "accent"),
+      metric("Total Expenses", money(totalExpenses), "warning"),
+      metric("Net Profit", money(netProfit), netProfit >= 0 ? "success" : "warning"),
+      metric("Profit Margin %", revenue > 0 ? `${number(marginPercent)}%` : "0%", netProfit >= 0 ? "success" : "warning"),
+    ].join("");
+  }
+
+  const yearlyData = {};
+  for (const monthLabel of state.months) {
+    const year = parseYearFromMonthLabel(monthLabel);
+    if (!year) continue;
+
+    if (!yearlyData[year]) {
+      yearlyData[year] = {
+        revenue: 0,
+        rent: 0,
+        royalty: 0,
+        utilities: 0,
+        misc: 0,
+        expenses: 0,
+        netProfit: 0
+      };
+    }
+
+    const mRev = state.fee_tracker.reduce((sum, row) => sum + (row.months[monthLabel] || 0), 0);
+    const mExpRecord = (state.expenses || []).find((e) => e.month_label === monthLabel);
+    const mRent = mExpRecord ? Number(mExpRecord.rent_expense || 0) : 0;
+    const mRoyalty = mExpRecord ? Number(mExpRecord.royalty_expense || 0) : 0;
+    const mUtilities = mExpRecord ? Number(mExpRecord.utilities_expense || 0) : 0;
+    const mMisc = mExpRecord ? Number(mExpRecord.misc_expense || 0) : 0;
+    const mExpenses = mRent + mRoyalty + mUtilities + mMisc;
+
+    yearlyData[year].revenue += mRev;
+    yearlyData[year].rent += mRent;
+    yearlyData[year].royalty += mRoyalty;
+    yearlyData[year].utilities += mUtilities;
+    yearlyData[year].misc += mMisc;
+    yearlyData[year].expenses += mExpenses;
+    yearlyData[year].netProfit += (mRev - mExpenses);
+  }
+
+  const yearlyHeaders = ["Year", "Total Revenue", "Rent", "Royalty", "Utilities", "Miscellaneous", "Total Expenses", "Net Profit", "Profit Margin"];
+  const yearlyRows = Object.entries(yearlyData)
+    .sort((a, b) => Number(b[0]) - Number(a[0]))
+    .map(([year, data]) => {
+      const margin = data.revenue > 0 ? (data.netProfit / data.revenue) * 100 : 0;
+      return [
+        year,
+        money(data.revenue),
+        money(data.rent),
+        money(data.royalty),
+        money(data.utilities),
+        money(data.misc),
+        money(data.expenses),
+        `<span class="${data.netProfit >= 0 ? "pl-profit" : "pl-loss"}">${money(data.netProfit)}</span>`,
+        `<span class="${data.netProfit >= 0 ? "pl-profit" : "pl-loss"}">${number(margin)}%</span>`
+      ];
+    });
+  
+  const yearlyTable = qs("#plYearlyTable");
+  if (yearlyTable) {
+    renderTable(yearlyTable, yearlyHeaders, yearlyRows);
+  }
+
+  const monthlyHeaders = ["Month", "Revenue", "Rent", "Royalty", "Utilities", "Miscellaneous", "Total Expenses", "Net Profit", "Profit Margin", "Misc Details"];
+  
+  const monthlyRows = [...state.months].reverse().map((monthLabel) => {
+    const mRev = state.fee_tracker.reduce((sum, row) => sum + (row.months[monthLabel] || 0), 0);
+    const mExpRecord = (state.expenses || []).find((e) => e.month_label === monthLabel);
+    const mRent = mExpRecord ? Number(mExpRecord.rent_expense || 0) : 0;
+    const mRoyalty = mExpRecord ? Number(mExpRecord.royalty_expense || 0) : 0;
+    const mUtilities = mExpRecord ? Number(mExpRecord.utilities_expense || 0) : 0;
+    const mMisc = mExpRecord ? Number(mExpRecord.misc_expense || 0) : 0;
+    const mExpenses = mRent + mRoyalty + mUtilities + mMisc;
+    const mNetProfit = mRev - mExpenses;
+    const mMargin = mRev > 0 ? (mNetProfit / mRev) * 100 : 0;
+    const detailsText = mExpRecord ? (mExpRecord.misc_details || "") : "";
+
+    return [
+      monthLabel,
+      money(mRev),
+      money(mRent),
+      money(mRoyalty),
+      money(mUtilities),
+      money(mMisc),
+      money(mExpenses),
+      `<span class="${mNetProfit >= 0 ? "pl-profit" : "pl-loss"}">${money(mNetProfit)}</span>`,
+      `<span class="${mNetProfit >= 0 ? "pl-profit" : "pl-loss"}">${number(mMargin)}%</span>`,
+      `<span class="pl-notes-cell" title="${escapeHtml(detailsText)}">${escapeHtml(detailsText)}</span>`
+    ];
+  });
+
+  const monthlyTable = qs("#plMonthlyTable");
+  if (monthlyTable) {
+    renderTable(monthlyTable, monthlyHeaders, monthlyRows);
+  }
+}
+
+function parseYearFromMonthLabel(monthLabel) {
+  const parts = String(monthLabel).split('-');
+  if (parts.length === 2) {
+    const yr = parts[1];
+    return 2000 + Number(yr);
+  }
+  return null;
 }
 
 function filteredFeeRows() {
@@ -957,36 +1559,112 @@ async function savePayment(input) {
   }
 }
 
+function sortHeader(field, label) {
+  let indicator = "";
+  if (state.rosterSortField === field) {
+    indicator = state.rosterSortOrder === "asc" ? " ▲" : " ▼";
+  }
+  return `<span class="sortable-header" onclick="toggleRosterSort('${field}')" style="cursor:pointer;user-select:none;color:var(--accent);font-weight:bold">${label}${indicator}</span>`;
+}
+
+function toggleRosterSort(field) {
+  if (state.rosterSortField === field) {
+    state.rosterSortOrder = state.rosterSortOrder === "asc" ? "desc" : "asc";
+  } else {
+    state.rosterSortField = field;
+    state.rosterSortOrder = "asc";
+  }
+  renderRoster();
+}
+
 function renderRoster() {
   const term = qs("#search").value.toLowerCase();
   const filter = qs("#rosterStatusFilter").value;
   const deleteAction = canDeleteStudentRecords()
     ? (id) => `<button class="small danger" data-review-delete="${id}">Review/Delete</button>`
     : () => "";
-  const rows = state.students
+
+  let filtered = state.students
     .filter((s) => {
       if (filter === "deleted") return Boolean(s.deleted_at);
       if (s.deleted_at) return false;
       return filter === "all" || s.status.toUpperCase() === "C";
     })
-    .filter((s) => JSON.stringify(s).toLowerCase().includes(term))
-    .map((s) => [
-      s.number,
-      `<button class="link-button ${[isStudentOverdue(s.id) ? "overdue-name" : "", isActiveDuplicateName(s) ? "duplicate-name" : ""].filter(Boolean).join(" ")}" data-profile="${s.id}">${s.student_name}</button>`,
-      s.parent_guardian,
-      `<span class="status-badge ${s.deleted_at ? "inactive" : s.status.toUpperCase() === "C" ? "current" : "inactive"}">${s.deleted_at ? "Deleted" : s.status}</span>`,
-      s.enrol_date,
-      subjectText(s.subjects),
-      scheduleText(s),
-      s.last_modification || "",
-      s.rate_type,
-      money(s.std_monthly_fee),
-      s.payment_method,
-      s.phone || "",
-      s.email || "",
-      `<div class="row-actions"><button class="small" data-profile="${s.id}">Profile</button>${s.deleted_at && canDeleteStudentRecords() ? `<button class="small" data-restore-student="${s.id}">Restore</button>` : deleteAction(s.id)}</div>`,
-    ]);
-  renderTable(qs("#rosterTable"), ["#", "Student Name", "Parent / Guardian", "Status", "Enrol Date", "Subjects", "Weekly Schedule", "Last Modification", "Rate Type", "STD Fee", "Pay Method", "Phone", "Email", "Actions"], rows);
+    .filter((s) => JSON.stringify(s).toLowerCase().includes(term));
+
+  if (state.rosterSortField) {
+    const field = state.rosterSortField;
+    const isAsc = state.rosterSortOrder === "asc";
+    filtered.sort((a, b) => {
+      if (field === "number") {
+        const numA = Number(a.number) || 0;
+        const numB = Number(b.number) || 0;
+        return isAsc ? numA - numB : numB - numA;
+      }
+
+      let valA = "";
+      let valB = "";
+      if (field === "name") {
+        valA = a.student_name || "";
+        valB = b.student_name || "";
+      } else if (field === "status") {
+        valA = a.status || "";
+        valB = b.status || "";
+      } else if (field === "enrol_date") {
+        valA = a.enrol_date || "";
+        valB = b.enrol_date || "";
+      } else if (field === "subjects") {
+        valA = subjectText(a.subjects) || "";
+        valB = subjectText(b.subjects) || "";
+      }
+
+      // Handle cases where enrol_date or other values are missing/blank
+      if (!valA && valB) return isAsc ? 1 : -1;
+      if (valA && !valB) return isAsc ? -1 : 1;
+      if (!valA && !valB) return 0;
+
+      const comp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+      return isAsc ? comp : -comp;
+    });
+  }
+
+  const rows = filtered.map((s) => [
+    s.number,
+    `<button class="link-button ${[isStudentOverdue(s.id) ? "overdue-name" : "", isActiveDuplicateName(s) ? "duplicate-name" : ""].filter(Boolean).join(" ")}" data-profile="${s.id}">${s.student_name}</button>`,
+    s.parent_guardian,
+    `<span class="status-badge ${s.deleted_at ? "inactive" : s.status.toUpperCase() === "C" ? "current" : "inactive"}">${s.deleted_at ? "Deleted" : s.status}</span>`,
+    s.enrol_date,
+    subjectText(s.subjects),
+    scheduleText(s),
+    String(s.rate_type || "").toUpperCase() === "EL"
+      ? `<span class="timetable-badge is-el">EL</span>`
+      : `<span class="timetable-badge is-r">R</span>`,
+    money(s.std_monthly_fee),
+    s.payment_method,
+    s.phone || "",
+    s.email || "",
+    s.last_modification || "",
+    `<div class="row-actions"><button class="small" data-profile="${s.id}">Profile</button>${s.deleted_at && canDeleteStudentRecords() ? `<button class="small" data-restore-student="${s.id}">Restore</button>` : deleteAction(s.id)}</div>`,
+  ]);
+
+  const headers = [
+    sortHeader("number", "No#"),
+    sortHeader("name", "Student Name"),
+    "Parent / Guardian",
+    sortHeader("status", "Status"),
+    sortHeader("enrol_date", "Enrol Date"),
+    sortHeader("subjects", "Subjects"),
+    "Weekly Schedule",
+    "Rate Type",
+    "STD Fee",
+    "Pay Method",
+    "Phone",
+    "Email",
+    "Last Modification",
+    "Actions"
+  ];
+
+  renderTable(qs("#rosterTable"), headers, rows);
   document.querySelectorAll("[data-profile]").forEach((button) => button.addEventListener("click", () => showStudentProfile(button.dataset.profile)));
   document.querySelectorAll("[data-review-delete]").forEach((button) => button.addEventListener("click", () => showStudentDeleteReview(button.dataset.reviewDelete)));
   document.querySelectorAll("[data-restore-student]").forEach((button) => button.addEventListener("click", () => restoreStudent(button.dataset.restoreStudent)));
@@ -1121,28 +1799,85 @@ function closeProfile() {
 }
 
 function renderSettings() {
+  const activeSubTab = state.activeSettingsSubTab || "centre";
+  document.querySelectorAll("#settingsSubtabs .subtab").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.settingsTab === activeSubTab);
+  });
+  qs("#settingsCentreContent")?.classList.toggle("collapsed", activeSubTab !== "centre");
+  qs("#settingsRatesContent")?.classList.toggle("collapsed", activeSubTab !== "rates");
+  qs("#settingsUsersContent")?.classList.toggle("collapsed", activeSubTab !== "users");
+  qs("#settingsBackupContent")?.classList.toggle("collapsed", activeSubTab !== "backup");
+  qs("#settingsAuditContent")?.classList.toggle("collapsed", activeSubTab !== "audit");
+
   const form = qs("#settingsForm");
-  for (const [key, value] of Object.entries(state.settings)) {
-    if (form.elements[key]) form.elements[key].value = value;
+  if (form) {
+    for (const [key, value] of Object.entries(state.settings)) {
+      if (form.elements[key]) form.elements[key].value = value;
+    }
+    
+    // Only Admin role can change organization name, branch name, and branch code
+    const isAdmin = String(currentUserRole() || "").toLowerCase() === "admin";
+    const adminFields = ["institution_name", "branch_name", "branch_code"];
+    adminFields.forEach(name => {
+      const field = form.elements[name];
+      if (field) {
+        field.disabled = !isAdmin;
+        field.readOnly = !isAdmin;
+        field.style.backgroundColor = isAdmin ? "" : "#f5f5f5";
+        field.style.cursor = isAdmin ? "" : "not-allowed";
+      }
+    });
   }
-  qs("#ratesTable").innerHTML = `
-    <thead><tr><th>Subject</th><th>Rate Type</th><th>Monthly Fee</th><th>Description</th><th>Actions</th></tr></thead>
-    <tbody>
-      ${state.rates.map((r) => `
-        <tr data-rate="${r.id}">
-          <td><input name="subject" value="${escapeAttr(r.subject)}"></td>
-          <td><input name="rate_type" value="${escapeAttr(r.rate_type)}"></td>
-          <td><input name="monthly_fee" type="number" step="0.01" value="${r.monthly_fee}"></td>
-          <td><input name="description" value="${escapeAttr(r.description || "")}"></td>
-          <td><div class="row-actions"><button class="small" data-save-rate="${r.id}">Save</button><button class="small danger" data-delete-rate="${r.id}">Delete</button></div></td>
-        </tr>
-      `).join("")}
-    </tbody>
-  `;
-  qs("#formulaManifest").textContent = JSON.stringify(state.formula_manifest, null, 2);
+  
+  const ratesTable = qs("#ratesTable");
+  if (ratesTable) {
+    ratesTable.innerHTML = `
+      <thead><tr><th>Subject</th><th>Rate Type</th><th>Monthly Fee</th><th>Description</th><th>Actions</th></tr></thead>
+      <tbody>
+        ${state.rates.map((r) => `
+          <tr data-rate="${r.id}">
+            <td><input name="subject" value="${escapeAttr(r.subject)}"></td>
+            <td><input name="rate_type" value="${escapeAttr(r.rate_type)}"></td>
+            <td><input name="monthly_fee" type="number" step="0.01" value="${r.monthly_fee}"></td>
+            <td><input name="description" value="${escapeAttr(r.description || "")}"></td>
+            <td><div class="row-actions"><button class="small" data-save-rate="${r.id}">Save</button><button class="small danger" data-delete-rate="${r.id}">Delete</button></div></td>
+          </tr>
+        `).join("")}
+      </tbody>
+    `;
+  }
+  
+  const formulaManifest = qs("#formulaManifest");
+  if (formulaManifest) formulaManifest.textContent = JSON.stringify(state.formula_manifest, null, 2);
+  
   renderBillingAndAccess();
   document.querySelectorAll("[data-save-rate]").forEach((button) => button.addEventListener("click", () => saveRate(button.dataset.saveRate)));
   document.querySelectorAll("[data-delete-rate]").forEach((button) => button.addEventListener("click", () => deleteRate(button.dataset.deleteRate)));
+}
+
+function renderCentreSetup() {
+  const isSetupCompleted = String(state.settings?.center_setup_completed || "0") === "1";
+  const setupTabButton = qs("#tabCentreSetup");
+  if (setupTabButton) {
+    setupTabButton.style.display = isSetupCompleted ? "none" : "block";
+  }
+  const banner = qs("#centreSetupCompletedBanner");
+  if (banner) {
+    banner.classList.toggle("collapsed", !isSetupCompleted);
+  }
+  const form = qs("#centreSetupForm");
+  if (form) {
+    form.elements["organization_name"].value = state.settings?.institution_name || "";
+    form.elements["branch_name"].value = state.settings?.branch_name || "";
+    form.elements["branch_code"].value = state.settings?.branch_code || "";
+    form.elements["organization_name"].disabled = isSetupCompleted;
+    form.elements["branch_name"].disabled = isSetupCompleted;
+    form.elements["branch_code"].disabled = isSetupCompleted;
+  }
+  const actions = qs("#setupFormActions");
+  if (actions) {
+    actions.style.display = isSetupCompleted ? "none" : "block";
+  }
 }
 
 function selectedSubjectValues() {
@@ -1245,6 +1980,133 @@ function renderBillingAndAccess() {
   document.querySelectorAll("[data-delete-discount]").forEach((button) => button.addEventListener("click", () => deleteDiscount(button.dataset.deleteDiscount)));
   document.querySelectorAll("[data-save-user]").forEach((button) => button.addEventListener("click", () => saveUser(button.dataset.saveUser)));
   document.querySelectorAll("[data-delete-user]").forEach((button) => button.addEventListener("click", () => deleteUser(button.dataset.deleteUser)));
+
+  renderDelegationPanel();
+}
+
+// ── Role Delegation ───────────────────────────────────────────────────────────
+// Master Admin can temporarily grant Admin or Office Manager role to any user.
+// Delegations are stored in localStorage under 'sb_delegations'.
+// Each entry: { id, userId, userEmail, userName, originalRole, delegatedRole, delegatedBy, delegatedAt, active }
+
+function getDelegations() {
+  try { return JSON.parse(localStorage.getItem('sb_delegations') || '[]'); } catch { return []; }
+}
+function saveDelegations(list) {
+  localStorage.setItem('sb_delegations', JSON.stringify(list));
+}
+
+function isMasterAdmin() {
+  const role = String(state.current_user?.role || currentUserRole() || '').toLowerCase();
+  return role === 'admin' || role === 'administrator' || role === 'principal_owner';
+}
+
+function renderDelegationPanel() {
+  const panel = qs('#delegationPanel');
+  if (!panel) return;
+
+  // Only show delegation panel to Master Admin
+  if (!isMasterAdmin()) {
+    panel.style.display = 'none';
+    return;
+  }
+  panel.style.display = '';
+
+  const delegations = getDelegations();
+  const listEl = qs('#delegationList');
+  if (listEl) {
+    const active = delegations.filter(d => d.active);
+    if (active.length === 0) {
+      listEl.innerHTML = '<p class="muted-note">No active delegations. Use the form below to temporarily grant a role.</p>';
+    } else {
+      listEl.innerHTML = `
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="border-bottom:1px solid var(--border,#e5e7eb)">
+            <th style="text-align:left;padding:6px 8px">User</th>
+            <th style="text-align:left;padding:6px 8px">Delegated Role</th>
+            <th style="text-align:left;padding:6px 8px">Original Role</th>
+            <th style="text-align:left;padding:6px 8px">Granted On</th>
+            <th style="text-align:left;padding:6px 8px">Action</th>
+          </tr></thead>
+          <tbody>
+            ${active.map(d => `
+              <tr style="border-bottom:1px solid var(--border,#f3f4f6)">
+                <td style="padding:6px 8px"><strong>${escapeHtml(d.userName || d.userEmail)}</strong><br><small style="color:#6b7280">${escapeHtml(d.userEmail)}</small></td>
+                <td style="padding:6px 8px"><span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:9px;font-size:12px;font-weight:600">${escapeHtml(d.delegatedRole)}</span></td>
+                <td style="padding:6px 8px;color:#6b7280">${escapeHtml(d.originalRole)}</td>
+                <td style="padding:6px 8px;color:#6b7280">${escapeHtml(d.delegatedAt)}</td>
+                <td style="padding:6px 8px"><button class="small danger" data-revoke-delegation="${d.id}">Disable</button></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`;
+    }
+    listEl.querySelectorAll('[data-revoke-delegation]').forEach(btn =>
+      btn.addEventListener('click', () => revokeDelegation(btn.dataset.revokeDelegation))
+    );
+  }
+
+  // Populate user select — all non-admin users
+  const userSelect = qs('#delegationUserSelect');
+  if (userSelect) {
+    const users = state.users || [];
+    const nonAdmins = users.filter(u => u.active && !['Admin', 'Administrator'].includes(u.role));
+    userSelect.innerHTML = '<option value="">Select user…</option>' +
+      nonAdmins.map(u => `<option value="${escapeAttr(String(u.id))}">${escapeHtml(u.display_name || u.email)} — ${escapeHtml(u.role)}</option>`).join('');
+  }
+}
+
+function grantDelegation(userId, delegatedRole) {
+  const user = (state.users || []).find(u => String(u.id) === String(userId));
+  if (!user) { toast('User not found', 'err'); return; }
+
+  const delegations = getDelegations();
+  // Check no active delegation already exists for this user
+  if (delegations.find(d => d.active && String(d.userId) === String(userId))) {
+    toast(`${user.display_name || user.email} already has an active delegation. Disable it first.`, 'err');
+    return;
+  }
+
+  const entry = {
+    id: Date.now(),
+    userId: user.id,
+    userEmail: user.email,
+    userName: user.display_name || user.email,
+    originalRole: user.role,
+    delegatedRole,
+    delegatedBy: state.current_user?.email || 'Master Admin',
+    delegatedAt: new Date().toLocaleDateString('en-CA', { year:'numeric', month:'short', day:'numeric' }),
+    active: true,
+  };
+  delegations.push(entry);
+  saveDelegations(delegations);
+
+  // Apply the role in state.users immediately (UI reflects change without server round-trip)
+  user.role = delegatedRole;
+  // Persist via API in background (non-blocking)
+  api(`/api/users/${user.id}`, { method: 'PUT', body: JSON.stringify({ role: delegatedRole }) }).catch(() => {});
+
+  toast(`${entry.userName} has been granted ${delegatedRole} access.`, 'ok');
+  renderBillingAndAccess();
+}
+
+function revokeDelegation(delegationId) {
+  const delegations = getDelegations();
+  const entry = delegations.find(d => String(d.id) === String(delegationId));
+  if (!entry) return;
+
+  entry.active = false;
+  saveDelegations(delegations);
+
+  // Restore original role in state.users
+  const user = (state.users || []).find(u => String(u.id) === String(entry.userId));
+  if (user) {
+    user.role = entry.originalRole;
+    api(`/api/users/${user.id}`, { method: 'PUT', body: JSON.stringify({ role: entry.originalRole }) }).catch(() => {});
+  }
+
+  toast(`${entry.userName}'s ${entry.delegatedRole} access has been disabled. Role restored to ${entry.originalRole}.`, 'ok');
+  renderBillingAndAccess();
 }
 
 function applyInstitutionDefaults() {
@@ -1411,6 +2273,9 @@ function renderStaffAdministration() {
     }
     if (frame.getAttribute("src") !== src) {
       frame.setAttribute("src", src);
+      // Push settings once the iframe finishes loading so staffbase picks up
+      // the current school name, subjects, and hours without requiring a save.
+      frame.onload = () => pushSettingsToStaffbase();
     }
   } else {
     if (frame.getAttribute("src") !== "about:blank") {
@@ -2158,9 +3023,11 @@ function renderReconciliation() {
 }
 
 function renderTable(table, headers, rows, options = {}) {
-  const bodyRows = rows.map((row, index) => `<tr class="${options.footerLast && index === rows.length - 1 ? "totals-row" : ""}">${row.map((v) => `<td>${v ?? ""}</td>`).join("")}</tr>`).join("");
+  if (!table) return;
+  const safeRows = rows || [];
+  const bodyRows = safeRows.map((row, index) => `<tr class="${options.footerLast && index === safeRows.length - 1 ? "totals-row" : ""}">${(row || []).map((v) => `<td>${v ?? ""}</td>`).join("")}</tr>`).join("");
   table.innerHTML = `
-    <thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+    <thead><tr>${(headers || []).map((h) => `<th>${h}</th>`).join("")}</tr></thead>
     <tbody>${bodyRows}</tbody>
   `;
 }
@@ -2286,7 +3153,21 @@ async function addUser(event) {
   event.currentTarget.reset();
   const roleSelect = qs('#userForm [name="role"]');
   if (roleSelect) roleSelect.value = "Office Assistant";
-  toast("User access saved");
+  
+  if (window.supabase && supabaseClient) {
+    try {
+      await supabaseClient.auth.signInWithOtp({
+        email: data.email,
+        options: { emailRedirectTo: window.location.origin }
+      });
+      toast("User access saved and invite email sent!");
+    } catch (err) {
+      console.warn("Could not send invite via Supabase:", err);
+      toast("User access saved (could not send invite link)");
+    }
+  } else {
+    toast("User access saved");
+  }
   await load();
 }
 
@@ -2794,6 +3675,46 @@ qs("#reportLast13Months").addEventListener("click", () => {
   renderReporting();
 });
 
+document.querySelectorAll("#settingsSubtabs .subtab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    state.activeSettingsSubTab = btn.dataset.settingsTab;
+    renderSettings();
+  });
+});
+
+qs("#plMonth")?.addEventListener("change", (event) => {
+  state.activePlMonth = event.target.value;
+  renderPlTab();
+});
+
+qs("#plForm")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const activeMonth = state.activePlMonth || state.settings.current_month || "May-26";
+  const rent = parseFloat(qs("#plRent").value) || 0;
+  const royalty = parseFloat(qs("#plRoyalty").value) || 0;
+  const utilities = parseFloat(qs("#plUtilities").value) || 0;
+  const misc = parseFloat(qs("#plMisc").value) || 0;
+  const miscDetails = qs("#plMiscDetails").value || "";
+
+  try {
+    await api("/api/expenses", {
+      method: "POST",
+      body: JSON.stringify({
+        month_label: activeMonth,
+        rent_expense: rent,
+        royalty_expense: royalty,
+        utilities_expense: utilities,
+        misc_expense: misc,
+        misc_details: miscDetails
+      })
+    });
+    toast(`Saved P&L record for ${activeMonth}`);
+    await load();
+  } catch (err) {
+    toast(`Failed to save: ${err.message}`);
+  }
+});
+
 qs("#studentForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = formData(event.currentTarget);
@@ -2813,6 +3734,34 @@ qs("#settingsForm").addEventListener("submit", async (event) => {
   await api("/api/settings", { method: "POST", body: JSON.stringify(formData(event.currentTarget)) });
   toast("Centre setup saved");
   await load();
+  pushSettingsToStaffbase();
+});
+
+qs("#centreSetupForm")?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const data = formData(event.currentTarget);
+  try {
+    const res = await api("/api/centre-setup", {
+      method: "POST",
+      body: JSON.stringify({
+        organization_name: data.organization_name,
+        branch_name: data.branch_name,
+        branch_code: data.branch_code,
+      })
+    });
+    if (res.ok) {
+      toast("Centre configured successfully!");
+      await load();
+      renderAll();
+      switchAdminArea("student");
+      pushSettingsToStaffbase();
+    } else {
+      toast(res.error || "Failed to configure centre.");
+    }
+  } catch (e) {
+    toast("Error configuring centre. Please try again.");
+    console.error(e);
+  }
 });
 
 qs("#rateForm").addEventListener("submit", async (event) => {
@@ -2832,6 +3781,16 @@ qs("#discountForm").addEventListener("submit", async (event) => {
 });
 
 qs("#userForm").addEventListener("submit", addUser);
+
+qs("#delegationForm")?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const userId = form.elements.delegation_user_id.value;
+  const role = form.elements.delegation_role.value;
+  if (!userId || !role) { toast('Please select a user and a role to delegate.', 'err'); return; }
+  grantDelegation(userId, role);
+  form.reset();
+});
 qs('#settingsForm [name="institution_name"]').addEventListener("change", applyInstitutionDefaults);
 qs('#settingsForm [name="institution_name"]').addEventListener("blur", applyInstitutionDefaults);
 qs("#restoreBackup").addEventListener("click", restoreSelectedBackup);
@@ -2849,8 +3808,42 @@ qs("#applyBatchImport").addEventListener("click", applyBatchImport);
 qs("#applyVerifiedRows").addEventListener("click", applyVerifiedRows);
 qs("#selectRosterUpdates")?.addEventListener("click", selectAllRosterUpdates);
 qs("#verifyEligibleRows")?.addEventListener("click", verifyAllEligibleRows);
+function downloadReconTemplate() {
+  const method = qs("#reconPaymentMethod")?.value || "PAD";
+  let headers = [];
+  let sampleRow = [];
+  
+  if (method === "PAD") {
+    headers = ["Date", "Description", "Amount", "Reference", "Student ID", "Student Name", "Parent Name", "Email"];
+    sampleRow = ["2026-06-01", "KUMON PAD DIRECT DEBIT", "165.00", "REF10001", "1024", "John Smith", "Mary Smith", "mary.smith@example.com"];
+  } else if (method === "E-Transfer") {
+    headers = ["Date", "Description", "Amount", "Reference", "Parent Name", "Email"];
+    sampleRow = ["2026-06-01", "E-TRANSFER FROM JOHN SMITH", "165.00", "ETR55621", "John Smith", "john.smith@example.com"];
+  } else {
+    headers = ["Date", "Description", "Amount", "Reference", "Student Name", "Parent Name"];
+    sampleRow = ["2026-06-01", "CREDIT CARD PAYMENT", "165.00", "TXN88921", "John Smith", "Mary Smith"];
+  }
+  
+  const csvContent = [
+    headers.join(","),
+    sampleRow.map(val => `"${String(val).replace(/"/g, '""')}"`).join(",")
+  ].join("\n");
+  
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `smp-reconciliation-template-${method.toLowerCase().replace(/\s+/g, '-')}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 qs("#downloadExceptionReport").addEventListener("click", downloadExceptionReport);
+qs("#downloadReconTemplate")?.addEventListener("click", downloadReconTemplate);
 qs("#authForm")?.addEventListener("submit", sendMagicLink);
+qs("#passwordLogin")?.addEventListener("click", signInWithPassword);
 qs("#googleLogin")?.addEventListener("click", signInWithGoogle);
 qs("#signOut")?.addEventListener("click", signOut);
 qs("#switchAccount")?.addEventListener("click", switchAccount);
@@ -2879,9 +3872,115 @@ qs("#batchForm").addEventListener("submit", async (event) => {
 
 qs("#clearBatch").addEventListener("click", renderBatch);
 
+// ── StaffBase ↔ SMP two-way bridge ──────────────────────────────────────────
+// Converts sb_users (staffbase format) → state.staff.members (app.js format).
+function sbUsersToStaffMembers(sbUsers) {
+  if (!Array.isArray(sbUsers)) return [];
+  return sbUsers
+    .filter(u => u.active !== false)
+    .map(u => ({
+      id: String(u.id),
+      staff_name: u.name || '',
+      email: u.email || '',
+      role_title: u.pos || u.role || '',
+      subject: u.dept || '',
+      pin: u.pin || '',
+      phone: u.phone || '',
+      hourly_rate: Number(u.hourly_rate) || 0,
+      active: u.active !== false,
+    }));
+}
+
+// Converts sb_schedule (staffbase format) → state.staff.schedules (app.js format).
+function sbScheduleToStaffSchedules(sbSchedule) {
+  if (!sbSchedule?.shifts) return [];
+  const schedules = [];
+  for (const [uid, dayMap] of Object.entries(sbSchedule.shifts)) {
+    for (const [day, shift] of Object.entries(dayMap || {})) {
+      if (!shift || shift.type === 'Off') continue;
+      schedules.push({
+        id: `sb-${uid}-${day}`,
+        staff_id: String(uid),
+        weekday: day,
+        shift_type: shift.type,
+        start_time: shift.start || '',
+        end_time: shift.end || '',
+        location: shift.location || '',
+        published: sbSchedule.published || false,
+      });
+    }
+  }
+  return schedules;
+}
+
+// Converts sb_clock_data (staffbase format) → state.staff.punches (app.js format).
+function sbClockToStaffPunches(sbClockData) {
+  if (!sbClockData || typeof sbClockData !== 'object') return [];
+  return Object.entries(sbClockData)
+    .filter(([, punch]) => punch?.in)
+    .map(([uid, punch]) => {
+      const member = (state.staff?.members || []).find(m => String(m.id) === String(uid));
+      return {
+        id: `sb-punch-${uid}`,
+        staff_id: String(uid),
+        staff_name: member?.staff_name || '',
+        role_title: member?.role_title || '',
+        punch_date: new Date().toISOString().slice(0, 10),
+        clock_in: punch.in,
+        clock_out: punch.out || '',
+        duration_hours: 0,
+        source: 'StaffBase',
+        notes: '',
+      };
+    });
+}
+
+// Pushes current school settings into the staffbase iframe so it stays in sync
+// when the manager updates subjects, operating hours, or the school name.
+function pushSettingsToStaffbase() {
+  const frame = qs("#staffbaseFrame");
+  if (!frame?.contentWindow || frame.getAttribute("src") === "about:blank") return;
+  const subjects = (state.settings?.subjects_offered || "")
+    .split(",").map(s => s.trim()).filter(Boolean);
+  const weekdays = PRESENCE_WEEKDAYS.map(day => day.substring(0, 3));
+  
+  const orgName = state.settings?.institution_name || "";
+  const branchName = state.settings?.branch_name || "";
+  const schoolName = branchName ? (orgName + " - " + branchName) : orgName;
+  
+  frame.contentWindow.postMessage({
+    type: 'smp:settingsChanged',
+    school_name: schoolName,
+    subjects,
+    weekdays,
+    operating_start: state.settings?.operating_start || '15:00',
+    operating_end: state.settings?.operating_end || '20:00',
+  }, '*');
+}
+
 window.addEventListener("message", (event) => {
   if (event.data?.type === "logout") {
     signOut();
+    return;
+  }
+
+  // staffbase.html notifies parent whenever it saves data — sync into state.staff
+  // so the Staff Administration views in index.html reflect the latest changes.
+  if (event.data?.type === "sb:dataChanged") {
+    const { key, data } = event.data;
+    if (!state.staff) state.staff = { members: [], schedules: [], punches: [], weekdays: [] };
+
+    if (key === "sb_users") {
+      state.staff.members = sbUsersToStaffMembers(data);
+      renderStaffAdministration();
+    } else if (key === "sb_schedule") {
+      state.staff.schedules = sbScheduleToStaffSchedules(data);
+      if (data?.openDays?.length) state.staff.weekdays = data.openDays;
+      renderStaffAdministration();
+    } else if (key === "sb_clock_data") {
+      state.staff.punches = sbClockToStaffPunches(data);
+      renderStaffAdministration();
+    }
   }
 });
 
@@ -2901,3 +4000,12 @@ window.addEventListener("message", (event) => {
     });
   }
 })().catch((error) => toast(error.message));
+
+// Register Service Worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('Service Worker registered', reg))
+      .catch(err => console.error('Service Worker registration failed', err));
+  });
+}

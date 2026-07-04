@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Education Centre Tracking</title>
   <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.json">
 </head>
 <body>
   <header class="topbar">
@@ -47,11 +48,13 @@
         <p class="muted-note">Use Google or enter your email. SMP will send a verification link before access is opened.</p>
       </div>
       <input id="loginEmail" type="email" placeholder="Email address" autocomplete="email">
+      <input id="loginPassword" type="password" placeholder="Password" style="margin-top: 0px;" autocomplete="current-password">
       <label class="keep-signed-in">
         <input id="keepSignedIn" type="checkbox">
         <span>Keep me signed in on this device</span>
       </label>
       <div class="actions auth-submit-row">
+        <button type="button" id="passwordLogin" class="primary">Sign In</button>
         <button type="button" id="googleLogin">Continue with Google</button>
         <button type="submit" class="ghost">Send Email Verification</button>
       </div>
@@ -86,15 +89,32 @@
     </div>
   </section>
 
-  <nav id="studentTabs" class="tabs" aria-label="Student administration tabs">
-    <button class="tab active" data-tab="dashboard">Dashboard</button>
-    <button class="tab" data-tab="fee">Fee Tracker</button>
-    <button class="tab" data-tab="roster">Student Roster</button>
-    <button class="tab" data-tab="presence">Student Presence</button>
-    <button class="tab" data-tab="reporting">Reporting</button>
-    <button class="tab" data-tab="reconciliation">Payment Reconciliation</button>
-    <button class="tab" data-tab="batch">New Enrolment Batch</button>
-    <button class="tab" data-tab="settings">Settings</button>
+  <nav id="studentTabs" class="grouped-tabs-nav collapsed" aria-label="Student administration tabs">
+    <div class="tab-group">
+      <div class="tab-group-header">📋 Operations</div>
+      <div class="tab-group-buttons">
+        <button class="tab active" data-tab="dashboard">Dashboard</button>
+        <button class="tab" data-tab="presence">Student Presence</button>
+        <button class="tab" data-tab="roster">Student Roster</button>
+        <button class="tab" data-tab="reporting">Reports</button>
+      </div>
+    </div>
+    <div class="tab-group">
+      <div class="tab-group-header">💰 Finance</div>
+      <div class="tab-group-buttons">
+        <button class="tab" data-tab="fee">Fee Tracker</button>
+        <button class="tab" data-tab="reconciliation">Reconciliation</button>
+        <button class="tab" data-tab="pl">Profit & Loss (P&L)</button>
+      </div>
+    </div>
+    <div class="tab-group">
+      <div class="tab-group-header">⚙️ Admin</div>
+      <div class="tab-group-buttons">
+        <button class="tab" data-tab="batch">Batch Enrolment</button>
+        <button class="tab" data-tab="settings">Settings</button>
+        <button class="tab" id="tabCentreSetup" data-tab="centre-setup">One-Time Centre Setup</button>
+      </div>
+    </div>
   </nav>
 
   <main>
@@ -222,7 +242,7 @@
         <section class="surface">
           <div class="section-title">
             <h2>Daily Schedule</h2>
-            <span>Student name and scheduled timing only</span>
+            <span>Student attendance timeline and early learner teacher pairings</span>
           </div>
           <div class="presence-subtabs" id="presenceSubtabs" role="tablist">
             <button type="button" class="subtab active" data-day="Tuesday">Tuesday</button>
@@ -248,7 +268,7 @@
     <section id="reporting" class="panel">
       <div class="section-title page-title">
         <div>
-          <h2>Reporting</h2>
+          <h2>Operational Reports</h2>
           <span>Operational reports for Admin and Office Manager review</span>
         </div>
         <div class="toolbar">
@@ -256,6 +276,7 @@
           <button id="reportLast13Months" type="button" class="ghost">Last 13 Months</button>
         </div>
       </div>
+
       <div class="report-layout">
         <section class="surface">
           <div class="section-title">
@@ -299,6 +320,77 @@
       </section>
     </section>
 
+    <section id="pl" class="panel">
+      <div class="section-title page-title">
+        <div>
+          <h2>Profit & Loss (P&L) Dashboard</h2>
+          <span>Profit & Loss dashboard with yearly consolidation</span>
+        </div>
+      </div>
+      <div class="dashboard-grid">
+        <section class="surface">
+          <div class="section-title">
+            <div>
+              <h2>P&L Monthly Input</h2>
+              <span>Select month and record expenses</span>
+            </div>
+            <select id="plMonth" class="compact-select"></select>
+          </div>
+          <form id="plForm" class="settings-form">
+            <label>Rental Expense ($)<input type="number" step="0.01" id="plRent" value="0.00" required></label>
+            <label>Franchise Royalty ($)<input type="number" step="0.01" id="plRoyalty" value="0.00" required></label>
+            <label>Utilities Expense ($)<input type="number" step="0.01" id="plUtilities" value="0.00" required></label>
+            <label>Miscellaneous Expense ($)<input type="number" step="0.01" id="plMisc" value="0.00" required></label>
+            <span id="plFormCopyIndicator" class="pl-copy-indicator" style="display: none;"></span>
+            <label class="full">Miscellaneous Details<textarea id="plMiscDetails" placeholder="Details of miscellaneous expenses..."></textarea></label>
+            <div class="actions full">
+              <button type="submit">Save Month Record</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="surface">
+          <div class="section-title">
+            <div>
+              <h2>KPI Metrics</h2>
+              <span id="plKpiMonthLabel">For Selected Month</span>
+            </div>
+          </div>
+          <div class="metrics pl-metrics-grid" id="plMetrics">
+            <!-- Dynamically populated KPI cards -->
+          </div>
+        </section>
+      </div>
+
+      <div class="dashboard-grid lower-grid">
+        <section class="surface full-width-section">
+          <div class="section-title">
+            <div>
+              <h2>Year-wise Consolidation</h2>
+              <span>Aggregated metrics by tax year</span>
+            </div>
+          </div>
+          <div class="table-wrap wide">
+            <table id="plYearlyTable"></table>
+          </div>
+        </section>
+      </div>
+
+      <div class="dashboard-grid lower-grid" style="margin-top: 1.5rem;">
+        <section class="surface full-width-section">
+          <div class="section-title">
+            <div>
+              <h2>Historical Monthly Ledger</h2>
+              <span>Month-by-month financial summary</span>
+            </div>
+          </div>
+          <div class="table-wrap wide">
+            <table id="plMonthlyTable"></table>
+          </div>
+        </section>
+      </div>
+    </section>
+
     <section id="reconciliation" class="panel">
       <div class="section-title page-title">
         <div>
@@ -313,6 +405,7 @@
               <option value="Credit Card">Credit Card</option>
             </select>
           </label>
+          <button type="button" class="ghost" id="downloadReconTemplate" style="margin-right: 8px;">Download Template</button>
           <label class="file-button">Upload Payment CSV<input id="paymentCsv" type="file" accept=".csv,text/csv"></label>
         </div>
       </div>
@@ -399,7 +492,7 @@
           <label>Status<select name="status"><option>C</option><option>D</option></select></label>
           <label>Enrol Date<input type="date" name="enrol_date"></label>
           <label class="full">Subjects<div id="studentSubjectChoices" class="subject-choices"></div></label>
-          <label>Rate Type<select name="rate_type"><option>Regular</option><option>EL</option></select></label>
+          <label>Rate Type<select name="rate_type"><option>R</option><option>EL</option></select></label>
           <label>STD Monthly Fee<input type="number" step="0.01" name="std_monthly_fee"></label>
           <label>Payment Method<select name="payment_method"><option>PAD</option><option>E-Transfer</option><option>Cash</option><option>Credit Card</option><option>Cheque</option></select></label>
           <label>Phone<input name="phone"></label>
@@ -443,123 +536,172 @@
     </section>
 
     <section id="settings" class="panel">
-      <div class="dashboard-grid">
-        <section class="surface">
-          <div class="section-title">
-            <h2>One-Time Centre Setup</h2>
-            <span>Displayed across all pages</span>
-          </div>
-          <form id="settingsForm" class="settings-form">
-            <label>Institution Name<input name="institution_name" required></label>
-            <label>Phone Number<input name="institution_phone"></label>
-            <label class="full">Centre Details<textarea name="institution_details"></textarea></label>
-            <label class="full">Subjects Offered<textarea name="subjects_offered" id="subjectsOffered" placeholder="Math&#10;English"></textarea></label>
-            <label>Dashboard Month<select name="current_month" id="settingsMonth"></select></label>
-            <label>Operating Start Time<input type="time" name="operating_start" required></label>
-            <label>Operating End Time<input type="time" name="operating_end" required></label>
-            <div class="actions full">
-              <button type="submit">Save Centre Setup</button>
-            </div>
-          </form>
-          <div class="setup-tools">
-            <button id="seedDemoData" type="button" class="ghost">Seed Demo Data</button>
-            <p class="muted-note">Adds sample students, staff, payer aliases, and payment history for the current organization.</p>
-          </div>
-        </section>
-        <section class="surface">
-          <div class="section-title">
-            <h2>Fee Schedule</h2>
-            <span>Subject and rate selections</span>
-          </div>
-          <table id="ratesTable"></table>
-          <form id="rateForm" class="rate-form">
-            <input name="subject" placeholder="Subject">
-            <input name="rate_type" placeholder="Rate type">
-            <input name="monthly_fee" type="number" step="0.01" placeholder="Monthly fee">
-            <input name="description" placeholder="Description">
-            <button type="submit">Add Rate</button>
-          </form>
-        </section>
+      <div class="presence-subtabs" id="settingsSubtabs" role="tablist">
+        <button type="button" class="subtab active" data-settings-tab="centre">Centre Info</button>
+        <button type="button" class="subtab" data-settings-tab="rates">Fees & Discounts</button>
+        <button type="button" class="subtab" data-settings-tab="users">Users & Permissions</button>
+        <button type="button" class="subtab" data-settings-tab="backup">Backup & Restore</button>
+        <button type="button" class="subtab" data-settings-tab="audit">System Audit</button>
       </div>
-      <div class="dashboard-grid lower-grid">
-        <section class="surface">
-          <div class="section-title">
-            <h2>Subscription & Access Plan</h2>
-            <span>14-day trial, billing, and discounts</span>
-          </div>
-          <div class="roadmap">
-            <p><strong>Authentication:</strong> Google login or email magic-link login.</p>
-            <p><strong>Trial:</strong> 14 days free for each centre.</p>
-            <p><strong>Billing:</strong> $15.99 CAD recurring subscription through Stripe or Google Pay until cancelled.</p>
-            <p><strong>Roles:</strong> Admin can add, edit, and delete. Staff users should not delete records.</p>
-            <p><strong>Backup:</strong> Weekly Sunday SQLite backup to C:/Back/Day after local filesystem permission is granted.</p>
-          </div>
-          <div class="mini-grid" id="subscriptionSummary"></div>
-          <div class="section-title sub-title">
-            <h2>Discount Codes</h2>
-            <span>Admin managed</span>
-          </div>
-          <table id="discountTable"></table>
-          <form id="discountForm" class="discount-form">
-            <input name="code" placeholder="Code">
-            <input name="description" placeholder="Description">
-            <input name="percent_off" type="number" step="0.01" placeholder="% off">
-            <input name="amount_off" type="number" step="0.01" placeholder="$ off">
-            <button type="submit">Add Code</button>
-          </form>
-        </section>
-        <section class="surface">
-          <div class="section-title">
-            <h2>Users & Permissions</h2>
-            <span>Suggested operating model</span>
-          </div>
-          <div class="role-grid">
-            <div><strong>Admin</strong><span>Billing, users, settings, backup restore, all edits, delete records.</span></div>
-            <div><strong>Office Manager</strong><span>Add/modify students, edit payments, import CSV data, run reports.</span></div>
-            <div><strong>Office Assistant</strong><span>View dashboards and update monthly payment work only.</span></div>
-            <div><strong>Security</strong><span>Only emails added by Admin can open centre data after login.</span></div>
-          </div>
-          <table id="usersTable"></table>
-          <form id="userForm" class="user-form">
-            <input name="email" type="email" placeholder="User email" required>
-            <input name="display_name" placeholder="Display name">
-            <select name="role"></select>
-            <select name="active">
-              <option value="1">Active</option>
-              <option value="0">Disabled</option>
-            </select>
-            <button type="submit">Add User</button>
-          </form>
-        </section>
-        <section class="surface">
-          <div class="section-title">
-            <h2>Backup & Restore</h2>
-            <span>Recover from C:/Back/Day</span>
-          </div>
-          <div class="restore-panel">
-            <p>Restore replaces the current local database with a selected weekly backup. Use this only if data is mismatched or damaged.</p>
-            <select id="backupSelect"></select>
-            <input id="restoreConfirm" placeholder="Type RESTORE to enable recovery">
-            <button id="restoreBackup" type="button" class="danger">Restore Backup</button>
-          </div>
-          <table id="backupTable"></table>
-        </section>
-        <section class="surface">
-          <div class="section-title">
-            <h2>Captured Logic</h2>
-            <span>Formula and macro equivalents</span>
-          </div>
-          <pre id="formulaManifest"></pre>
-        </section>
-        <section class="surface">
-          <div class="section-title">
-            <h2>Audit Log</h2>
-            <span>Recent student, payment, import, and restore actions</span>
-          </div>
-          <div class="table-wrap">
-            <table id="auditLogTable"></table>
-          </div>
-        </section>
+
+      <div id="settingsCentreContent" class="settings-content">
+        <div class="dashboard-grid lower-grid">
+          <section class="surface">
+            <div class="section-title">
+              <h2>One-Time Centre Setup</h2>
+              <span>Displayed across all pages</span>
+            </div>
+            <form id="settingsForm" class="settings-form">
+              <label>Organization Name<input name="institution_name" readonly disabled style="background-color: #f5f5f5; cursor: not-allowed;"></label>
+              <label>Branch Name<input name="branch_name" readonly disabled style="background-color: #f5f5f5; cursor: not-allowed;"></label>
+              <label>Branch Code<input name="branch_code" readonly disabled style="background-color: #f5f5f5; cursor: not-allowed;"></label>
+              <label>Phone Number<input name="institution_phone"></label>
+              <label class="full">Centre Details<textarea name="institution_details"></textarea></label>
+              <label class="full">Subjects Offered<textarea name="subjects_offered" id="subjectsOffered" placeholder="Math&#10;English"></textarea></label>
+              <label>Dashboard Month<select name="current_month" id="settingsMonth"></select></label>
+              <label>Operating Start Time<input type="time" name="operating_start" required></label>
+              <label>Operating End Time<input type="time" name="operating_end" required></label>
+              <div class="actions full">
+                <button type="submit">Save Centre Setup</button>
+              </div>
+            </form>
+            <div class="setup-tools">
+              <button id="seedDemoData" type="button" class="ghost">Seed Demo Data</button>
+              <p class="muted-note">Adds sample students, staff, payer aliases, and payment history for the current organization.</p>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <div id="settingsRatesContent" class="settings-content collapsed">
+        <div class="dashboard-grid">
+          <section class="surface">
+            <div class="section-title">
+              <h2>Fee Schedule</h2>
+              <span>Subject and rate selections</span>
+            </div>
+            <table id="ratesTable"></table>
+            <form id="rateForm" class="rate-form">
+              <input name="subject" placeholder="Subject">
+              <input name="rate_type" placeholder="Rate type">
+              <input name="monthly_fee" type="number" step="0.01" placeholder="Monthly fee">
+              <input name="description" placeholder="Description">
+              <button type="submit">Add Rate</button>
+            </form>
+          </section>
+          <section class="surface">
+            <div class="section-title">
+              <h2>Subscription & Access Plan</h2>
+              <span>14-day trial, billing, and discounts</span>
+            </div>
+            <div class="roadmap">
+              <p><strong>Authentication:</strong> Google login or email magic-link login.</p>
+              <p><strong>Trial:</strong> 14 days free for each centre.</p>
+              <p><strong>Billing:</strong> $15.99 CAD recurring subscription through Stripe or Google Pay until cancelled.</p>
+              <p><strong>Roles:</strong> Admin can add, edit, and delete. Staff users should not delete records.</p>
+              <p><strong>Backup:</strong> Weekly Sunday SQLite backup to C:/Back/Day after local filesystem permission is granted.</p>
+            </div>
+            <div class="mini-grid" id="subscriptionSummary"></div>
+            <div class="section-title sub-title">
+              <h2>Discount Codes</h2>
+              <span>Admin managed</span>
+            </div>
+            <table id="discountTable"></table>
+            <form id="discountForm" class="discount-form">
+              <input name="code" placeholder="Code">
+              <input name="description" placeholder="Description">
+              <input name="percent_off" type="number" step="0.01" placeholder="% off">
+              <input name="amount_off" type="number" step="0.01" placeholder="$ off">
+              <button type="submit">Add Code</button>
+            </form>
+          </section>
+        </div>
+      </div>
+
+      <div id="settingsUsersContent" class="settings-content collapsed">
+        <div class="dashboard-grid lower-grid">
+          <section class="surface">
+            <div class="section-title">
+              <h2>Users & Permissions</h2>
+              <span>Suggested operating model</span>
+            </div>
+            <div class="role-grid">
+              <div><strong>Admin</strong><span>Billing, users, settings, backup restore, all edits, delete records.</span></div>
+              <div><strong>Office Manager</strong><span>Add/modify students, edit payments, import CSV data, run reports.</span></div>
+              <div><strong>Office Assistant</strong><span>View dashboards and update monthly payment work only.</span></div>
+              <div><strong>Security</strong><span>Only emails added by Admin can open centre data after login.</span></div>
+            </div>
+            <table id="usersTable"></table>
+            <form id="userForm" class="user-form">
+              <input name="email" type="email" placeholder="User email" required>
+              <input name="display_name" placeholder="Display name">
+              <select name="role"></select>
+              <select name="active">
+                <option value="1">Active</option>
+                <option value="0">Disabled</option>
+              </select>
+              <button type="submit">Add User</button>
+            </form>
+          </section>
+
+          <section class="surface" id="delegationPanel">
+            <div class="section-title">
+              <h2>Role Delegation</h2>
+              <span>Temporarily grant Admin or Office Manager access — disable when work is complete</span>
+            </div>
+            <div id="delegationList"></div>
+            <form id="delegationForm" class="user-form" style="margin-top:16px">
+              <select name="delegation_user_id" id="delegationUserSelect" required>
+                <option value="">Select user…</option>
+              </select>
+              <select name="delegation_role" required>
+                <option value="">Grant role…</option>
+                <option value="Admin">Admin</option>
+                <option value="Office Manager">Office Manager</option>
+              </select>
+              <button type="submit">Delegate Role</button>
+            </form>
+          </section>
+        </div>
+      </div>
+
+      <div id="settingsBackupContent" class="settings-content collapsed">
+        <div class="dashboard-grid lower-grid">
+          <section class="surface">
+            <div class="section-title">
+              <h2>Backup & Restore</h2>
+              <span>Recover from C:/Back/Day</span>
+            </div>
+            <div class="restore-panel">
+              <p>Restore replaces the current local database with a selected weekly backup. Use this only if data is mismatched or damaged.</p>
+              <select id="backupSelect"></select>
+              <input id="restoreConfirm" placeholder="Type RESTORE to enable recovery">
+              <button id="restoreBackup" type="button" class="danger">Restore Backup</button>
+            </div>
+            <table id="backupTable"></table>
+          </section>
+        </div>
+      </div>
+
+      <div id="settingsAuditContent" class="settings-content collapsed">
+        <div class="dashboard-grid">
+          <section class="surface">
+            <div class="section-title">
+              <h2>Captured Logic</h2>
+              <span>Formula and macro equivalents</span>
+            </div>
+            <pre id="formulaManifest"></pre>
+          </section>
+          <section class="surface">
+            <div class="section-title">
+              <h2>Audit Log</h2>
+              <span>Recent student, payment, import, and restore actions</span>
+            </div>
+            <div class="table-wrap">
+              <table id="auditLogTable"></table>
+            </div>
+          </section>
+        </div>
       </div>
     </section>
 
@@ -598,6 +740,37 @@
           <button type="button" class="ghost" id="clearBatch">Clear Batch</button>
         </div>
       </form>
+    </section>
+
+    <section id="centre-setup" class="panel">
+      <div class="dashboard-grid lower-grid">
+        <section class="surface">
+          <div class="section-title">
+            <h2>One-Time Centre Setup</h2>
+            <span>Configure the permanent identity of this installation. This can only be completed once.</span>
+          </div>
+          
+          <div id="centreSetupCompletedBanner" class="alert-success collapsed">
+            🎉 Centre setup has been completed! This installation is permanently registered.
+          </div>
+          
+          <form id="centreSetupForm" class="settings-form">
+            <label>Organization Name <span class="required" style="color: red;">*</span>
+              <input name="organization_name" id="setupOrgName" required placeholder="e.g. Kumon Canada">
+            </label>
+            <label>Branch Name <span class="required" style="color: red;">*</span>
+              <input name="branch_name" id="setupBranchName" required placeholder="e.g. Cityscape Square">
+            </label>
+            <label>Branch Code <span class="required" style="color: red;">*</span>
+              <input name="branch_code" id="setupBranchCode" required placeholder="e.g. CCS001">
+            </label>
+            
+            <div class="actions full" id="setupFormActions" style="margin-top: 20px;">
+              <button type="submit">Configure Centre</button>
+            </div>
+          </form>
+        </section>
+      </div>
     </section>
   </main>
 
