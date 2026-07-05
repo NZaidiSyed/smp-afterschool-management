@@ -21,7 +21,7 @@ let state = {
   can_access_staff: false,
   staff: { members: [], schedules: [], punches: [], weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri"], summary: {} },
   current_user: {},
-  role_options: ["Admin", "Office Manager", "Office Assistant", "Staff"],
+  role_options: ["Owner", "Admin", "Office Manager", "Office Assistant", "Staff"],
   reconciliationPreview: [],
   reconciliationSummary: null,
   reconciliationFileName: "",
@@ -200,7 +200,8 @@ function currentUserRole() {
 }
 
 function canDeleteStudentRecords() {
-  return String(currentUserRole() || "").toLowerCase() === "admin";
+  const r = String(currentUserRole() || "").toLowerCase();
+  return r === "admin" || r === "owner";
 }
 
 function paymentMethodLabel(value) {
@@ -1816,7 +1817,8 @@ function renderSettings() {
     }
     
     // Only Admin role can change organization name, branch name, and branch code
-    const isAdmin = String(currentUserRole() || "").toLowerCase() === "admin";
+    const rRole = String(currentUserRole() || "").toLowerCase();
+    const isAdmin = rRole === "admin" || rRole === "owner";
     const adminFields = ["institution_name", "branch_name", "branch_code"];
     adminFields.forEach(name => {
       const field = form.elements[name];

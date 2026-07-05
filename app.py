@@ -95,8 +95,9 @@ MONTHS = [
 ]
 
 BASE_MONTHS = MONTHS[:]
-ROLE_OPTIONS = ["Admin", "Office Manager", "Office Assistant", "Staff"]
+ROLE_OPTIONS = ["Owner", "Admin", "Office Manager", "Office Assistant", "Staff"]
 ROLE_PERMISSIONS = {
+    "Owner": {"admin", "manage_students", "manage_payments", "manage_settings", "manage_users", "manage_staff", "delete_records"},
     "Admin": {"admin", "manage_students", "manage_payments", "manage_settings", "manage_users", "manage_staff", "delete_records"},
     "Office Manager": {"manage_students", "manage_payments", "manage_staff"},
     "Office Assistant": {"manage_payments"},
@@ -906,7 +907,7 @@ def ensure_access_tables(conn):
             """
             ALTER TABLE public.app_users
             ADD CONSTRAINT app_users_role_check
-            CHECK (role in ('Admin', 'Office Manager', 'Office Assistant', 'Staff'))
+            CHECK (role in ('Owner', 'Admin', 'Office Manager', 'Office Assistant', 'Staff'))
             """
         )
     else:
@@ -1951,7 +1952,7 @@ def normalize_role(role):
     value = str(role or "").strip()
     aliases = {
         "admin": "Admin",
-        "owner": "Admin",
+        "owner": "Owner",
         "office manager": "Office Manager",
         "manager": "Office Manager",
         "office assistant": "Office Assistant",
@@ -2016,11 +2017,14 @@ def get_user_access(conn, user):
     ensure_access_tables(conn)
     email = user["email"].lower()
     if email in ["syedzaidipk@gmail.com", "najampk@gmail.com", "aneelanajam1@gmail.com"]:
+        role = "Admin"
+        if email == "aneelanajam1@gmail.com":
+            role = "Owner"
         return {
             "id": "admin-bypass-syed",
             "email": email,
-            "display_name": "Syed Zaidi (Admin)" if email != "aneelanajam1@gmail.com" else "Aneela Najam (Admin)",
-            "role": "Admin",
+            "display_name": "Syed Zaidi (Admin)" if email != "aneelanajam1@gmail.com" else "Aneela Najam (Owner)",
+            "role": role,
             "active": True
         }
     if PG_MODE:
@@ -3683,7 +3687,7 @@ class Handler(SimpleHTTPRequestHandler):
                 name_map = {
                     "syedzaidipk@gmail.com": "Syed Zaidi (Admin)",
                     "najampk@gmail.com": "Syed Zaidi (Admin)",
-                    "aneelanajam1@gmail.com": "Aneela Najam (Admin)",
+                    "aneelanajam1@gmail.com": "Aneela Najam (Owner)",
                     "sarah@smp.edu": "Sarah Chen (Admin)"
                 }
                 self.auth_user = {
@@ -4517,7 +4521,7 @@ class Handler(SimpleHTTPRequestHandler):
                     name_map = {
                         "syedzaidipk@gmail.com": "Syed Zaidi (Admin)",
                         "najampk@gmail.com": "Syed Zaidi (Admin)",
-                        "aneelanajam1@gmail.com": "Aneela Najam (Admin)",
+                        "aneelanajam1@gmail.com": "Aneela Najam (Owner)",
                         "sarah@smp.edu": "Sarah Chen (Admin)"
                     }
                     av_map = {
