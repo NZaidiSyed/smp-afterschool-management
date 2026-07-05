@@ -1202,6 +1202,14 @@ def ensure_staff_tables(conn):
         conn.execute("UPDATE public.branches SET slug='calgary-ne' WHERE slug IS NULL")
         conn.execute("ALTER TABLE public.branches ADD COLUMN IF NOT EXISTS code text")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_branches_org_slug ON public.branches(organization_id, slug)")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS public.app_meta (
+                key text primary key,
+                value text not null
+            )
+            """
+        )
         conn.commit()
         
         org_row = conn.execute("SELECT id::text AS id FROM public.organizations ORDER BY created_at LIMIT 1").fetchone()
