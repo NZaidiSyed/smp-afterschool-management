@@ -4272,7 +4272,6 @@ class Handler(SimpleHTTPRequestHandler):
                         users = conn.execute("SELECT id::text AS id, email, display_name, role, active, organization_id::text AS organization_id FROM public.app_users").fetchall()
                         orgs = conn.execute("SELECT id::text AS id, name, slug FROM public.organizations").fetchall()
                         branches = conn.execute("SELECT id::text AS id, organization_id::text AS organization_id, name, slug, code FROM public.branches").fetchall()
-                        meta = conn.execute("SELECT key, value FROM public.app_meta").fetchall()
                         current_org = current_org_id(conn)
                         
                         self.send_json({
@@ -4281,8 +4280,7 @@ class Handler(SimpleHTTPRequestHandler):
                             "current_org_id": current_org,
                             "users": [dict(u) for u in users],
                             "orgs": [dict(o) for o in orgs],
-                            "branches": [dict(b) for b in branches],
-                            "meta": [dict(m) for m in meta]
+                            "branches": [dict(b) for b in branches]
                         })
                     else:
                         users = conn.execute("SELECT id, email, display_name, role, active FROM users").fetchall()
