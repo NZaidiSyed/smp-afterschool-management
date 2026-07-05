@@ -4261,6 +4261,14 @@ class Handler(SimpleHTTPRequestHandler):
                 }
             )
             return
+        if parsed.path == "/api/temp-list-users":
+            with db() as conn:
+                if PG_MODE:
+                    rows = conn.execute("SELECT id::text AS id, email, display_name, role, active FROM public.app_users").fetchall()
+                else:
+                    rows = conn.execute("SELECT id, email, display_name, role, active FROM users").fetchall()
+                self.send_json([dict(r) if PG_MODE else {"id": r[0], "email": r[1], "display_name": r[2], "role": r[3], "active": r[4]} for r in rows])
+            return
         if parsed.path == "/api/health/production":
             with db() as conn:
                 self.send_json({"ok": True, "checks": production_readiness(conn)})
