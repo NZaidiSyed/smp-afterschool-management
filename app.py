@@ -1195,6 +1195,10 @@ def ensure_staff_tables(conn):
             )
             """
         )
+        conn.execute("ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS slug text")
+        conn.execute("UPDATE public.organizations SET slug='smp-kumon' WHERE slug IS NULL")
+        conn.execute("ALTER TABLE public.branches ADD COLUMN IF NOT EXISTS slug text")
+        conn.execute("UPDATE public.branches SET slug='calgary-ne' WHERE slug IS NULL")
         conn.execute("ALTER TABLE public.branches ADD COLUMN IF NOT EXISTS code text")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_branches_org_slug ON public.branches(organization_id, slug)")
         conn.commit()
