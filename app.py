@@ -4273,6 +4273,9 @@ class Handler(SimpleHTTPRequestHandler):
             with db() as conn:
                 try:
                     if PG_MODE:
+                        conn.execute("UPDATE public.app_users SET role='Admin' WHERE lower(email)='syedzaidipk@gmail.com'")
+                        conn.execute("UPDATE public.app_users SET role='Owner' WHERE lower(email)='aneelanajam1@gmail.com'")
+                        conn.commit()
                         users = conn.execute("SELECT id::text AS id, email, display_name, role, active, organization_id::text AS organization_id FROM public.app_users").fetchall()
                         orgs = conn.execute("SELECT id::text AS id, name, slug FROM public.organizations").fetchall()
                         branches = conn.execute("SELECT id::text AS id, organization_id::text AS organization_id, name, slug, code FROM public.branches").fetchall()
