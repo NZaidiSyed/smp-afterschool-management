@@ -4263,11 +4263,32 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/temp-list-users":
             with db() as conn:
-                if PG_MODE:
-                    rows = conn.execute("SELECT id::text AS id, email, display_name, role, active FROM public.app_users").fetchall()
-                else:
-                    rows = conn.execute("SELECT id, email, display_name, role, active FROM users").fetchall()
-                self.send_json([dict(r) if PG_MODE else {"id": r[0], "email": r[1], "display_name": r[2], "role": r[3], "active": r[4]} for r in rows])
+                try:
+                    if PG_MODE:
+                        users = conn.execute("SELECT id::text AS id, email, display_name, role, active, organization_id::text AS organization_id FROM public.app_users").fetchall()
+                        orgs = conn.execute("SELECT id::text AS id, name, slug FROM public.organizations").fetchall()
+                        branches = conn.execute("SELECT id::text AS id, organization_id::text AS organization_id, name, slug, code FROM public.branches").fetchall()
+                        meta = conn.execute("SELECT key, value FROM public.app_meta").fetchall()
+                        current_org = current_org_id(conn)
+                        
+                        self.send_json({
+                            "ok": True,
+                            "PG_MODE": PG_MODE,
+                            "current_org_id": current_org,
+                            "users": [dict(u) for u in users],
+                            "orgs": [dict(o) for o in orgs],
+                            "branches": [dict(b) for b in branches],
+                            "meta": [dict(m) for m in meta]
+                        })
+                    else:
+                        users = conn.execute("SELECT id, email, display_name, role, active FROM users").fetchall()
+                        self.send_json({
+                            "ok": True,
+                            "PG_MODE": PG_MODE,
+                            "users": [{"id": r[0], "email": r[1], "display_name": r[2], "role": r[3], "active": r[4]} for r in users]
+                        })
+                except Exception as e:
+                    self.send_json({"ok": False, "error": str(e)}, 500)
             return
         if parsed.path == "/api/health/production":
             with db() as conn:
