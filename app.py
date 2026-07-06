@@ -4282,7 +4282,7 @@ class Handler(SimpleHTTPRequestHandler):
                 try:
                     if PG_MODE:
                         total = conn.execute("SELECT count(*) AS c FROM public.students").fetchone()["c"]
-                        el_students = conn.execute("SELECT id::text AS id, student_name, rate_type, status, deleted_at FROM public.students WHERE rate_type='EL'").fetchall()
+                        el_students = conn.execute("SELECT id::text AS id, branch_id::text AS branch_id, student_name, rate_type, status, deleted_at FROM public.students WHERE rate_type='EL'").fetchall()
                         el_ids = [s["id"] for s in el_students]
                         schedules = []
                         if el_ids:
@@ -4291,6 +4291,7 @@ class Handler(SimpleHTTPRequestHandler):
                         
                         self.send_json({
                             "ok": True,
+                            "current_branch_id": current_branch_id(conn),
                             "total_students": total,
                             "el_students": [dict(s) for s in el_students],
                             "el_schedules": [dict(sc) for sc in schedules]
