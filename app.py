@@ -4277,30 +4277,6 @@ class Handler(SimpleHTTPRequestHandler):
                 }
             )
             return
-        if parsed.path == "/api/temp-check-el":
-            with db() as conn:
-                try:
-                    if PG_MODE:
-                        total = conn.execute("SELECT count(*) AS c FROM public.students").fetchone()["c"]
-                        el_students = conn.execute("SELECT id::text AS id, branch_id::text AS branch_id, student_name, rate_type, status, deleted_at FROM public.students WHERE rate_type='EL'").fetchall()
-                        el_ids = [s["id"] for s in el_students]
-                        schedules = []
-                        if el_ids:
-                            placeholders = ", ".join(f"'{uid}'" for uid in el_ids)
-                            schedules = conn.execute(f"SELECT student_id::text AS student_id, weekday, to_char(start_time, 'HH24:MI') as start_time, to_char(end_time, 'HH24:MI') as end_time FROM public.student_schedules WHERE student_id IN ({placeholders})").fetchall()
-                        
-                        self.send_json({
-                            "ok": True,
-                            "current_branch_id": current_branch_id(conn),
-                            "total_students": total,
-                            "el_students": [dict(s) for s in el_students],
-                            "el_schedules": [dict(sc) for sc in schedules]
-                        })
-                    else:
-                        self.send_json({"ok": False, "error": "Not in PG_MODE"})
-                except Exception as e:
-                    self.send_json({"ok": False, "error": str(e)}, 500)
-            return
 
         if parsed.path == "/api/health/production":
             with db() as conn:
