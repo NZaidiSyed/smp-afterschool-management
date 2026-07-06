@@ -1747,10 +1747,25 @@ def decision_html_page(title, success, message):
 </body>
 </html>"""
 
-def staff_data_snapshot(conn):
+def staff_data_snapshot(conn, staff_id=None):
     from datetime import datetime
     week_start = get_monday_of_current_week()
     today = datetime.now().strftime("%Y-%m-%d")
+    
+    is_manager = False
+    if staff_id:
+        if str(staff_id) == "9999":
+            is_manager = True
+        else:
+            if PG_MODE:
+                role_row = conn.execute("SELECT role_title, role FROM public.staff_members WHERE id=%s", (str(staff_id),)).fetchone()
+            else:
+                role_row = conn.execute("SELECT role_title, role FROM staff_members WHERE id=?", (int(staff_id),)).fetchone()
+            if role_row:
+                rd = rowdict(role_row)
+                role_val = str(rd.get("role") or rd.get("role_title") or "").lower().strip()
+                if role_val in ["manager", "admin", "administrator", "owner", "principal_owner", "principal"]:
+                    is_manager = True
     
     if PG_MODE:
         members = conn.execute("SELECT id::text as id, staff_name, email, role_title, subject, active FROM public.staff_members").fetchall()
@@ -1789,6 +1804,8 @@ def staff_data_snapshot(conn):
         for s in schedules:
             d = rowdict(s)
             sid = str(d["staff_id"])
+            if not is_manager and (not staff_id or str(sid) != str(staff_id)):
+                continue
             if sid not in shifts:
                 shifts[sid] = {}
             shifts[sid][d["weekday"]] = {
@@ -1815,6 +1832,8 @@ def staff_data_snapshot(conn):
     for p in punches:
         d = rowdict(p)
         sid = str(d["staff_id"])
+        if not is_manager and (not staff_id or str(sid) != str(staff_id)):
+            continue
         name = staff_name_map.get(sid) or "Unknown"
         cin = d.get("clock_in")
         cout = d.get("clock_out")
@@ -1853,6 +1872,8 @@ def staff_data_snapshot(conn):
     requests_out = []
     for r in requests:
         d = rowdict(r)
+        if not is_manager and (not staff_id or str(d["staff_id"]) != str(staff_id)):
+            continue
         requests_out.append({
             "id": str(d["id"]),
             "uid": str(d["staff_id"]),
@@ -1865,18 +1886,19 @@ def staff_data_snapshot(conn):
         })
 
     swaps_out = []
-    for s in swaps:
-        d = rowdict(s)
-        swaps_out.append({
-            "id": str(d["id"]),
-            "uid": str(d["requester_id"]),
-            "shiftDate": d["shift_date"],
-            "reason": d["reason"],
-            "status": d["status"],
-            "claimedById": str(d["claimed_by_id"]) if d.get("claimed_by_id") else None,
-            "claimedByName": staff_name_map.get(str(d.get("claimed_by_id"))) if d.get("claimed_by_id") else None,
-            "postedAt": d["posted_at"]
-        })
+    if staff_id:
+        for s in swaps:
+            d = rowdict(s)
+            swaps_out.append({
+                "id": str(d["id"]),
+                "uid": str(d["requester_id"]),
+                "shiftDate": d["shift_date"],
+                "reason": d["reason"],
+                "status": d["status"],
+                "claimedById": str(d["claimed_by_id"]) if d.get("claimed_by_id") else None,
+                "claimedByName": staff_name_map.get(str(d.get("claimed_by_id"))) if d.get("claimed_by_id") else None,
+                "postedAt": d["posted_at"]
+            })
 
     announcements_out = []
     for a in announcements:
@@ -1891,16 +1913,17 @@ def staff_data_snapshot(conn):
         })
 
     teacher_assignments = []
-    try:
-        import json
-        if PG_MODE:
-            meta_row = conn.execute("SELECT value FROM public.app_meta WHERE key=%s", ("teacher_assignments",)).fetchone()
-        else:
-            meta_row = conn.execute("SELECT value FROM app_meta WHERE key=?", ("teacher_assignments",)).fetchone()
-        if meta_row:
-            teacher_assignments = json.loads(rowdict(meta_row)["value"])
-    except Exception as e:
-        print("Error fetching teacher assignments from app_meta:", e)
+    if is_manager:
+        try:
+            import json
+            if PG_MODE:
+                meta_row = conn.execute("SELECT value FROM public.app_meta WHERE key=%s", ("teacher_assignments",)).fetchone()
+            else:
+                meta_row = conn.execute("SELECT value FROM app_meta WHERE key=?", ("teacher_assignments",)).fetchone()
+            if meta_row:
+                teacher_assignments = json.loads(rowdict(meta_row)["value"])
+        except Exception as e:
+            print("Error fetching teacher assignments from app_meta:", e)
 
     org_name = "Kumon Canada"
     branch_name = "Cityscape Square"
@@ -3758,6 +3781,20 @@ class Handler(SimpleHTTPRequestHandler):
     def actor_email(self):
         return str((self.auth_access or {}).get("email") or (self.auth_user or {}).get("email") or "local-admin")
 
+    def get_staffbase_actor(self):
+        auth = self.headers.get("Authorization", "").strip()
+        if not auth or not auth.startswith("Bearer "):
+            return None
+        token = auth[7:].strip()
+        try:
+            payload = verify_jwt(token)
+            return payload.get("staffId")
+        except Exception as e:
+            import traceback
+            print("verify_jwt failed:", e)
+            traceback.print_exc()
+            return None
+
     def require_staffbase_auth(self):
         auth = self.headers.get("Authorization", "").strip()
         if not auth or not auth.startswith("Bearer "):
@@ -3807,8 +3844,9 @@ class Handler(SimpleHTTPRequestHandler):
 
         # ── GET staffbase data snapshot ──
         if parsed.path == "/api/data" or parsed.path == "/api/staffbase/data":
+            staff_id = self.get_staffbase_actor()
             with db() as conn:
-                self.send_json(staff_data_snapshot(conn))
+                self.send_json(staff_data_snapshot(conn, staff_id=staff_id))
             return True
 
         # ── GET all staff members (for login select list) ──
@@ -4263,9 +4301,6 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception:
                 self.send_error(404, "File not found")
             return
-        if parsed.path == "/staffbase.html" and SUPABASE_REQUIRE_AUTH:
-            if not self.require_auth() or not self.require_permission("manage_staff"):
-                return
         if parsed.path == "/api/config":
             self.send_json(
                 {
@@ -4486,8 +4521,8 @@ class Handler(SimpleHTTPRequestHandler):
                 if not verify_staff_pin(pin, d.get("pin"), d.get("pin_hash")):
                     self.send_json({"error": "Incorrect PIN"}, 401)
                     return True
-                
-                self.send_json({"ok": True, "user": desktop_staff_row(row)})
+                token = sign_jwt({"staffId": d["id"]})
+                self.send_json({"ok": True, "token": token, "user": desktop_staff_row(row)})
             return True
 
         # ── POST staff base password auth (desktop admin/manager) ──
@@ -4512,8 +4547,10 @@ class Handler(SimpleHTTPRequestHandler):
                         "aneelanajam1@gmail.com": "AN",
                         "sarah@smp.edu": "SC"
                     }
+                    token = sign_jwt({"staffId": 9999})
                     self.send_json({
                         "ok": True,
+                        "token": token,
                         "user": {
                             "id": 9999,
                             "name": name_map.get(email, "Local Administrator"),
@@ -4544,7 +4581,8 @@ class Handler(SimpleHTTPRequestHandler):
                     self.send_json({"error": "Invalid credentials"}, 401)
                     return True
                 
-                self.send_json({"ok": True, "user": desktop_staff_row(row)})
+                token = sign_jwt({"staffId": d["id"]})
+                self.send_json({"ok": True, "token": token, "user": desktop_staff_row(row)})
             return True
 
         # ── POST schedule write-back (desktop) ──

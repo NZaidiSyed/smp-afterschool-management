@@ -343,6 +343,13 @@ async function signInWithPassword() {
 
 async function load() {
   state = await api("/api/bootstrap");
+  
+  const role = String(currentUserRole() || "").toLowerCase();
+  if (role === "staff") {
+    window.location.href = "/staffbase.html";
+    return;
+  }
+  
   state.expenses = state.expenses || [];
   // Write EL student cache so staffbase.html can auto-populate without needing
   // the Presence tab to have been visited first.

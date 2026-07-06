@@ -591,10 +591,19 @@ function setTeacherActiveDay(day) {
   pgSchedule();
 }
 
+async function sbFetch(url, options = {}) {
+  options.headers = options.headers || {};
+  const token = localStorage.getItem('sb_jwt');
+  if (token) {
+    options.headers['Authorization'] = `Bearer ${token}`;
+  }
+  return fetch(url, options);
+}
+
 async function syncToServer(endpoint, data) {
   if (!USE_API) return;
   try {
-    await fetch(`${API_BASE}/${endpoint}`, {
+    await sbFetch(`${API_BASE}/${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -707,6 +716,38 @@ async function applySystemMetadata() {
   }
 }
 
+async function loadDataSnapshot() {
+  if (!USE_API) return;
+  try {
+    const dataRes = await sbFetch(`${API_BASE}/data`);
+    if (!dataRes.ok) throw new Error(`Data fetch returned ${dataRes.status}`);
+    const data = await dataRes.json();
+
+    if (data.school && Object.keys(data.school).length) SCHOOL = data.school;
+    if (Array.isArray(data.users) && data.users.length) USERS = data.users;
+    if (Array.isArray(data.subjects) && data.subjects.length) SUBJECTS = data.subjects;
+    if (data.schedule && Object.keys(data.schedule).length) SCHEDULE = data.schedule;
+    if (Array.isArray(data.requests)) REQUESTS = data.requests;
+    if (Array.isArray(data.announcements)) ANNOUNCEMENTS = data.announcements;
+    if (Array.isArray(data.messages)) MESSAGES = data.messages;
+    if (data.clock_data && typeof data.clock_data === 'object') CLOCK_DATA = data.clock_data;
+    if (Array.isArray(data.checkin_log)) CHECKIN_LOG = data.checkin_log;
+    if (Array.isArray(data.swaps)) SWAPS = data.swaps;
+    if (Array.isArray(data.documents)) DOCUMENTS = data.documents;
+    if (data.ts_approvals && typeof data.ts_approvals === 'object') TIMESHEET_APPROVALS = data.ts_approvals;
+    if (Array.isArray(data.teacher_assignments)) {
+      localStorage.setItem('sb_teacher_assignments', JSON.stringify(data.teacher_assignments));
+    }
+
+    if (SCHOOL && SCHOOL.openDays) {
+      DAYS = SCHOOL.openDays;
+      FULL_DAYS = DAYS.map(d => WEEKDAY_NAMES[d] || d);
+    }
+  } catch (e) {
+    console.error("Error loading data snapshot:", e);
+  }
+}
+
 async function probeServerAndLoadData() {
   // Check main application config for authentication requirements
   try {
@@ -727,31 +768,8 @@ async function probeServerAndLoadData() {
     const health = await res.json();
     if (health.status === 'ok') {
       console.log("Supabase Database Connected ✓");
-      const dataRes = await fetch(`${API_BASE}/data`);
-      if (!dataRes.ok) throw new Error(`Data fetch returned ${dataRes.status}`);
-      const data = await dataRes.json();
-
-      if (data.school && Object.keys(data.school).length) SCHOOL = data.school;
-      if (Array.isArray(data.users) && data.users.length) USERS = data.users;
-      if (Array.isArray(data.subjects) && data.subjects.length) SUBJECTS = data.subjects;
-      if (data.schedule && Object.keys(data.schedule).length) SCHEDULE = data.schedule;
-      if (Array.isArray(data.requests)) REQUESTS = data.requests;
-      if (Array.isArray(data.announcements)) ANNOUNCEMENTS = data.announcements;
-      if (Array.isArray(data.messages)) MESSAGES = data.messages;
-      if (data.clock_data && typeof data.clock_data === 'object') CLOCK_DATA = data.clock_data;
-      if (Array.isArray(data.checkin_log)) CHECKIN_LOG = data.checkin_log;
-      if (Array.isArray(data.swaps)) SWAPS = data.swaps;
-      if (Array.isArray(data.documents)) DOCUMENTS = data.documents;
-      if (data.ts_approvals && typeof data.ts_approvals === 'object') TIMESHEET_APPROVALS = data.ts_approvals;
-      if (Array.isArray(data.teacher_assignments)) {
-        localStorage.setItem('sb_teacher_assignments', JSON.stringify(data.teacher_assignments));
-      }
-
-      if (SCHOOL && SCHOOL.openDays) {
-        DAYS = SCHOOL.openDays;
-        FULL_DAYS = DAYS.map(d => WEEKDAY_NAMES[d] || d);
-      }
       USE_API = true;
+      await loadDataSnapshot();
     } else {
       throw new Error("Health status not ok");
     }
@@ -1257,6 +1275,9 @@ async function doStaffLogin() {
         PIN_BUF = ''; updatePinDisplay(); $('pin-btn').disabled = true;
         return;
       }
+      if (data.token) {
+        try { localStorage.setItem('sb_jwt', data.token); } catch(e) {}
+      }
       launchApp({ ...u, ...data.user });
     } catch {
       $('pin-err').textContent = 'Connection error. Please try again.';
@@ -1292,6 +1313,9 @@ async function doAdminLogin() {
       if (data.user.role === 'staff' || data.user.role === 'office_assistant') {
         $('admin-err').textContent = 'Access Denied: Please use the PIN Pad tab to log in as Staff.';
         return;
+      }
+      if (data.token) {
+        try { localStorage.setItem('sb_jwt', data.token); } catch(e) {}
       }
       launchApp(data.user);
     } catch {
@@ -1337,15 +1361,19 @@ function staffQuickLogin(uid) {
   setTimeout(() => { PIN_BUF = USERS.find(u=>u.id===uid)?.pin||''; updatePinDisplay(); doStaffLogin(); }, 100);
 }
 
-function launchApp(u) {
+async function launchApp(u) {
   CU = u;
   try { localStorage.setItem('sb_session', JSON.stringify(u)); } catch(e) {}
+  if (USE_API) {
+    await loadDataSnapshot();
+  }
   $('login-screen').style.display = 'none';
   $('app-shell').style.display = 'flex';
   initSchoolName();
   buildSidebar();
   renderConnectionBadge();
-  navigate('dashboard');
+  const isStaffOnly = !isManager();
+  navigate(isStaffOnly ? 'schedule' : 'dashboard');
   startClock();
 }
 
@@ -1353,7 +1381,7 @@ function doLogout() {
   CU = null; PIN_BUF = ''; PIN_EMP_ID = null;
   ACTIVE_CHAT_UID = null;
   COMM_TAB = 'broadcast';
-  try { localStorage.removeItem('sb_session'); } catch(e) {}
+  try { localStorage.removeItem('sb_session'); localStorage.removeItem('sb_jwt'); } catch(e) {}
   $('app-shell').style.display = 'none';
   $('login-screen').style.display = 'flex';
   $('ln-email').value = ''; $('ln-pass').value = '';
@@ -2093,6 +2121,21 @@ function ackShift(uid, day) {
 function publishSchedule() {
   SCHEDULE.published = true;
   SCHEDULE.publishedAt = new Date().toLocaleString('en-CA', { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  saveSchedule();
+  saveScheduleHistory();
+
+  // Create an in-app announcement notification to all staff members
+  const newAnn = {
+    id: ANNOUNCEMENTS.length ? Math.max(...ANNOUNCEMENTS.map(a => a.id)) + 1 : 1,
+    from: (CU && CU.id) ? CU.id : 1,
+    title: `Schedule published for week of ${SCHEDULE.week}`,
+    body: `Your schedule for the week of ${SCHEDULE.week} has been published. Please log in to review your shifts and acknowledge each day.`,
+    date: new Date().toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }),
+    priority: 'normal'
+  };
+  ANNOUNCEMENTS.unshift(newAnn);
+  saveAnnouncements();
+
   navigate('schedule'); toast('Schedule published! All staff have been notified.', 'ok');
 }
 
@@ -3559,6 +3602,11 @@ function showWelcomeEmail(user, rawPin) {
           <strong><i class="ti ti-shield-check"></i> Admin access:</strong> As a manager, you also have access to the admin portal at <code style="font-size:11px;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px">${window.location.origin}/uat</code> — sign in with your email and the password set by the school.
         </div>` : ''}
 
+        <!-- Web Portal note -->
+        <div style="background:var(--blue-lt);border:1px solid var(--blue);border-radius:var(--r8);padding:11px 14px;font-size:12px;color:var(--blue);margin-bottom:16px">
+          <strong><i class="ti ti-world"></i> Web Portal access:</strong> You can also access the Staff portal from your computer or phone's web browser directly at: <a href="${window.location.origin}/staffbase.html" target="_blank" style="color:var(--navy);font-weight:700">${window.location.origin}/staffbase.html</a>
+        </div>
+
         <!-- Help -->
         <div style="border-top:1px solid var(--bdr);padding-top:14px;margin-top:4px;font-size:12px;color:var(--tx-3)">
           Questions? Contact your administrator: <a href="mailto:${adminEmail}" style="color:var(--blue)">${adminEmail}</a><br>
@@ -3602,6 +3650,8 @@ function buildWelcomeEmailText(user, schoolName, adminEmail, displayPin, isAdmin
     `   exp://${typeof REPLIT_EXPO_DEV_DOMAIN !== 'undefined' ? REPLIT_EXPO_DEV_DOMAIN : '[ask your manager for the link]'}`,
     `3. Tap "Staff Login", select your name (${user.name}), and enter your PIN.`,
     `4. Allow location access — required for GPS clock-in at school.`,
+    `5. Alternatively, you can log in on your phone/computer's web browser at the Staff portal:`,
+    `   ${window.location.origin}/staffbase.html`,
     ``,
     `WHAT YOU CAN DO`,
     `───────────────`,
