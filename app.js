@@ -3949,6 +3949,19 @@ function pushSettingsToStaffbase() {
   const orgName = state.settings?.institution_name || "";
   const branchName = state.settings?.branch_name || "";
   const schoolName = branchName ? (orgName + " - " + branchName) : orgName;
+
+  const elStudents = (state.students || [])
+    .filter(s => !s.deleted_at)
+    .map(s => ({
+      student_name: s.student_name,
+      rate_type: s.rate_type || 'R',
+      status: s.status,
+      schedules: (s.schedules || []).map(sc => ({
+        weekday: sc.weekday,
+        start: sc.start_time,
+        end: sc.end_time,
+      })),
+    }));
   
   frame.contentWindow.postMessage({
     type: 'smp:settingsChanged',
@@ -3957,6 +3970,7 @@ function pushSettingsToStaffbase() {
     weekdays,
     operating_start: state.settings?.operating_start || '15:00',
     operating_end: state.settings?.operating_end || '20:00',
+    el_students: elStudents,
   }, '*');
 }
 

@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>StaffBase — Greenfield Academy</title>
+<title>StaffBase — SMP After School</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.10.0/dist/tabler-icons.min.css">
+<link rel="manifest" href="/manifest.json">
 <style>
 /* ═══ DESIGN TOKENS ═════════════════════════════════════════════════════════ */
 :root {
@@ -95,6 +96,23 @@ img{display:block;max-width:100%}
 .badge-teal{background:var(--teal-lt);color:#065e7c}
 .badge-gray{background:#f0f4f8;color:var(--tx-2)}
 .badge-navy{background:#e4eaf2;color:var(--navy-2)}
+/* ═══ SWAP BOARD ══════════════════════════════════════════════════════════════ */
+.swap-card{background:var(--sfc);border:1.5px solid var(--bdr);border-radius:var(--r12);padding:16px 18px;transition:box-shadow .15s}
+.swap-card:hover{box-shadow:var(--sh)}
+.swap-card.claimed{border-color:var(--amber);background:var(--amber-lt)}
+.swap-card.approved{border-color:var(--green);background:var(--green-lt)}
+/* ═══ CONFLICT HIGHLIGHT ══════════════════════════════════════════════════════ */
+.sched-cell.conflict{background:var(--red-lt)!important;border:2px solid var(--red)!important}
+.conflict-badge{display:inline-flex;align-items:center;gap:4px;background:var(--red-lt);color:var(--red);font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;border:1px solid rgba(196,43,28,.3)}
+/* ═══ TIMESHEET APPROVAL ══════════════════════════════════════════════════════ */
+.ts-row-pending{background:var(--amber-lt)!important}
+.ts-row-approved{background:var(--green-lt)!important}
+/* ═══ DOCUMENT VAULT ══════════════════════════════════════════════════════════ */
+.doc-card{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:var(--r10);border:1.5px solid var(--bdr);background:var(--sfc);margin-bottom:10px;transition:box-shadow .15s}
+.doc-card:hover{box-shadow:var(--sh-sm)}
+.doc-icon{width:40px;height:40px;border-radius:var(--r8);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+/* ═══ PENDING BADGE ON TIMESHEETS ═══════════════════════════════════════════ */
+.approval-banner{background:var(--amber-lt);border:1.5px solid var(--amber);border-radius:var(--r10);padding:11px 16px;margin-bottom:18px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--amber)}
 /* Cards */
 .card{background:var(--sfc);border:1px solid var(--bdr);border-radius:var(--r16);padding:18px 22px;box-shadow:var(--sh-sm)}
 .card-sm{background:var(--sfc);border:1px solid var(--bdr);border-radius:var(--r12);padding:14px 18px;box-shadow:var(--sh-sm)}
@@ -195,20 +213,253 @@ img{display:block;max-width:100%}
 .numpad-btn:hover{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.25)}
 .numpad-btn:active{transform:scale(.94)}
 .numpad-btn.clr{background:rgba(192,43,28,.25);border-color:rgba(192,43,28,.35)}
+
 /* ═══ MOBILE APP SPECIFIC ════════════════════════════════════════════════════ */
-.mob-emp-row{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-radius:var(--r10);border:1.5px solid var(--bdr);background:var(--sfc);margin-bottom:8px;cursor:pointer;transition:all .15s}
-.mob-emp-row:hover{border-color:var(--bdr-2);background:var(--sfc-2)}
-.mob-emp-row.selected{border-color:var(--navy);background:var(--blue-lt)}
+.mob-emp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-radius: var(--r12);
+  border: 1px solid var(--bdr);
+  background: var(--sfc);
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+.mob-emp-row:hover {
+  border-color: var(--navy-lt);
+  background: var(--sfc-2);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0,0,0,0.04);
+}
+.mob-emp-row:active {
+  transform: translateY(0);
+}
+.mob-emp-row.selected {
+  border-color: var(--navy);
+  background: var(--blue-lt);
+}
+.mob-numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  max-width: 240px;
+  margin: 0 auto 12px;
+  justify-items: center;
+}
+.mob-numpad-btn {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 1px solid var(--bdr-2);
+  background: var(--sfc);
+  color: var(--tx);
+  font-size: 18px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: var(--sh-sm);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  font-family: var(--font);
+}
+.mob-numpad-btn:hover {
+  background: var(--sfc-2);
+  border-color: var(--navy);
+  transform: translateY(-1px);
+}
+.mob-numpad-btn:active {
+  background: var(--navy);
+  color: #fff;
+  border-color: var(--navy);
+  transform: scale(0.9);
+}
+.mob-numpad-btn.action-btn {
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--tx-3);
+  box-shadow: none;
+}
+.mob-numpad-btn.action-btn:hover {
+  color: var(--navy);
+  background: transparent;
+}
+.mob-numpad-btn.action-btn:active {
+  color: var(--navy);
+  background: transparent;
+  transform: scale(0.9);
+}
+.pin-dots-container {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 12px 0 20px;
+}
+.pin-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--navy);
+  background: transparent;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.pin-dot.filled {
+  background: var(--navy);
+  transform: scale(1.15);
+}
+
 .gps-status-box{border-radius:var(--r12);padding:16px;text-align:center;margin-top:14px}
 .gps-status-box.success{background:var(--green-lt);border:1.5px solid rgba(10,140,106,.2)}
 .gps-status-box.warning{background:var(--amber-lt);border:1.5px solid rgba(201,125,16,.2)}
 .gps-status-box.error{background:var(--red-lt);border:1.5px solid rgba(196,43,28,.2)}
 /* ═══ RESPONSIVE ═════════════════════════════════════════════════════════════ */
 @media(max-width:768px){
-  .sidebar{position:absolute;left:0;top:0;height:100%;z-index:50;transform:translateX(-100%);transition:transform .25s}
+  .sidebar{position:absolute;left:0;top:0;height:100%;z-index:50;transform:translateX(-100%);transition:transform .25s;width:260px;min-width:260px}
   .sidebar.open{transform:translateX(0)}
-  .g2,.g3,.g4{grid-template-columns:1fr}
-  .content-area{padding:14px 16px}
+  #menu-toggle{display:block !important}
+  .topbar{padding:0 12px}
+  .page-title{font-size:15px}
+  .topbar-school{display:none !important}
+  .g2,.g3,.g4{grid-template-columns:1fr;gap:12px}
+  .content-area{padding:14px 10px}
+  
+  /* Responsive Tables styling */
+  .tbl-responsive, .tbl-responsive tbody, .tbl-responsive tr, .tbl-responsive td {
+    display: block;
+    width: 100%;
+  }
+  .tbl-responsive thead {
+    display: none;
+  }
+  .tbl-responsive tr {
+    background: var(--sfc);
+    border: 1px solid var(--bdr);
+    border-radius: var(--r12);
+    margin-bottom: 12px;
+    padding: 14px;
+    box-shadow: var(--sh-sm);
+  }
+  .tbl-responsive td {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-align: right;
+    font-size: 13px;
+  }
+  .tbl-responsive td:last-child {
+    border-bottom: none;
+    padding-top: 12px;
+    justify-content: flex-end;
+  }
+  .tbl-responsive td::before {
+    content: attr(data-label);
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 10px;
+    color: var(--tx-3);
+    text-align: left;
+    margin-right: 16px;
+  }
+  .tbl-responsive td.cell-header {
+    border-bottom: 1.5px solid var(--bdr);
+    padding-bottom: 10px;
+    margin-bottom: 6px;
+    justify-content: flex-start;
+    text-align: left;
+  }
+  .tbl-responsive td.cell-header::before {
+    display: none;
+  }
+  
+  /* Modal responsive buttons & layout */
+  .modal-ft {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .modal-ft .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .modal-bd {
+    padding: 16px;
+  }
+  .modal-overlay {
+    padding: 8px;
+  }
+  
+  .phone-outer{width:100% !important;max-width:100% !important;background:transparent !important;border-radius:0 !important;padding:0 !important;box-shadow:none !important}
+  .phone-screen{border-radius:0 !important;min-height:100vh !important;box-shadow:none !important}
+  .phone-notch{display:none !important}
+}
+
+.presence-timetable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+.presence-timetable th {
+  background: var(--navy);
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
+  padding: 10px;
+  font-size: 12px;
+  border: 1px solid var(--bdr);
+}
+.presence-timetable th:first-child {
+  text-align: left;
+}
+.presence-timetable td {
+  padding: 6px 4px;
+  border: 1px solid var(--bdr);
+  text-align: center;
+  vertical-align: middle;
+  min-width: 80px;
+  min-height: 48px;
+}
+.presence-timetable td:first-child {
+  text-align: left;
+  font-weight: 600;
+  background: var(--sfc-2);
+}
+.teacher-student-chip {
+  background: #fef9c3;
+  color: #713f12;
+  border: 1.5px solid #eab308;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 6px;
+  margin: 2px 1px;
+  display: block;
+  text-align: center;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+.presence-subtabs .subtab {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: var(--r8);
+  border: 1.5px solid var(--bdr-2);
+  background: var(--sfc);
+  color: var(--tx-2);
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.15s;
+}
+.presence-subtabs .subtab.active {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #fff;
 }
 </style>
 </head>
@@ -222,7 +473,7 @@ img{display:block;max-width:100%}
   <div class="login-card">
     <div style="text-align:center;margin-bottom:28px">
       <div style="width:78px;height:78px;border-radius:22px;background:rgba(224,136,32,.15);border:2px solid rgba(224,136,32,.4);display:flex;align-items:center;justify-content:center;font-size:40px;margin:0 auto 16px">🏫</div>
-      <div style="font-family:var(--serif);font-size:28px;color:#fff;letter-spacing:-.02em;margin-bottom:4px">Greenfield Academy</div>
+      <div style="font-family:var(--serif);font-size:28px;color:#fff;letter-spacing:-.02em;margin-bottom:4px" class="school-name-text">SMP After School</div>
       <div style="font-size:12px;color:rgba(255,255,255,.4)">Staff Scheduling & HR Management Portal</div>
     </div>
     <div class="login-panel">
@@ -250,7 +501,7 @@ img{display:block;max-width:100%}
         </div>
         <!-- Admin tab -->
         <div id="tab-admin-panel" style="display:none">
-          <div class="fg"><label class="fl" style="color:rgba(255,255,255,.4)">Email address</label><input type="email" class="fc" id="ln-email" placeholder="admin@greenfield.edu" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);color:#fff"></div>
+          <div class="fg"><label class="fl" style="color:rgba(255,255,255,.4)">Email address</label><input type="email" class="fc" id="ln-email" placeholder="sarah@smp.edu" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);color:#fff"></div>
           <div class="fg"><label class="fl" style="color:rgba(255,255,255,.4)">Password</label><input type="password" class="fc" id="ln-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doAdminLogin()" style="background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.15);color:#fff"></div>
           <div id="admin-err" style="color:#f87171;font-size:12px;margin-bottom:8px;min-height:18px"></div>
           <button class="btn-xl btn-gold" onclick="doAdminLogin()" style="width:100%;justify-content:center">Sign In →</button>
@@ -259,18 +510,15 @@ img{display:block;max-width:100%}
           </div>
           <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08)">
             <div style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:8px;text-align:center">Quick demo logins</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-              <button onclick="quickLogin('s.mitchell@greenfield.edu')" style="padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);font-size:11px;cursor:pointer;font-family:var(--font)">👑 Owner (Principal)</button>
-              <button onclick="quickLogin('j.harrington@greenfield.edu')" style="padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);font-size:11px;cursor:pointer;font-family:var(--font)">🛡 Admin (VP)</button>
-              <button onclick="quickLogin('r.torres@greenfield.edu')" style="padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);font-size:11px;cursor:pointer;font-family:var(--font)">📋 Office Manager</button>
-              <button onclick="staffQuickLogin(4)" style="padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);font-size:11px;cursor:pointer;font-family:var(--font)">👩‍🏫 Staff (Emily Chen)</button>
+            <div style="display:grid;grid-template-columns:1fr;gap:6px">
+              <button onclick="quickLogin('sarah@smp.edu','school2026')" style="padding:7px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:rgba(255,255,255,.6);font-size:11px;cursor:pointer;font-family:var(--font)">👑 Sarah Chen — Lead Instructor (Manager)</button>
             </div>
           </div>
         </div>
       </div>
     </div>
     <div style="text-align:center;margin-top:18px;font-size:11px;color:rgba(255,255,255,.2)">
-      StaffBase v2.0 · <span class="school-name-text">Greenfield Academy</span> · Secure Staff Portal · All logins encrypted
+      StaffBase v2.0 · <span class="school-name-text">SMP After School</span> · Secure Staff Portal · All logins encrypted
     </div>
   </div>
 </div>
@@ -282,7 +530,7 @@ img{display:block;max-width:100%}
     <div class="sidebar-logo">
       <div class="logo-mark">🏫</div>
       <div class="logo-text">
-        <div class="logo-name logo-name-text">Greenfield<br>Academy</div>
+        <div class="logo-name logo-name-text school-name-text">SMP After School</div>
         <div class="logo-sub">Staff Portal</div>
       </div>
     </div>
@@ -302,7 +550,7 @@ img{display:block;max-width:100%}
       <div style="display:flex;align-items:center;gap:12px">
         <button class="btn btn-ghost btn-sm" id="menu-toggle" onclick="toggleSidebar()" style="display:none"><i class="ti ti-menu-2"></i></button>
         <div class="page-title" id="page-title">Dashboard</div>
-        <span class="topbar-school school-name-text" id="topbar-school-label">Greenfield Academy</span>
+        <span class="topbar-school school-name-text" id="topbar-school-label">SMP After School</span>
       </div>
       <div class="topbar-right">
         <div class="live-clock" id="live-clock"></div>
@@ -319,11 +567,29 @@ img{display:block;max-width:100%}
 // DATA & CONSTANTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-const DEFAULT_SCHOOL = { lat: 43.7615, lng: -79.4111, radius: 300, name: 'Greenfield Academy', address: '150 Greenfield Ave, Toronto, ON M6G 3G7', website: 'www.greenfieldacademy.edu', email: 'admin@greenfield.edu', otThreshold: 8.0, openDays: ['Tue','Wed','Thu','Fri','Sat'], operatingStart: '15:00', operatingEnd: '20:00' };
+const DEFAULT_SCHOOL = { lat: 51.1447, lng: -113.9672, radius: 300, name: 'SMP After School', address: '100 Cityscape Square NE, Calgary, AB', website: '', email: 'syedzaidipk@gmail.com', otThreshold: 8.0, openDays: ['Tue','Wed','Thu','Fri','Sat'], operatingStart: '15:00', operatingEnd: '20:00' };
 let SCHOOL = JSON.parse(localStorage.getItem('sb_school')) || DEFAULT_SCHOOL;
+// Reset stale/wrong school location to Calgary if it still has placeholder or Singapore coords
+if (!SCHOOL.lat || SCHOOL.lat < 49 || SCHOOL.lat > 53 || SCHOOL.lng > -110 || SCHOOL.lng < -120) {
+  SCHOOL = { ...DEFAULT_SCHOOL, ...(SCHOOL || {}), lat: DEFAULT_SCHOOL.lat, lng: DEFAULT_SCHOOL.lng, radius: DEFAULT_SCHOOL.radius, address: DEFAULT_SCHOOL.address, name: DEFAULT_SCHOOL.name };
+  localStorage.setItem('sb_school', JSON.stringify(SCHOOL));
+}
 if (!SCHOOL.openDays) SCHOOL.openDays = ['Tue','Wed','Thu','Fri','Sat'];
-const API_BASE = 'http://localhost:3000/api';
+const API_BASE = '/api/staffbase';
 let USE_API = false;
+
+let currentScheduleView = 'shifts';
+let activeTeacherDay = 'Tue';
+
+function setScheduleView(view) {
+  currentScheduleView = view;
+  pgSchedule();
+}
+
+function setTeacherActiveDay(day) {
+  activeTeacherDay = day;
+  pgSchedule();
+}
 
 async function syncToServer(endpoint, data) {
   if (!USE_API) return;
@@ -344,9 +610,15 @@ function saveSchool() {
 }
 
 function initSchoolName() {
-  const name = SCHOOL.name || 'Greenfield Academy';
+  const name = SCHOOL.name || 'SMP After School';
+  applySchoolName(name);
+}
+
+function applySchoolName(name) {
+  if (!name) return;
+  SCHOOL.name = name;
   document.title = `StaffBase — ${name}`;
-  document.querySelectorAll('.logo-name-text').forEach(el => el.innerHTML = name.replace(' ', '<br>'));
+  // Update all school-name-text elements (login screen, sidebar, topbar, footer)
   document.querySelectorAll('.school-name-text').forEach(el => el.textContent = name);
   const topbarLabel = document.getElementById('topbar-school-label');
   if (topbarLabel) topbarLabel.innerHTML = `<i class="ti ti-building" style="font-size:13px"></i> ${name}`;
@@ -454,30 +726,37 @@ async function probeServerAndLoadData() {
     if (!res.ok) throw new Error(`Health check returned ${res.status}`);
     const health = await res.json();
     if (health.status === 'ok') {
-      console.log("Enterprise Database Connected ✓");
+      console.log("Supabase Database Connected ✓");
       const dataRes = await fetch(`${API_BASE}/data`);
       if (!dataRes.ok) throw new Error(`Data fetch returned ${dataRes.status}`);
       const data = await dataRes.json();
-      if (!data || !data.school || !data.users) throw new Error("Invalid database payload");
-      
-      SCHOOL = data.school;
-      USERS = data.users;
-      SUBJECTS = data.subjects;
-      SCHEDULE = data.schedule;
-      REQUESTS = data.requests;
-      ANNOUNCEMENTS = data.announcements;
-      MESSAGES = data.messages;
-      CLOCK_DATA = data.clock_data;
-      CHECKIN_LOG = data.checkin_log;
-      
-      DAYS = SCHOOL.openDays;
-      FULL_DAYS = DAYS.map(d => WEEKDAY_NAMES[d]);
+
+      if (data.school && Object.keys(data.school).length) SCHOOL = data.school;
+      if (Array.isArray(data.users) && data.users.length) USERS = data.users;
+      if (Array.isArray(data.subjects) && data.subjects.length) SUBJECTS = data.subjects;
+      if (data.schedule && Object.keys(data.schedule).length) SCHEDULE = data.schedule;
+      if (Array.isArray(data.requests)) REQUESTS = data.requests;
+      if (Array.isArray(data.announcements)) ANNOUNCEMENTS = data.announcements;
+      if (Array.isArray(data.messages)) MESSAGES = data.messages;
+      if (data.clock_data && typeof data.clock_data === 'object') CLOCK_DATA = data.clock_data;
+      if (Array.isArray(data.checkin_log)) CHECKIN_LOG = data.checkin_log;
+      if (Array.isArray(data.swaps)) SWAPS = data.swaps;
+      if (Array.isArray(data.documents)) DOCUMENTS = data.documents;
+      if (data.ts_approvals && typeof data.ts_approvals === 'object') TIMESHEET_APPROVALS = data.ts_approvals;
+      if (Array.isArray(data.teacher_assignments)) {
+        localStorage.setItem('sb_teacher_assignments', JSON.stringify(data.teacher_assignments));
+      }
+
+      if (SCHOOL && SCHOOL.openDays) {
+        DAYS = SCHOOL.openDays;
+        FULL_DAYS = DAYS.map(d => WEEKDAY_NAMES[d] || d);
+      }
       USE_API = true;
     } else {
       throw new Error("Health status not ok");
     }
   } catch (e) {
-    console.warn("Express server error or offline, running in offline LocalStorage sandbox mode:", e.message);
+    console.warn("Backend unavailable, running in offline LocalStorage sandbox mode:", e.message);
     USE_API = false;
     // Restore variables from localStorage or defaults
     SCHOOL = JSON.parse(localStorage.getItem('sb_school')) || DEFAULT_SCHOOL;
@@ -490,8 +769,11 @@ async function probeServerAndLoadData() {
     MESSAGES = JSON.parse(localStorage.getItem('sb_messages')) || [];
     CLOCK_DATA = JSON.parse(localStorage.getItem('sb_clock_data')) || {};
     CHECKIN_LOG = JSON.parse(localStorage.getItem('sb_checkin_log')) || [];
+    SWAPS = JSON.parse(localStorage.getItem('sb_swaps')) || [];
+    DOCUMENTS = JSON.parse(localStorage.getItem('sb_documents')) || [];
+    TIMESHEET_APPROVALS = JSON.parse(localStorage.getItem('sb_ts_approvals')) || {};
     DAYS = SCHOOL.openDays || ['Tue','Wed','Thu','Fri','Sat'];
-    FULL_DAYS = DAYS.map(d => WEEKDAY_NAMES[d]);
+    FULL_DAYS = DAYS.map(d => WEEKDAY_NAMES[d] || d);
   }
   await applySystemMetadata();
   initSchoolName();
@@ -587,6 +869,14 @@ const INITIAL_USERS = [
   { id:10,name:'Lisa Kowalski',      email:'l.kowalski@greenfield.edu', role:'staff', dept:'Support', pin:'9999', password:'', phone:'416-555-0017', pos:'Counselor', av:'LK', active:true },
 ];
 let USERS = JSON.parse(localStorage.getItem('sb_users')) || INITIAL_USERS;
+// ?reset in URL wipes all localStorage and reloads with factory defaults
+if (new URLSearchParams(location.search).has('reset')) {
+  localStorage.clear();
+  location.replace(location.pathname);
+}
+// When staff come from the DB their pin is '****' (API-based auth).
+// Only reset to INITIAL_USERS if a stored user has no pin AND we're in offline mode.
+// In API mode, USERS is overwritten by loadDataFromServer anyway.
 // Self-healing migration for existing localStorage users with old roles
 let migrated = false;
 USERS.forEach(u => {
@@ -599,9 +889,22 @@ if (migrated) { localStorage.setItem('sb_users', JSON.stringify(USERS)); }
 function saveUsers() {
   localStorage.setItem('sb_users', JSON.stringify(USERS));
   syncToServer('users', USERS);
+  notifyParent('sb_users', USERS);
 }
 
 function checkAutoLogin() {
+  // 1. Restore saved session from previous login (survives page refresh)
+  try {
+    const saved = JSON.parse(localStorage.getItem('sb_session') || 'null');
+    if (saved && saved.id) {
+      // Refresh the user object from USERS in case it changed since last login
+      const fresh = USERS.find(u => String(u.id) === String(saved.id));
+      launchApp(fresh || saved);
+      return true;
+    }
+  } catch(e) {}
+
+  // 2. URL-param auto-login (e.g. from parent iframe)
   const params = new URLSearchParams(window.location.search);
   const autoEmail = params.get('auto_email');
   const autoName = params.get('auto_name');
@@ -666,6 +969,7 @@ let SCHEDULE = JSON.parse(localStorage.getItem('sb_schedule')) || {
 function saveSchedule() {
   localStorage.setItem('sb_schedule', JSON.stringify(SCHEDULE));
   syncToServer('schedule', SCHEDULE);
+  notifyParent('sb_schedule', SCHEDULE);
 }
 
 let REQUESTS = JSON.parse(localStorage.getItem('sb_requests')) || [
@@ -703,12 +1007,69 @@ let CLOCK_DATA = JSON.parse(localStorage.getItem('sb_clock_data')) || {};
 function saveClockData() {
   localStorage.setItem('sb_clock_data', JSON.stringify(CLOCK_DATA));
   syncToServer('clock_data', CLOCK_DATA);
+  notifyParent('sb_clock_data', CLOCK_DATA);
 }
 
 let CHECKIN_LOG = JSON.parse(localStorage.getItem('sb_checkin_log')) || [];
 function saveCheckinLog() {
   localStorage.setItem('sb_checkin_log', JSON.stringify(CHECKIN_LOG));
   syncToServer('checkin_log', CHECKIN_LOG);
+}
+
+// ── Parent-frame bridge ─────────────────────────────────────────────────────
+// Notifies the parent window (index.html) whenever staffbase data changes,
+// so the Student-Administration shell can keep its staff views in sync.
+function notifyParent(key, data) {
+  try { window.parent.postMessage({ type: 'sb:dataChanged', key, data }, '*'); } catch (e) {}
+}
+
+// Listen for settings pushes from the parent (school name, subjects, hours).
+window.addEventListener('message', (event) => {
+  if (!event.data || event.data.type !== 'smp:settingsChanged') return;
+  const d = event.data;
+  if (d.school_name) applySchoolName(d.school_name);
+  if (Array.isArray(d.subjects)) {
+    SUBJECTS = d.subjects;
+    try { localStorage.setItem('sb_subjects', JSON.stringify(SUBJECTS)); } catch(e) {}
+  }
+  if (d.weekdays && Array.isArray(d.weekdays)) {
+    SCHOOL.openDays = d.weekdays;
+    DAYS = d.weekdays;
+    FULL_DAYS = DAYS.map(day => ({ Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday',Sat:'Saturday',Sun:'Sunday' }[day] || day));
+    saveSchool();
+  }
+  if (d.operating_start && SCHOOL) SCHOOL.shiftStart = d.operating_start;
+  if (d.operating_end && SCHOOL) SCHOOL.shiftEnd = d.operating_end;
+  if (Array.isArray(d.el_students)) {
+    try { localStorage.setItem('smp_el_cache', JSON.stringify(d.el_students)); } catch(e) {}
+  }
+});
+
+let SWAPS = JSON.parse(localStorage.getItem('sb_swaps')) || [
+  { id:1, uid:4, day:'Tue', shiftType:'Teaching', start:'15:00', end:'20:00', note:'Doctor appointment', status:'open', claimedBy:null, postedOn:'Jun 18' },
+  { id:2, uid:6, day:'Thu', shiftType:'Planning', start:'15:00', end:'20:00', note:'Family event', status:'claimed', claimedBy:5, postedOn:'Jun 17' },
+];
+function saveSwaps() {
+  localStorage.setItem('sb_swaps', JSON.stringify(SWAPS));
+  syncToServer('swaps', SWAPS);
+}
+
+let DOCUMENTS = JSON.parse(localStorage.getItem('sb_documents')) || [
+  { id:1, uid:4, name:'Employment Contract 2025', type:'contract', size:'245 KB', uploadedBy:1, uploadedOn:'Sep 5, 2025', visibility:'private' },
+  { id:2, uid:5, name:'Background Check Certificate', type:'certificate', size:'180 KB', uploadedBy:1, uploadedOn:'Sep 5, 2025', visibility:'private' },
+  { id:3, uid:6, name:'CPR Certification', type:'certificate', size:'120 KB', uploadedBy:2, uploadedOn:'Jan 12, 2026', visibility:'private' },
+  { id:4, uid:7, name:'Employment Contract 2025', type:'contract', size:'245 KB', uploadedBy:1, uploadedOn:'Sep 5, 2025', visibility:'private' },
+  { id:5, uid:4, name:'Professional Development Certificate', type:'certificate', size:'310 KB', uploadedBy:2, uploadedOn:'Mar 22, 2026', visibility:'private' },
+];
+function saveDocuments() {
+  localStorage.setItem('sb_documents', JSON.stringify(DOCUMENTS));
+  syncToServer('documents', DOCUMENTS);
+}
+
+let TIMESHEET_APPROVALS = JSON.parse(localStorage.getItem('sb_ts_approvals')) || {};
+function saveTsApprovals() {
+  localStorage.setItem('sb_ts_approvals', JSON.stringify(TIMESHEET_APPROVALS));
+  syncToServer('ts_approvals', TIMESHEET_APPROVALS);
 }
 
 let CU = null; // current user
@@ -878,9 +1239,31 @@ function updatePinDisplay() {
   $('pin-display').textContent = '●'.repeat(PIN_BUF.length) + '○'.repeat(4 - PIN_BUF.length);
 }
 
-function doStaffLogin() {
+async function doStaffLogin() {
   const u = USERS.find(x => x.id === PIN_EMP_ID);
   if (!u) { $('pin-err').textContent = 'Please select your name first.'; return; }
+  
+  if (USE_API) {
+    $('pin-err').textContent = 'Verifying…';
+    try {
+      const r = await fetch(`${API_BASE}/auth/pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffId: PIN_EMP_ID, pin: PIN_BUF })
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        $('pin-err').textContent = data.error || 'Incorrect PIN. Please try again.';
+        PIN_BUF = ''; updatePinDisplay(); $('pin-btn').disabled = true;
+        return;
+      }
+      launchApp({ ...u, ...data.user });
+    } catch {
+      $('pin-err').textContent = 'Connection error. Please try again.';
+    }
+    return;
+  }
+  
   if (u.pin !== PIN_BUF) {
     $('pin-err').textContent = 'Incorrect PIN. Please try again.';
     PIN_BUF = ''; updatePinDisplay(); $('pin-btn').disabled = true; return;
@@ -888,10 +1271,34 @@ function doStaffLogin() {
   launchApp(u);
 }
 
-function doAdminLogin() {
+async function doAdminLogin() {
   const email = $('ln-email').value.trim();
   const pass  = $('ln-pass').value;
   $('admin-err').textContent = '';
+  
+  if (USE_API) {
+    $('admin-err').textContent = 'Verifying…';
+    try {
+      const r = await fetch(`${API_BASE}/auth/password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: pass })
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        $('admin-err').textContent = data.error || 'Invalid credentials.';
+        return;
+      }
+      if (data.user.role === 'staff' || data.user.role === 'office_assistant') {
+        $('admin-err').textContent = 'Access Denied: Please use the PIN Pad tab to log in as Staff.';
+        return;
+      }
+      launchApp(data.user);
+    } catch {
+      $('admin-err').textContent = 'Connection error. Please try again.';
+    }
+    return;
+  }
   
   const u = USERS.find(x => x.email && x.email.toLowerCase() === email.toLowerCase());
   if (!u) {
@@ -902,30 +1309,37 @@ function doAdminLogin() {
     $('admin-err').textContent = 'Access Denied: Please use the PIN Pad tab to log in as Staff.';
     return;
   }
-  
   const correctPass = u.password || 'school2026';
   if (pass !== correctPass) {
     $('admin-err').textContent = 'Incorrect password.';
     return;
   }
-  
   launchApp(u);
 }
 
-function quickLogin(email) {
-  const u = USERS.find(x => x.email && x.email.toLowerCase() === email.toLowerCase());
+function quickLogin(email, password) {
   $('ln-email').value = email;
-  $('ln-pass').value = u ? (u.password || 'school2026') : 'school2026';
+  if (USE_API) {
+    $('ln-pass').value = password || 'school2026';
+  } else {
+    const u = USERS.find(x => x.email && x.email.toLowerCase() === email.toLowerCase());
+    $('ln-pass').value = u ? (u.password || 'school2026') : 'school2026';
+  }
   doAdminLogin();
 }
 function staffQuickLogin(uid) {
   setLoginTab('staff');
   $('ln-sel').value = uid; onEmpSelect();
+  if (USE_API) {
+    // In API mode, PIN is not stored locally — prompt user to enter PIN manually
+    toast('Please enter your PIN on the pad.', 'info'); return;
+  }
   setTimeout(() => { PIN_BUF = USERS.find(u=>u.id===uid)?.pin||''; updatePinDisplay(); doStaffLogin(); }, 100);
 }
 
 function launchApp(u) {
   CU = u;
+  try { localStorage.setItem('sb_session', JSON.stringify(u)); } catch(e) {}
   $('login-screen').style.display = 'none';
   $('app-shell').style.display = 'flex';
   initSchoolName();
@@ -939,6 +1353,7 @@ function doLogout() {
   CU = null; PIN_BUF = ''; PIN_EMP_ID = null;
   ACTIVE_CHAT_UID = null;
   COMM_TAB = 'broadcast';
+  try { localStorage.removeItem('sb_session'); } catch(e) {}
   $('app-shell').style.display = 'none';
   $('login-screen').style.display = 'flex';
   $('ln-email').value = ''; $('ln-pass').value = '';
@@ -970,18 +1385,26 @@ function buildSidebar() {
       ${roleBadge(CU.role)}
     </div>`;
 
-  // Nav items
+  // Nav items — Staff role sees only Clock-In and Schedule
+  const isStaffOnly = !isManager();
   const allItems = [
-    { id:'dashboard',     icon:'ti-layout-dashboard', label:'Dashboard' },
-    { id:'schedule',      icon:'ti-calendar-week',    label: isManager() ? 'Schedule Builder' : 'My Schedule' },
-    { id:'checkin',       icon:'ti-device-mobile',    label:'Mobile Check-In', section: isManager() ? '— TIME TRACKING —' : null },
-    { id:'timesheets',    icon:'ti-report',           label:'Timesheets',   mgr: true },
-    { id:'staff',         icon:'ti-users',            label:'Staff Management', mgr: true, section: '— TEAM —' },
-    { id:'requests',      icon:'ti-calendar-off',     label:'Time-Off Requests' },
-    { id:'announcements', icon:'ti-speakerphone',     label:'Announcements', section: '— COMMUNICATIONS —' },
-    { id:'reports',       icon:'ti-chart-bar',        label:'Reports & Analytics', mgr: true, section: '— DATA —' },
-    { id:'settings',      icon:'ti-settings',         label:'Settings', settings_access: true },
-  ].filter(n => (!n.mgr || isManager()) && (!n.owner || CU.role === 'principal_owner') && (!n.settings_access || CU.role === 'principal_owner' || CU.role === 'administrator'));
+    { id:'dashboard',     icon:'ti-layout-dashboard', label:'Dashboard',                        staffOk: false },
+    { id:'schedule',      icon:'ti-calendar-week',    label: isManager() ? 'Schedule Builder' : 'My Schedule', staffOk: true },
+    { id:'checkin',       icon:'ti-device-mobile',    label:'Mobile Check-In',                  staffOk: true, section: isManager() ? '— TIME TRACKING —' : null },
+    { id:'timesheets',    icon:'ti-report',           label:'Timesheets',                       staffOk: false, mgr: true },
+    { id:'staff',         icon:'ti-users',            label:'Staff Management',                 staffOk: false, mgr: true, section: '— TEAM —' },
+    { id:'swapboard',     icon:'ti-arrows-exchange',  label:'Shift Swap Board',                 staffOk: false, mgr: true },
+    { id:'requests',      icon:'ti-calendar-off',     label:'Time-Off Requests',                staffOk: false, mgr: true },
+    { id:'documents',     icon:'ti-file-certificate', label:'Document Vault',                   staffOk: false, mgr: true },
+    { id:'announcements', icon:'ti-speakerphone',     label:'Announcements',                    staffOk: false, mgr: true, section: '— COMMUNICATIONS —' },
+    { id:'reports',       icon:'ti-chart-bar',        label:'Reports & Analytics',              staffOk: false, mgr: true, section: '— DATA —' },
+    { id:'settings',      icon:'ti-settings',         label:'Settings',                         staffOk: false, settings_access: true },
+  ].filter(n => {
+    if (isStaffOnly) return n.staffOk;
+    if (n.mgr && !isManager()) return false;
+    if (n.settings_access && CU.role !== 'principal_owner' && CU.role !== 'administrator') return false;
+    return true;
+  });
 
   let html = '';
   const sections = new Set();
@@ -998,6 +1421,12 @@ function buildSidebar() {
       if (dms > 0) {
         pendingBadge = `<span class="nav-badge" style="background:var(--gold);color:#fff">${dms}</span>`;
       }
+    } else if (n.id === 'swapboard') {
+      const openSwaps = SWAPS.filter(s => s.status === 'open' || (isManager() && s.status === 'claimed')).length;
+      if (openSwaps > 0) pendingBadge = `<span class="nav-badge" style="background:var(--blue)">${openSwaps}</span>`;
+    } else if (n.id === 'timesheets' && isManager()) {
+      const pendingTs = Object.values(TIMESHEET_APPROVALS).filter(a => a.status === 'pending').length;
+      if (pendingTs > 0) pendingBadge = `<span class="nav-badge" style="background:var(--amber)">${pendingTs}</span>`;
     }
     html += `<button class="nav-item" id="nav-${n.id}" onclick="navigate('${n.id}')"><i class="ti ${n.icon}"></i>${n.label}${pendingBadge}</button>`;
   });
@@ -1005,6 +1434,13 @@ function buildSidebar() {
 }
 
 function navigate(pg) {
+  // Staff-only users: only schedule and checkin are permitted
+  if (!isManager() && pg !== 'schedule' && pg !== 'checkin') {
+    toast('Access restricted. Staff can only access My Schedule and Clock In/Out.', 'err');
+    navigate('checkin');
+    return;
+  }
+  // Settings: only principal_owner or administrator
   if (pg === 'settings' && CU.role !== 'principal_owner' && CU.role !== 'administrator') {
     toast('Access Denied: You do not have permission to view Settings.', 'err');
     navigate('dashboard');
@@ -1017,19 +1453,24 @@ function navigate(pg) {
     dashboard: 'Dashboard', schedule: isManager() ? 'Schedule Builder' : 'My Schedule',
     checkin: 'Mobile Check-In / Check-Out', timesheets: 'Timesheets',
     staff: 'Staff Management', requests: 'Time-Off Requests',
+    swapboard: 'Shift Swap Board', documents: 'Document Vault',
     announcements: 'Announcements', reports: 'Reports & Analytics', settings: 'Settings'
   };
-  $('page-title').textContent = titles[pg] || pg;
+  const _schoolLabel = SCHOOL?.name || 'SMP After School';
+  $('page-title').innerHTML = `<div style="font-size:10px;font-weight:600;color:var(--tx-3);letter-spacing:.06em;text-transform:uppercase;margin-bottom:1px">${_schoolLabel}</div><div>${titles[pg] || pg}</div>`;
 
   const topbarActions = {
     schedule: isManager() ? `<button class="btn btn-gold" onclick="publishSchedule()"><i class="ti ti-send"></i>${SCHEDULE.published ? 'Re-publish' : 'Publish Schedule'}</button>` : '',
     requests: !isManager() ? `<button class="btn btn-primary" onclick="showNewRequest()"><i class="ti ti-plus"></i>New Request</button>` : '',
     announcements: isManager() ? `<button class="btn btn-primary" onclick="showNewAnnouncement()"><i class="ti ti-speakerphone"></i>Post Announcement</button>` : '',
     staff: can('manage_staff') ? `<button class="btn btn-primary" onclick="showAddStaff()"><i class="ti ti-user-plus"></i>Add Staff</button>` : '',
+    swapboard: !isManager() ? `<button class="btn btn-primary" onclick="showPostSwap()"><i class="ti ti-plus"></i>Post Shift to Swap</button>` : '',
+    documents: isManager() ? `<button class="btn btn-primary" onclick="showUploadDoc()"><i class="ti ti-upload"></i>Upload Document</button>` : '',
+    timesheets: isManager() ? `<button class="btn btn-gold" onclick="approveAllTimesheets()"><i class="ti ti-circle-check"></i>Approve All</button>` : '',
   };
   $('topbar-actions').innerHTML = topbarActions[pg] || '';
 
-  const pages = { dashboard: pgDashboard, schedule: pgSchedule, checkin: pgCheckin, timesheets: pgTimesheets, staff: pgStaff, requests: pgRequests, announcements: pgAnnouncements, reports: pgReports, settings: pgSettings };
+  const pages = { dashboard: pgDashboard, schedule: pgSchedule, checkin: pgCheckin, timesheets: pgTimesheets, staff: pgStaff, requests: pgRequests, swapboard: pgSwapBoard, documents: pgDocuments, announcements: pgAnnouncements, reports: pgReports, settings: pgSettings };
   if (pages[pg]) pages[pg]();
 }
 
@@ -1212,44 +1653,388 @@ function pgDashboard() {
 // ═══════════════════════════════════════════════════════════════════════════
 // PAGE: SCHEDULE
 // ═══════════════════════════════════════════════════════════════════════════
+// ── SCHEDULE WEEK NAVIGATION ─────────────────────────────────────────────────
+// Multi-week history keyed by ISO week string e.g. "2026-W22"
+// Each entry: { published, publishedAt, week, weekKey, shifts }
+let SCHEDULE_HISTORY = JSON.parse(localStorage.getItem('sb_schedule_history')) || {};
+function saveScheduleHistory() {
+  if (SCHEDULE.weekKey) SCHEDULE_HISTORY[SCHEDULE.weekKey] = JSON.parse(JSON.stringify(SCHEDULE));
+  localStorage.setItem('sb_schedule_history', JSON.stringify(SCHEDULE_HISTORY));
+}
+function isoWeekToMondayDate(weekKey) {
+  // weekKey = "2026-W22"
+  const [yearStr, wStr] = weekKey.split('-W');
+  const year = parseInt(yearStr), week = parseInt(wStr);
+  const jan4 = new Date(year, 0, 4);
+  const startOfWeek1 = new Date(jan4);
+  startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+  const monday = new Date(startOfWeek1);
+  monday.setDate(startOfWeek1.getDate() + (week - 1) * 7);
+  return monday;
+}
+function dateToIsoWeek(date) {
+  const d = new Date(date);
+  d.setHours(0,0,0,0);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  const weekNum = 1 + Math.round(((d - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+  return `${d.getFullYear()}-W${String(weekNum).padStart(2,'0')}`;
+}
+function weekLabel(weekKey) {
+  const mon = isoWeekToMondayDate(weekKey);
+  // Find the operating days for this week (Tue-Sat by default)
+  const dayOffsets = { Mon:0, Tue:1, Wed:2, Thu:3, Fri:4, Sat:5, Sun:6 };
+  const firstOp = DAYS[0] || 'Tue';
+  const lastOp  = DAYS[DAYS.length-1] || 'Sat';
+  const startD  = new Date(mon); startD.setDate(mon.getDate() + (dayOffsets[firstOp] || 1));
+  const endD    = new Date(mon); endD.setDate(mon.getDate() + (dayOffsets[lastOp] || 5));
+  const fmt = d => d.toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'});
+  return `${fmt(startD)} – ${fmt(endD)}`;
+}
+function getOrCreateWeekSchedule(weekKey) {
+  if (SCHEDULE_HISTORY[weekKey]) return JSON.parse(JSON.stringify(SCHEDULE_HISTORY[weekKey]));
+  return { published: false, publishedAt: '', week: weekLabel(weekKey), weekKey, shifts: buildDefaultSchedule() };
+}
+function navigateWeek(delta) {
+  // Save current before moving
+  saveScheduleHistory();
+  const mon = isoWeekToMondayDate(SCHEDULE.weekKey);
+  mon.setDate(mon.getDate() + delta * 7);
+  const newKey = dateToIsoWeek(mon);
+  SCHEDULE = getOrCreateWeekSchedule(newKey);
+  SCHEDULE.week = weekLabel(newKey);
+  SCHEDULE.weekKey = newKey;
+  saveSchedule();
+  pgSchedule();
+}
+function copyPreviousWeek() {
+  const mon = isoWeekToMondayDate(SCHEDULE.weekKey);
+  mon.setDate(mon.getDate() - 7);
+  const prevKey = dateToIsoWeek(mon);
+  const prev = SCHEDULE_HISTORY[prevKey];
+  if (!prev || !prev.shifts || !Object.keys(prev.shifts).length) {
+    toast('No previous week schedule found to copy.', 'warn'); return;
+  }
+  // Deep copy shifts, reset ack flags
+  const copiedShifts = {};
+  for (const uid in prev.shifts) {
+    copiedShifts[uid] = {};
+    for (const day in prev.shifts[uid]) {
+      copiedShifts[uid][day] = { ...prev.shifts[uid][day], ack: false };
+    }
+  }
+  SCHEDULE.shifts = copiedShifts;
+  SCHEDULE.published = false;
+  SCHEDULE.publishedAt = '';
+  saveSchedule();
+  pgSchedule();
+  toast('Previous week copied! Review and publish when ready.', 'ok');
+}
+
+// ── EL AUTO-POPULATE ─────────────────────────────────────────────────────────
+// Reads students with Rate Type = "EL" from the Student Roster app (index.html)
+// stored in localStorage under "smp_state", then assigns Teaching shifts to
+// available staff covering each EL student's scheduled day/time block.
+function getELStudentSlots() {
+  // Primary source: smp_el_cache written by index.html/app.js on every load.
+  // Fallback: smp_state (legacy key, may not exist).
+  let students = [];
+  try {
+    const cached = JSON.parse(localStorage.getItem('smp_el_cache') || 'null');
+    if (Array.isArray(cached) && cached.length) {
+      students = cached;
+    } else {
+      const smpState = JSON.parse(localStorage.getItem('smp_state') || 'null');
+      students = smpState?.students || [];
+    }
+  } catch(e) {}
+
+  const slots = []; // { day: 'Tue', start: '15:00', end: '16:00', studentName }
+  const shortDay = { Tuesday:'Tue', Wednesday:'Wed', Thursday:'Thu', Friday:'Fri', Saturday:'Sat' };
+  for (const s of students) {
+    const isEL = String(s.rate_type || '').toUpperCase() === 'EL';
+    // app.js marks active students as status='C'; legacy uses anything != 'D'
+    const st = String(s.status || '').toUpperCase();
+    const isActive = st === 'C' || (st !== 'D' && st !== 'DELETED' && st !== 'INACTIVE');
+    if (!isEL || !isActive) continue;
+    for (const sched of (s.schedules || [])) {
+      const dayLong = sched.weekday || sched.day || '';
+      const dayShort = shortDay[dayLong] || dayLong;
+      if (!DAYS.includes(dayShort)) continue;
+      const start = sched.start || sched.start_time || '';
+      const end   = sched.end   || sched.end_time   || '';
+      if (!start || !end) continue;
+      slots.push({ day: dayShort, start, end, studentName: s.student_name || s.name || 'EL Student' });
+    }
+  }
+  return slots;
+}
+function autoPopulateEL() {
+  const slots = getELStudentSlots();
+  if (!slots.length) {
+    toast('No EL students with a weekly schedule found. Add students with Rate Type = EL and a weekly schedule in the Student Roster, then return here.', 'warn');
+    return;
+  }
+
+  // Group slots by day
+  const byDay = {};
+  for (const sl of slots) {
+    if (!byDay[sl.day]) byDay[sl.day] = [];
+    byDay[sl.day].push(sl);
+  }
+
+  const toMins = t => { const [h,m] = (t||'15:00').split(':').map(Number); return h*60+m; };
+  const shortToLong = { Tue:'Tuesday', Wed:'Wednesday', Thu:'Thursday', Fri:'Friday', Sat:'Saturday' };
+
+  // 30-min timetable slots matching the Teacher Daily Schedule view
+  const TIME_SLOTS_MINS = [
+    { start: 900,  end: 930  }, { start: 930,  end: 960  },
+    { start: 960,  end: 990  }, { start: 990,  end: 1020 },
+    { start: 1020, end: 1050 }, { start: 1050, end: 1080 },
+    { start: 1080, end: 1110 }, { start: 1110, end: 1140 },
+    { start: 1140, end: 1170 },
+  ];
+
+  // Load existing assignments, drop any previously EL-auto-populated ones (full rebuild)
+  let existingAssignments = [];
+  try { existingAssignments = JSON.parse(localStorage.getItem('sb_teacher_assignments') || '[]'); } catch(e) {}
+  existingAssignments = existingAssignments.filter(a => !a.elAutoFilled);
+
+  let totalStudents = 0;
+  const newAssignments = [];
+  const daySummary = []; // e.g. ["Tue: Teacher 1: 2 students, Teacher 2: 1 student"]
+
+  // Process each school day in canonical order
+  for (const day of DAYS) {
+    if (!byDay[day]) continue;
+    const longDay = shortToLong[day] || day;
+
+    // Sort students by start time
+    const daySlots = [...byDay[day]].sort((a, b) => toMins(a.start) - toMins(b.start));
+
+    // Compute which 30-min slot indices each student occupies
+    const studentSlotIndices = daySlots.map(slot => {
+      const ss = toMins(slot.start), se = toMins(slot.end);
+      return TIME_SLOTS_MINS.reduce((acc, ts, idx) => {
+        if (ts.start < se && ts.end > ss) acc.push(idx);
+        return acc;
+      }, []);
+    });
+
+    // Assign students to virtual teachers (Teacher 1, 2, …)
+    // Rule: max 2 students sharing the same 30-min slot per teacher.
+    //       Try to fit into an existing teacher first; create a new one only when needed.
+    // teacherGroups[i] = { slotCounts: {slotIdx: count}, students: [] }
+    const teacherGroups = [];
+
+    daySlots.forEach((slot, i) => {
+      const indices = studentSlotIndices[i];
+      // Find the first teacher that can fit this student (< 2 in all overlapping slots)
+      let assigned = false;
+      for (const grp of teacherGroups) {
+        if (indices.every(idx => (grp.slotCounts[idx] || 0) < 2)) {
+          grp.students.push(slot);
+          indices.forEach(idx => grp.slotCounts[idx] = (grp.slotCounts[idx] || 0) + 1);
+          assigned = true;
+          break;
+        }
+      }
+      if (!assigned) {
+        const grp = { students: [slot], slotCounts: {} };
+        indices.forEach(idx => grp.slotCounts[idx] = 1);
+        teacherGroups.push(grp);
+      }
+    });
+
+    // Write to sb_teacher_assignments using "Teacher 1", "Teacher 2", … labels
+    // Build a summary for the toast: "Tue → Teacher 1 (2 students), Teacher 2 (1 student)"
+    const daySummaryParts = [];
+    teacherGroups.forEach((grp, gIdx) => {
+      const teacherLabel = `Teacher ${gIdx + 1}`;
+      const uniqueStudents = [...new Set(grp.students.map(s => s.studentName))];
+      daySummaryParts.push(`${teacherLabel}: ${uniqueStudents.length} student${uniqueStudents.length > 1 ? 's' : ''}`);
+      for (const slot of grp.students) {
+        const ss = toMins(slot.start), se = toMins(slot.end);
+        TIME_SLOTS_MINS.forEach((ts, idx) => {
+          if (ts.start < se && ts.end > ss) {
+            newAssignments.push({
+              weekday: longDay,
+              teacherName: teacherLabel,
+              studentName: slot.studentName,
+              slotIdx: idx,
+              elAutoFilled: true,
+            });
+          }
+        });
+        totalStudents++;
+      }
+    });
+    if (daySummaryParts.length) {
+      daySummary.push(`${day}: ${daySummaryParts.join(', ')}`);
+    }
+  }
+
+  const allAssignments = [...existingAssignments, ...newAssignments];
+  localStorage.setItem('sb_teacher_assignments', JSON.stringify(allAssignments));
+  if (USE_API) {
+    fetch(`${API_BASE}/teacher-assignments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignments: allAssignments })
+    }).catch(err => console.error("Error saving teacher assignments to DB:", err));
+  }
+
+  if (totalStudents === 0) {
+    toast('No EL students could be assigned. Check that students have a weekly schedule in the Roster.', 'info');
+  } else {
+    const lines = daySummary.join(' · ');
+    toast(`EL schedule ready — ${lines}`, 'ok');
+  }
+  pgSchedule();
+}
+
 function pgSchedule() {
   if (isManager()) {
     const staff = USERS.filter(u => u.role === 'staff' || u.role === 'office_assistant');
-    $('content-area').innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:gap;gap:10px">
-        <div>
-          <div style="font-size:13px;font-weight:600;color:var(--tx-2)">Week: ${SCHEDULE.week}</div>
-          ${SCHEDULE.published?`<span class="badge badge-green" style="margin-top:5px"><i class="ti ti-circle-check"></i> Published ${SCHEDULE.publishedAt}</span>`:'<span class="badge badge-gold" style="margin-top:5px">Draft — staff cannot see this yet</span>'}
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn" onclick="toast('Previous week loading…','info')"><i class="ti ti-chevron-left"></i> Prev week</button>
-          <button class="btn" onclick="toast('Next week loading…','info')">Next week <i class="ti ti-chevron-right"></i></button>
-          <button class="btn" onclick="toast('Week copied!','ok')"><i class="ti ti-copy"></i> Copy Week</button>
-        </div>
+    
+    let viewSelector = `
+      <div class="schedule-view-toggle" style="display:flex;gap:10px;margin-bottom:18px;border-bottom:1px solid var(--bdr);padding-bottom:12px;width:100%">
+        <button class="btn ${currentScheduleView === 'shifts' ? 'btn-primary' : 'btn-ghost'}" onclick="setScheduleView('shifts')"><i class="ti ti-calendar-week"></i> Weekly Shifts</button>
+        <button class="btn ${currentScheduleView === 'teachers' ? 'btn-primary' : 'btn-ghost'}" onclick="setScheduleView('teachers')"><i class="ti ti-users"></i> Teacher Daily Schedule</button>
       </div>
-      <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
-        <div style="overflow-x:auto">
-          <div class="sched-grid" style="min-width:760px; grid-template-columns: 180px repeat(${DAYS.length}, 1fr);">
-            <div class="sched-head" style="text-align:left;padding:10px 14px">Staff Member</div>
-            ${DAYS.map((d,i)=>`<div class="sched-head">${d}<div style="font-size:9px;margin-top:1px;opacity:.6">${FULL_DAYS[i]}</div></div>`).join('')}
-            ${staff.map(u => {
-              const totalH = DAYS.reduce((a,d) => a + getShiftHours(SCHEDULE.shifts[u.id]?.[d]), 0);
-              return `
-                <div class="sched-emp"><div style="display:flex;align-items:center;gap:9px">${mkAv(u,28)}<div><div style="font-weight:600;font-size:12px">${u.name}</div><div style="font-size:10px;color:var(--tx-3)">${deptDot(u.dept)}${u.dept}</div></div></div><div style="margin-left:auto;font-size:11px;font-weight:700;color:var(--navy-3);padding-right:8px">${totalH}h</div></div>
-                ${DAYS.map(d => {
-                  const sh = SCHEDULE.shifts[u.id]?.[d];
-                  return `<div class="sched-cell" style="text-align:center;cursor:pointer" onclick="editShift(${u.id},'${d}')">
-                    ${sh ? shiftTag(sh.type, true) + (sh.type!=='Off'?`<div style="font-size:9.5px;font-weight:600;color:var(--tx-2);margin-top:3.5px">${formatShiftTime(sh.start, sh.end)}</div><div style="font-size:9px;color:var(--tx-3);margin-top:1.5px">${sh.location}</div>`:'') : '<span style="color:var(--tx-4);font-size:12px">+</span>'}
-                  </div>`;
-                }).join('')}`;
-            }).join('')}
+    `;
+
+    if (currentScheduleView === 'shifts') {
+      $('content-area').innerHTML = viewSelector + `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:10px">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--tx-2)">Week: ${SCHEDULE.week}</div>
+            ${SCHEDULE.published?`<span class="badge badge-green" style="margin-top:5px"><i class="ti ti-circle-check"></i> Published ${SCHEDULE.publishedAt}</span>`:'<span class="badge badge-gold" style="margin-top:5px">Draft — staff cannot see this yet</span>'}
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn" onclick="navigateWeek(-1)"><i class="ti ti-chevron-left"></i> Prev week</button>
+            <button class="btn" onclick="navigateWeek(1)">Next week <i class="ti ti-chevron-right"></i></button>
+            <button class="btn" onclick="copyPreviousWeek()"><i class="ti ti-copy"></i> Copy Prev Week</button>
           </div>
         </div>
-      </div>
-      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
-        ${Object.entries(SHIFT_TYPES).map(([k,v])=>`<div style="display:flex;align-items:center;gap:5px">${shiftTag(k)}<span style="font-size:11px;color:var(--tx-2)">${v.label}</span></div>`).join('')}
-        <div style="margin-left:auto;font-size:12px;color:var(--tx-3)">Click a cell to edit shift</div>
-      </div>`;
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+          <div style="overflow-x:auto">
+            <div class="sched-grid" style="min-width:760px; grid-template-columns: 180px repeat(${DAYS.length}, 1fr);">
+              <div class="sched-head" style="text-align:left;padding:10px 14px">Staff Member</div>
+              ${DAYS.map((d,i)=>`<div class="sched-head">${d}<div style="font-size:9px;margin-top:1px;opacity:.6">${FULL_DAYS[i]}</div></div>`).join('')}
+              ${staff.map(u => {
+                const totalH = DAYS.reduce((a,d) => a + getShiftHours(SCHEDULE.shifts[u.id]?.[d]), 0);
+                return `
+                  <div class="sched-emp"><div style="display:flex;align-items:center;gap:9px">${mkAv(u,28)}<div><div style="font-weight:600;font-size:12px">${u.name}</div><div style="font-size:10px;color:var(--tx-3)">${deptDot(u.dept)}${u.dept}</div></div></div><div style="margin-left:auto;font-size:11px;font-weight:700;color:var(--navy-3);padding-right:8px">${totalH}h</div></div>
+                  ${DAYS.map(d => {
+                    const sh = SCHEDULE.shifts[u.id]?.[d];
+                    const isELFill = sh?.elAutoFilled;
+                    return `<div class="sched-cell" style="text-align:center;cursor:pointer;${isELFill?'outline:2px solid var(--teal);outline-offset:-2px;':''}" onclick="editShift(${u.id},'${d}')">
+                      ${sh ? shiftTag(sh.type, true) + (sh.type!=='Off'?`<div style="font-size:9.5px;font-weight:600;color:var(--tx-2);margin-top:3.5px">${formatShiftTime(sh.start, sh.end)}</div><div style="font-size:9px;color:var(--tx-3);margin-top:1.5px">${sh.location}${isELFill?' <span style="color:var(--teal);font-weight:700">EL</span>':''}</div>`:'') : '<span style="color:var(--tx-4);font-size:12px">+</span>'}
+                    </div>`;
+                  }).join('')}`;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+          ${Object.entries(SHIFT_TYPES).map(([k,v])=>`<div style="display:flex;align-items:center;gap:5px">${shiftTag(k)}<span style="font-size:11px;color:var(--tx-2)">${v.label}</span></div>`).join('')}
+          <span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--teal)"><span style="width:10px;height:10px;border:2px solid var(--teal);border-radius:2px;display:inline-block"></span> EL auto-filled</span>
+          <div style="margin-left:auto;font-size:12px;color:var(--tx-3)">Click a cell to edit shift</div>
+        </div>
+      `;
+    } else {
+      const shortToLongDay = { 'Tue': 'Tuesday', 'Wed': 'Wednesday', 'Thu': 'Thursday', 'Fri': 'Friday', 'Sat': 'Saturday' };
+      const longDay = shortToLongDay[activeTeacherDay] || "Tuesday";
+
+      let rawAssignments = localStorage.getItem('sb_teacher_assignments');
+      let teacherAssignments = [];
+      try {
+        if (rawAssignments) teacherAssignments = JSON.parse(rawAssignments);
+      } catch (e) {
+        console.error("Error parsing teacher assignments:", e);
+      }
+
+      const dayAssignments = teacherAssignments.filter(a => a.weekday === longDay);
+
+      const TIME_SLOTS = [
+        { label: "3:00 - 3:30", start: 15 * 60, end: 15 * 60 + 30 },
+        { label: "3:30 - 4:00", start: 15 * 60 + 30, end: 16 * 60 },
+        { label: "4:00 - 4:30", start: 16 * 60, end: 16 * 60 + 30 },
+        { label: "4:30 - 5:00", start: 16 * 60 + 30, end: 17 * 60 },
+        { label: "5:00 - 5:30", start: 17 * 60, end: 17 * 60 + 30 },
+        { label: "5:30 - 6:00", start: 17 * 60 + 30, end: 18 * 60 },
+        { label: "6:00 - 6:30", start: 18 * 60, end: 18 * 60 + 30 },
+        { label: "6:30 - 7:00", start: 18 * 60 + 30, end: 19 * 60 },
+        { label: "7:00 - 7:30", start: 19 * 60, end: 19 * 60 + 30 }
+      ];
+
+      // Build teacher rows from actual assignments only (no hardcoded placeholders)
+      // teacherName is now stored as "Teacher 1", "Teacher 2", … — sort numerically
+      const activeTeachers = new Set();
+      dayAssignments.forEach(a => { if (a.teacherName) activeTeachers.add(a.teacherName); });
+      const sortedTeachers = Array.from(activeTeachers).sort((a, b) => {
+        const na = parseInt(a.replace(/\D+/g, '')) || 0;
+        const nb = parseInt(b.replace(/\D+/g, '')) || 0;
+        return na - nb;
+      });
+
+      let tbodyHtml = "";
+      if (sortedTeachers.length === 0) {
+        tbodyHtml = `<tr><td colspan="${TIME_SLOTS.length + 1}" style="text-align:center;padding:32px;color:var(--tx-3);font-size:13px">
+          No assignments yet — click <strong>Auto-populate EL</strong> above to fill from the Student Roster.
+        </td></tr>`;
+      } else {
+        sortedTeachers.forEach(teacher => {
+          const uniqueCount = new Set(dayAssignments.filter(a => a.teacherName === teacher).map(a => a.studentName)).size;
+          const countBadge = `<span style="font-size:10px;font-weight:500;color:var(--teal);margin-left:5px">(${uniqueCount} student${uniqueCount !== 1 ? 's' : ''})</span>`;
+          let rowHtml = `<tr><td style="font-weight:700;font-size:13px;min-width:120px;color:var(--navy)">${teacher}${countBadge}</td>`;
+          TIME_SLOTS.forEach((slot, sIdx) => {
+            const slotStudents = dayAssignments
+              .filter(a => a.teacherName === teacher && a.slotIdx === sIdx)
+              .map(a => a.studentName);
+            rowHtml += slotStudents.length > 0
+              ? `<td>${slotStudents.map(name => `<div class="teacher-student-chip">${name}</div>`).join('')}</td>`
+              : `<td style="color:var(--tx-4);font-size:11px">—</td>`;
+          });
+          rowHtml += `</tr>`;
+          tbodyHtml += rowHtml;
+        });
+      }
+
+      $('content-area').innerHTML = viewSelector + `
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;flex-wrap:gap;gap:10px">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--tx-2)">Teacher Daily Assignments Timeline</div>
+            <span class="badge badge-navy" style="margin-top:5px"><i class="ti ti-clock"></i> 30-minute intervals · EL Rate Type students</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <div class="presence-subtabs" style="display:flex;gap:6px">
+              ${DAYS.map(day => `
+                <button class="subtab ${activeTeacherDay === day ? 'active' : ''}" onclick="setTeacherActiveDay('${day}')">${day}</button>
+              `).join('')}
+            </div>
+            <button class="btn btn-teal" onclick="autoPopulateEL()" title="Auto-fill from EL (Rate Type) student schedules in the Student Roster"><i class="ti ti-sparkles"></i> Auto-populate EL</button>
+          </div>
+        </div>
+
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
+          <div style="overflow-x:auto">
+            <table class="presence-timetable">
+              <thead>
+                <tr>
+                  <th>Teacher</th>
+                  ${TIME_SLOTS.map(slot => `<th>${slot.label}</th>`).join("")}
+                </tr>
+              </thead>
+              <tbody>
+                ${tbodyHtml}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
   } else {
     // Staff — ONLY their own schedule, no other staff visible
     const myS = SCHEDULE.shifts[CU.id] || {};
@@ -1370,6 +2155,14 @@ function saveEditShift(uid, day) {
     toast('Please enter both start and end times for manual entry.', 'warn');
     return;
   }
+
+  // Conflict detection: check if this staff is already scheduled on the same day with overlapping times
+  if (type !== 'Off' && start && end) {
+    const conflicts = detectShiftConflicts(uid, day, start, end, uid);
+    if (conflicts.length > 0) {
+      toast(`⚠️ Conflict detected on ${day}: this shift overlaps with an existing assignment.`, 'warn');
+    }
+  }
   
   SCHEDULE.shifts[uid][day] = { 
     type, 
@@ -1381,6 +2174,27 @@ function saveEditShift(uid, day) {
   };
   saveSchedule();
   closeModal(); pgSchedule(); toast('Shift updated!', 'ok');
+}
+
+function detectShiftConflicts(uid, day, newStart, newEnd, excludeUid) {
+  const conflicts = [];
+  const toMins = t => { if (!t) return 0; const [h,m] = t.split(':').map(Number); return h*60+m; };
+  const ns = toMins(newStart), ne = toMins(newEnd);
+  // Check all other staff on the same day for double-booking a location/resource
+  // Also flag if same person has two non-Off shifts (shouldn't happen, but guard it)
+  const staff = USERS.filter(u => u.role === 'staff' || u.role === 'office_assistant');
+  staff.forEach(u => {
+    if (u.id === uid) return;
+    const sh = SCHEDULE.shifts[u.id]?.[day];
+    if (!sh || sh.type === 'Off' || !sh.start || !sh.end) return;
+    if (sh.location && SCHEDULE.shifts[uid]?.[day]?.location && sh.location === SCHEDULE.shifts[uid]?.[day]?.location && sh.location !== 'Office' && sh.location !== 'Off-site') {
+      const ss = toMins(sh.start), se = toMins(sh.end);
+      if (ns < se && ne > ss) {
+        conflicts.push({ uid: u.id, name: u.name, day });
+      }
+    }
+  });
+  return conflicts;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1500,16 +2314,22 @@ function renderMobScreen() {
   if (MOB.step === 'select') {
     pb.innerHTML = `
       <div style="font-size:12.5px;font-weight:600;color:var(--tx-2);margin-bottom:10px">Select your name to continue</div>
-      ${staff.map(s => {
-        const cd = CLOCK_DATA[s.id];
-        const stat = cd?.status==='in' ? ['badge-green','Clocked In'] : cd?.status==='out' ? ['badge-gray','Done'] : ['badge-gold','Away'];
-        return `<div class="mob-emp-row" onclick="mobSelectEmp(${s.id})">
-          <div style="display:flex;align-items:center;gap:9px">${mkAv(s,36)}<div><div style="font-size:13px;font-weight:600">${s.name}</div><div style="font-size:11px;color:var(--tx-3)">${s.pos}</div></div></div>
-          <span class="badge ${stat[0]}">${stat[1]}</span>
-        </div>`;
-      }).join('')}`;
+      <div style="position:relative;margin-bottom:12px">
+        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--tx-3)"><i class="ti ti-search" style="font-size:14px"></i></span>
+        <input type="text" id="mob-search-input" placeholder="Search name..." oninput="mobFilterNames(this.value)" style="width:100%;padding:8px 8px 8px 30px;border-radius:var(--r8);border:1.5px solid var(--bdr-2);background:var(--sfc);color:var(--tx);font-family:var(--font);font-size:12.5px;box-sizing:border-box">
+      </div>
+      <div id="mob-emp-list-container">
+        ${staff.map(s => {
+          const cd = CLOCK_DATA[s.id];
+          const stat = cd?.status==='in' ? ['badge-green','Clocked In'] : cd?.status==='out' ? ['badge-gray','Done'] : ['badge-gold','Away'];
+          return `<div class="mob-emp-row" data-name="${s.name.toLowerCase()}" onclick="mobSelectEmp(${s.id})">
+            <div style="display:flex;align-items:center;gap:9px">${mkAv(s,36)}<div><div style="font-size:13px;font-weight:600">${s.name}</div><div style="font-size:11px;color:var(--tx-3)">${s.pos}</div></div></div>
+            <span class="badge ${stat[0]}">${stat[1]}</span>
+          </div>`;
+        }).join('')}
+      </div>`;
   }
-
+  
   else if (MOB.step === 'pin') {
     const u = USERS.find(x => x.id === MOB.empId);
     const actionLbl = MOB.action === 'in' ? 'Clock In' : 'Clock Out';
@@ -1519,10 +2339,20 @@ function renderMobScreen() {
       </div>
       <div style="text-align:center;margin-bottom:12px">
         <div style="font-size:11.5px;color:var(--tx-3);margin-bottom:8px">Enter your 4-digit PIN</div>
-        <div id="mob-pin-dots" style="font-size:28px;letter-spacing:12px;min-height:40px;color:var(--navy)">○○○○</div>
+        <div id="mob-pin-dots" class="pin-dots-container">
+          <span class="pin-dot"></span>
+          <span class="pin-dot"></span>
+          <span class="pin-dot"></span>
+          <span class="pin-dot"></span>
+        </div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:220px;margin:0 auto 12px">
-        ${['1','2','3','4','5','6','7','8','9','CLR','0','⌫'].map(k=>`<button class="numpad-btn${k==='CLR'?' clr':''}" style="padding:10px;background:var(--bg);color:var(--tx);border:1.5px solid var(--bdr-2);font-size:14px" onclick="mobPin('${k}')">${k}</button>`).join('')}
+      <div class="mob-numpad">
+        ${['1','2','3','4','5','6','7','8','9','CLR','0','⌫'].map(k => {
+          if (k === 'CLR' || k === '⌫') {
+            return `<button class="mob-numpad-btn action-btn" onclick="mobPin('${k}')">${k}</button>`;
+          }
+          return `<button class="mob-numpad-btn" onclick="mobPin('${k}')">${k}</button>`;
+        }).join('')}
       </div>
       <div id="mob-pin-err" style="color:var(--red);font-size:11.5px;text-align:center;min-height:18px;margin-bottom:8px"></div>
       <button class="btn btn-primary btn-lg" style="width:100%;justify-content:center" onclick="mobSubmitPin()"><i class="ti ti-arrow-right"></i> Continue</button>
@@ -1579,14 +2409,64 @@ function mobPin(k) {
   const errEl = $('mob-pin-err');
   if (errEl) errEl.textContent = '';
 }
+function mobFilterNames(q) {
+  const query = q.trim().toLowerCase();
+  const rows = document.querySelectorAll('.mob-emp-row');
+  rows.forEach(row => {
+    const name = row.getAttribute('data-name') || '';
+    if (name.includes(query)) {
+      row.style.display = 'flex';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+}
 function updateMobPinDots() {
   const el = $('mob-pin-dots');
-  if (el) el.textContent = '●'.repeat(MOB.pin.length) + '○'.repeat(4 - MOB.pin.length);
+  if (!el) return;
+  const dots = el.querySelectorAll('.pin-dot');
+  if (dots.length === 4) {
+    dots.forEach((dot, idx) => {
+      if (idx < MOB.pin.length) {
+        dot.classList.add('filled');
+      } else {
+        dot.classList.remove('filled');
+      }
+    });
+  } else {
+    el.textContent = '●'.repeat(MOB.pin.length) + '○'.repeat(4 - MOB.pin.length);
+  }
 }
-function mobSubmitPin() {
+async function mobSubmitPin() {
   const u = USERS.find(x => x.id === MOB.empId);
-  if (!u || MOB.pin !== u.pin) {
-    const err = $('mob-pin-err'); if (err) err.textContent = 'Incorrect PIN. Please try again.';
+  if (!u) {
+    const err = $('mob-pin-err'); if (err) err.textContent = 'User not found.';
+    return;
+  }
+  const err = $('mob-pin-err');
+  if (USE_API) {
+    if (err) err.textContent = 'Verifying PIN…';
+    try {
+      const r = await fetch(`${API_BASE}/auth/pin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staffId: MOB.empId, pin: MOB.pin })
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        if (err) err.textContent = data.error || 'Incorrect PIN. Please try again.';
+        MOB.pin = ''; updateMobPinDots();
+        return;
+      }
+      MOB.step = 'gps'; renderMobScreen();
+    } catch (e) {
+      if (err) err.textContent = 'Connection error. Please try again.';
+    }
+    return;
+  }
+  
+  if (MOB.pin !== u.pin) {
+    if (err) err.textContent = 'Incorrect PIN. Please try again.';
     MOB.pin = ''; updateMobPinDots(); return;
   }
   MOB.step = 'gps'; renderMobScreen();
@@ -1637,10 +2517,21 @@ function completeCheckin(gpsOK, lat, lng, dist) {
   MOB.gpsResult = { ok: gpsOK, lat, lng, dist };
   doClock(MOB.empId, MOB.action, gpsOK, lat, lng, dist);
   MOB.step = 'done';
-  renderMobScreen();
-  pgCheckin(); // refresh live status panel
-  // re-render phone screen after refresh
-  setTimeout(()=>renderMobScreen(),50);
+  
+  if (USE_API) {
+    setTimeout(() => {
+      probeServerAndLoadData().then(() => {
+        pgCheckin();
+        setTimeout(() => {
+          MOB.step = 'done';
+          renderMobScreen();
+        }, 50);
+      });
+    }, 200);
+  } else {
+    pgCheckin();
+    setTimeout(() => renderMobScreen(), 50);
+  }
 }
 
 function saveGPSSettings() {
@@ -1657,15 +2548,22 @@ function adminClock(type) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PAGE: TIMESHEETS
+// PAGE: TIMESHEETS (with approval workflow)
 // ═══════════════════════════════════════════════════════════════════════════
 function pgTimesheets(deptFilter = '') {
   let staff = USERS.filter(u => u.role === 'staff' || u.role === 'office_assistant');
-  if (deptFilter) {
-    staff = staff.filter(u => u.dept === deptFilter);
-  }
+  if (deptFilter) staff = staff.filter(u => u.dept === deptFilter);
   const getH = uid => DAYS.reduce((a,d) => a + getShiftHours(SCHEDULE.shifts[uid]?.[d]), 0);
+  const pendingCount = staff.filter(u => (TIMESHEET_APPROVALS[u.id]?.status || 'pending') === 'pending').length;
+
+  const approvalBanner = isManager() && pendingCount > 0 ? `
+    <div class="approval-banner">
+      <i class="ti ti-clock" style="font-size:20px;flex-shrink:0"></i>
+      <div><strong>${pendingCount} timesheet${pendingCount>1?'s':''} awaiting your approval</strong> — review hours below and approve individually or use "Approve All".</div>
+    </div>` : '';
+
   $('content-area').innerHTML = `
+    ${approvalBanner}
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:10px">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <select class="fc" style="width:160px"><option>This week</option><option>Last week</option><option>This month</option><option>Last month</option></select>
@@ -1681,31 +2579,39 @@ function pgTimesheets(deptFilter = '') {
     </div>
     <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px">
       <div style="overflow-x:auto">
-        <table class="tbl" style="min-width:680px">
+        <table class="tbl" style="min-width:780px">
           <thead><tr>
             <th style="width:200px">Employee</th>
             ${DAYS.map(d=>`<th style="text-align:center">${d}</th>`).join('')}
             <th style="text-align:center">Total</th>
-            <th style="text-align:center">Overtime</th>
+            <th style="text-align:center">OT</th>
             <th style="text-align:center">Status</th>
+            ${isManager()?'<th style="text-align:center">Approval</th>':''}
           </tr></thead>
           <tbody>
-          ${staff.map((u,ri) => {
+          ${staff.map((u) => {
             const total = getH(u.id);
             const ot = Math.max(0, total - 40);
-            return `<tr>
+            const appr = TIMESHEET_APPROVALS[u.id] || { status: 'pending' };
+            const rowClass = appr.status === 'approved' ? 'ts-row-approved' : appr.status === 'pending' && total > 0 ? 'ts-row-pending' : '';
+            return `<tr class="${rowClass}">
               <td><div style="display:flex;align-items:center;gap:9px">${mkAv(u,30)}<div><div style="font-weight:600">${u.name}</div><div style="font-size:11px;color:var(--tx-3)">${deptDot(u.dept)}${u.dept}</div></div></div></td>
-              ${DAYS.map(d=>{const s=SCHEDULE.shifts[u.id]?.[d];return`<td style="text-align:center;font-size:12.5px;color:${s?.type==='Off'?'var(--tx-4)':'var(--tx)'}">${s?.type==='Off'?'–':s?`${getShiftHours(s)}h`:'–'}</td>`;}).join('')}
+              ${DAYS.map(d=>{const s=SCHEDULE.shifts[u.id]?.[d];const h=getShiftHours(s);const cd=CLOCK_DATA[u.id];const clocked=cd?.in?`<div style="font-size:9px;color:var(--green-dk);font-weight:600">✓ ${cd.in}</div>`:'';return`<td style="text-align:center;font-size:12.5px;color:${s?.type==='Off'?'var(--tx-4)':'var(--tx)'}">${s?.type==='Off'?'–':s?`<strong>${h}h</strong>${clocked}`:'–'}</td>`;}).join('')}
               <td style="text-align:center;font-weight:700;font-size:14px;color:${ot>0?'var(--red)':'var(--tx)'}">${total}h</td>
-              <td style="text-align:center;font-size:13px;color:${ot>0?'var(--red)':'var(--tx-4)'};font-weight:${ot>0?700:400}">${ot>0?`+${ot}h OT`:'—'}</td>
-              <td style="text-align:center"><span class="badge ${total>=15?'badge-green':'badge-gold'}">${total>=15?'Complete':'Partial'}</span></td>
+              <td style="text-align:center;font-size:13px;color:${ot>0?'var(--red)':'var(--tx-4)'};font-weight:${ot>0?700:400}">${ot>0?`+${ot}h`:'—'}</td>
+              <td style="text-align:center"><span class="badge ${appr.status==='approved'?'badge-green':total>0?'badge-gold':'badge-gray'}">${appr.status==='approved'?'<i class="ti ti-circle-check"></i> Approved':total>0?'Pending':'No Hours'}</span></td>
+              ${isManager()?`<td style="text-align:center">
+                ${appr.status==='approved'
+                  ? `<button class="btn btn-sm" onclick="unapproveTimesheet('${u.id}')" style="font-size:11px"><i class="ti ti-arrow-back-up"></i> Undo</button>`
+                  : total>0 ? `<button class="btn btn-green btn-sm" onclick="approveTimesheet('${u.id}')"><i class="ti ti-check"></i> Approve</button>` : '—'}
+              </td>`:''}
             </tr>`;
           }).join('')}
           <tr style="background:var(--bg);font-weight:700">
             <td colspan="${1 + DAYS.length}" style="font-size:12px;color:var(--tx-2);padding:10px 14px">Totals</td>
             <td style="text-align:center;font-size:14px;font-weight:700">${staff.reduce((a,u)=>a+getH(u.id),0)}h</td>
             <td style="text-align:center;font-size:13px;color:var(--red)">${staff.reduce((a,u)=>a+Math.max(0,getH(u.id)-40),0)>0?`+${staff.reduce((a,u)=>a+Math.max(0,getH(u.id)-40),0)}h`:'—'}</td>
-            <td></td>
+            <td colspan="${isManager()?2:1}"></td>
           </tr>
           </tbody>
         </table>
@@ -1714,9 +2620,388 @@ function pgTimesheets(deptFilter = '') {
     <div class="g4">
       <div class="metric"><div class="metric-label">Total scheduled hours</div><div class="metric-val" style="color:var(--blue)">${staff.reduce((a,u)=>a+getH(u.id),0)}h</div></div>
       <div class="metric"><div class="metric-label">Overtime hours</div><div class="metric-val" style="color:var(--red)">${staff.reduce((a,u)=>a+Math.max(0,getH(u.id)-40),0)}h</div><div class="metric-sub">at time & a half</div></div>
-      <div class="metric"><div class="metric-label">Avg per staff</div><div class="metric-val" style="color:var(--green)">${Math.round(staff.reduce((a,u)=>a+getH(u.id),0)/staff.length)}h</div></div>
-      <div class="metric"><div class="metric-label">Staff at full hours</div><div class="metric-val">${staff.filter(u=>getH(u.id)>=38).length}/${staff.length}</div></div>
+      <div class="metric"><div class="metric-label">Avg per staff</div><div class="metric-val" style="color:var(--green)">${Math.round(staff.reduce((a,u)=>a+getH(u.id),0)/Math.max(1,staff.length))}h</div></div>
+      <div class="metric"><div class="metric-label">Approved</div><div class="metric-val" style="color:var(--green)">${staff.filter(u=>TIMESHEET_APPROVALS[u.id]?.status==='approved').length}/${staff.length}</div><div class="metric-sub">timesheets signed off</div></div>
     </div>`;
+}
+
+function approveTimesheet(uid) {
+  TIMESHEET_APPROVALS[uid] = { status: 'approved', approvedBy: CU.id, approvedAt: new Date().toLocaleString('en-CA', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) };
+  saveTsApprovals();
+  const u = USERS.find(x => x.id === uid);
+  pgTimesheets(); buildSidebar(); toast(`${u?.name}'s timesheet approved!`, 'ok');
+}
+
+function unapproveTimesheet(uid) {
+  delete TIMESHEET_APPROVALS[uid];
+  saveTsApprovals();
+  pgTimesheets(); buildSidebar(); toast('Approval reversed.', 'info');
+}
+
+function approveAllTimesheets() {
+  const staff = USERS.filter(u => u.role === 'staff' || u.role === 'office_assistant');
+  const getH = uid => DAYS.reduce((a,d) => a + getShiftHours(SCHEDULE.shifts[uid]?.[d]), 0);
+  let count = 0;
+  staff.forEach(u => {
+    if (getH(u.id) > 0 && (!TIMESHEET_APPROVALS[u.id] || TIMESHEET_APPROVALS[u.id].status !== 'approved')) {
+      TIMESHEET_APPROVALS[u.id] = { status: 'approved', approvedBy: CU.id, approvedAt: new Date().toLocaleString('en-CA', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) };
+      count++;
+    }
+  });
+  saveTsApprovals();
+  pgTimesheets(); buildSidebar(); toast(`${count} timesheet${count!==1?'s':''} approved!`, 'ok');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAGE: SHIFT SWAP BOARD
+// ═══════════════════════════════════════════════════════════════════════════
+function pgSwapBoard() {
+  const mySwaps = SWAPS.filter(s => s.uid === CU.id);
+  const openSwaps = SWAPS.filter(s => s.status === 'open' && s.uid !== CU.id);
+  const claimedByMe = SWAPS.filter(s => s.claimedBy === CU.id);
+  const pendingApproval = SWAPS.filter(s => s.status === 'claimed');
+
+  const docTypeColors = { open: 'var(--blue)', claimed: 'var(--amber)', approved: 'var(--green)', denied: 'var(--red)' };
+
+  const renderSwapCard = (s, showActions) => {
+    const poster = USERS.find(u => u.id === s.uid);
+    const claimer = s.claimedBy ? USERS.find(u => u.id === s.claimedBy) : null;
+    const statusColors = { open: 'badge-blue', claimed: 'badge-gold', approved: 'badge-green', denied: 'badge-red' };
+    const myShift = SCHEDULE.shifts[CU.id]?.[s.day];
+    const canClaim = s.status === 'open' && s.uid !== CU.id && myShift && myShift.type === 'Off';
+    return `
+      <div class="swap-card ${s.status === 'claimed' ? 'claimed' : s.status === 'approved' ? 'approved' : ''}">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
+          <div style="display:flex;align-items:center;gap:10px">
+            ${mkAv(poster || {name:'?',av:'?'}, 36)}
+            <div>
+              <div style="font-weight:700;font-size:13px">${poster?.name}</div>
+              <div style="font-size:11px;color:var(--tx-3)">${poster?.pos} · ${poster?.dept}</div>
+            </div>
+          </div>
+          <span class="badge ${statusColors[s.status] || 'badge-gray'}" style="flex-shrink:0;text-transform:capitalize">${s.status}</span>
+        </div>
+        <div style="background:var(--bg);border-radius:var(--r10);padding:10px 14px;margin-bottom:12px;display:flex;flex-wrap:wrap;gap:14px;font-size:12px">
+          <div><span style="color:var(--tx-3)">Day:</span> <strong>${s.day}</strong></div>
+          <div><span style="color:var(--tx-3)">Shift:</span> <strong>${s.shiftType}</strong></div>
+          <div><span style="color:var(--tx-3)">Time:</span> <strong>${s.start} – ${s.end}</strong></div>
+          <div><span style="color:var(--tx-3)">Posted:</span> <strong>${s.postedOn}</strong></div>
+        </div>
+        ${s.note ? `<div style="font-size:12px;color:var(--tx-2);margin-bottom:12px;font-style:italic">"${s.note}"</div>` : ''}
+        ${claimer ? `<div style="font-size:12px;color:var(--amber);margin-bottom:10px;display:flex;align-items:center;gap:7px">${mkAv(claimer,22)} <strong>${claimer.name}</strong> wants to cover this shift</div>` : ''}
+        ${showActions ? `
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${s.status === 'open' && s.uid !== CU.id && canClaim ? `<button class="btn btn-primary btn-sm" onclick="claimSwap(${s.id})"><i class="ti ti-hand-finger"></i> Claim This Shift</button>` : ''}
+            ${s.status === 'open' && s.uid !== CU.id && !canClaim && s.uid !== CU.id ? `<div style="font-size:11.5px;color:var(--tx-3);padding:5px 0"><i class="ti ti-info-circle"></i> You need a free slot on ${s.day} to claim</div>` : ''}
+            ${s.status === 'claimed' && isManager() ? `
+              <button class="btn btn-green btn-sm" onclick="approveSwap(${s.id})"><i class="ti ti-check"></i> Approve Swap</button>
+              <button class="btn btn-red btn-sm" onclick="denySwap(${s.id})"><i class="ti ti-x"></i> Deny</button>` : ''}
+            ${s.uid === CU.id && s.status === 'open' ? `<button class="btn btn-sm" onclick="cancelSwap(${s.id})" style="color:var(--red)"><i class="ti ti-trash"></i> Cancel Post</button>` : ''}
+            ${s.claimedBy === CU.id && s.status === 'claimed' ? `<span class="badge badge-gold"><i class="ti ti-clock"></i> Awaiting manager approval</span>` : ''}
+            ${s.status === 'approved' && (s.uid === CU.id || s.claimedBy === CU.id) ? `<span class="badge badge-green"><i class="ti ti-circle-check"></i> Swap approved — schedule updated!</span>` : ''}
+          </div>` : ''}
+      </div>`;
+  };
+
+  if (isManager()) {
+    $('content-area').innerHTML = `
+      <div class="tab-bar" style="margin-bottom:20px" id="swap-tabs">
+        <div class="tab active" onclick="swapTab('all',this)">All Swaps (${SWAPS.length})</div>
+        <div class="tab" onclick="swapTab('pending',this)">Pending Approval (${pendingApproval.length})</div>
+        <div class="tab" onclick="swapTab('open',this)">Open (${SWAPS.filter(s=>s.status==='open').length})</div>
+        <div class="tab" onclick="swapTab('approved',this)">Approved (${SWAPS.filter(s=>s.status==='approved').length})</div>
+      </div>
+      <div id="swap-content">
+        ${SWAPS.length === 0 ? `<div class="card" style="text-align:center;padding:48px"><i class="ti ti-arrows-exchange" style="font-size:48px;color:var(--tx-4);display:block;margin-bottom:14px"></i><div style="font-weight:700;font-size:16px;margin-bottom:6px">No shift swap requests</div><div style="font-size:13px;color:var(--tx-3)">Staff members can post shifts they need covered from the Swap Board.</div></div>` :
+        `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px">
+          ${SWAPS.map(s => renderSwapCard(s, true)).join('')}
+        </div>`}
+      </div>`;
+  } else {
+    $('content-area').innerHTML = `
+      ${openSwaps.length > 0 ? `
+        <div style="margin-bottom:22px">
+          <div style="font-size:13px;font-weight:700;color:var(--tx-2);margin-bottom:12px;display:flex;align-items:center;gap:6px"><i class="ti ti-world"></i> Open Shifts Available to Claim</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">
+            ${openSwaps.map(s => renderSwapCard(s, true)).join('')}
+          </div>
+        </div>` : `
+        <div class="card" style="background:var(--green-lt);border:1.5px solid var(--green);margin-bottom:20px;padding:14px 18px;display:flex;align-items:center;gap:10px">
+          <i class="ti ti-circle-check" style="color:var(--green);font-size:20px"></i>
+          <span style="font-size:13px;font-weight:600;color:var(--green-dk)">No open shifts to claim right now. Check back later!</span>
+        </div>`}
+      ${(mySwaps.length > 0 || claimedByMe.length > 0) ? `
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--tx-2);margin-bottom:12px;display:flex;align-items:center;gap:6px"><i class="ti ti-user"></i> My Swap Activity</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px">
+            ${[...mySwaps, ...claimedByMe.filter(s => !mySwaps.find(x=>x.id===s.id))].map(s => renderSwapCard(s, true)).join('')}
+          </div>
+        </div>` : ''}`;
+  }
+}
+
+function swapTab(filter, tab) {
+  document.querySelectorAll('#swap-tabs .tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  const filtered = filter === 'all' ? SWAPS : filter === 'pending' ? SWAPS.filter(s=>s.status==='claimed') : SWAPS.filter(s=>s.status===filter);
+  const container = $('swap-content');
+  if (!container) return;
+  if (filtered.length === 0) {
+    container.innerHTML = `<div class="card" style="text-align:center;padding:32px;color:var(--tx-3)">No swaps in this category.</div>`;
+    return;
+  }
+  container.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px">${filtered.map(s => {
+    const poster = USERS.find(u=>u.id===s.uid), claimer = s.claimedBy ? USERS.find(u=>u.id===s.claimedBy) : null;
+    const statusColors = { open:'badge-blue', claimed:'badge-gold', approved:'badge-green', denied:'badge-red' };
+    return `<div class="swap-card ${s.status==='claimed'?'claimed':s.status==='approved'?'approved':''}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px">${mkAv(poster||{name:'?',av:'?'},36)}<div><div style="font-weight:700;font-size:13px">${poster?.name}</div><div style="font-size:11px;color:var(--tx-3)">${poster?.pos}</div></div></div>
+        <span class="badge ${statusColors[s.status]||'badge-gray'}">${s.status}</span>
+      </div>
+      <div style="background:var(--bg);border-radius:var(--r10);padding:10px 14px;margin-bottom:10px;display:flex;flex-wrap:wrap;gap:10px;font-size:12px">
+        <div><span style="color:var(--tx-3)">Day:</span> <strong>${s.day}</strong></div>
+        <div><span style="color:var(--tx-3)">Shift:</span> <strong>${s.shiftType}</strong></div>
+        <div><span style="color:var(--tx-3)">Time:</span> <strong>${s.start}–${s.end}</strong></div>
+      </div>
+      ${claimer ? `<div style="font-size:12px;color:var(--amber);margin-bottom:10px;display:flex;align-items:center;gap:7px">${mkAv(claimer,22)} <strong>${claimer.name}</strong> wants to cover</div>` : ''}
+      ${s.status==='claimed' ? `<div style="display:flex;gap:8px"><button class="btn btn-green btn-sm" onclick="approveSwap(${s.id})"><i class="ti ti-check"></i> Approve</button><button class="btn btn-red btn-sm" onclick="denySwap(${s.id})"><i class="ti ti-x"></i> Deny</button></div>` : ''}
+    </div>`;
+  }).join('')}</div>`;
+}
+
+function showPostSwap() {
+  const myShifts = SCHEDULE.shifts[CU.id] || {};
+  const workingDays = DAYS.filter(d => myShifts[d]?.type !== 'Off');
+  if (workingDays.length === 0) { toast('You have no scheduled shifts to post for swap.', 'warn'); return; }
+  openModal('Post Shift for Swap', `
+    <div style="font-size:12.5px;color:var(--tx-2);margin-bottom:14px;line-height:1.5">Select one of your upcoming shifts to post on the Swap Board. A colleague can claim it, and your manager will approve the final swap.</div>
+    <div class="fg"><label class="fl">Which shift to post</label>
+      <select class="fc" id="sw-day">
+        ${workingDays.map(d=>{const sh=myShifts[d];return`<option value="${d}">${d} — ${sh.type} (${sh.start||'?'}–${sh.end||'?'})</option>`;}).join('')}
+      </select>
+    </div>
+    <div class="fg"><label class="fl">Reason (optional)</label>
+      <input class="fc" id="sw-note" placeholder="e.g. Doctor appointment, family commitment…">
+    </div>`,
+    `<button class="btn btn-primary" onclick="submitSwap()"><i class="ti ti-send"></i> Post to Swap Board</button><button class="btn" onclick="closeModal()">Cancel</button>`);
+}
+
+function submitSwap() {
+  const day = $('sw-day')?.value;
+  if (!day) return;
+  const sh = SCHEDULE.shifts[CU.id]?.[day];
+  if (!sh) return;
+  SWAPS.push({ id: Date.now(), uid: CU.id, day, shiftType: sh.type, start: sh.start||'?', end: sh.end||'?', note: $('sw-note')?.value||'', status: 'open', claimedBy: null, postedOn: new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric'}) });
+  saveSwaps();
+  closeModal(); pgSwapBoard(); buildSidebar(); toast('Shift posted to the Swap Board!', 'ok');
+}
+
+function claimSwap(id) {
+  SWAPS = SWAPS.map(s => s.id === id ? { ...s, status: 'claimed', claimedBy: CU.id } : s);
+  saveSwaps(); pgSwapBoard(); buildSidebar(); toast('Shift claimed! Waiting for manager approval.', 'ok');
+}
+
+function approveSwap(id) {
+  const s = SWAPS.find(x => x.id === id);
+  if (!s) return;
+  // Swap the schedule entries
+  const posterShift = SCHEDULE.shifts[s.uid]?.[s.day];
+  const claimerShift = SCHEDULE.shifts[s.claimedBy]?.[s.day];
+  if (posterShift && claimerShift !== undefined) {
+    SCHEDULE.shifts[s.claimedBy][s.day] = { ...posterShift, ack: false };
+    SCHEDULE.shifts[s.uid][s.day] = { type: 'Off', start: null, end: null, location: 'Off', notes: 'Shift swapped', ack: false };
+    saveSchedule();
+  }
+  SWAPS = SWAPS.map(x => x.id === id ? { ...x, status: 'approved' } : x);
+  saveSwaps(); pgSwapBoard(); buildSidebar(); toast('Swap approved — schedule updated!', 'ok');
+}
+
+function denySwap(id) {
+  SWAPS = SWAPS.map(s => s.id === id ? { ...s, status: 'open', claimedBy: null } : s);
+  saveSwaps(); pgSwapBoard(); toast('Swap request denied. Shift returned to open board.', 'info');
+}
+
+function cancelSwap(id) {
+  SWAPS = SWAPS.filter(s => s.id !== id);
+  saveSwaps(); pgSwapBoard(); buildSidebar(); toast('Swap post cancelled.', 'info');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAGE: DOCUMENT VAULT
+// ═══════════════════════════════════════════════════════════════════════════
+function pgDocuments() {
+  const docTypeIcons = { contract:'📄', certificate:'🏅', policy:'📋', id:'🪪', other:'📁' };
+  const docTypeLabels = { contract:'Contract', certificate:'Certificate', policy:'Policy', id:'ID / Credential', other:'Other' };
+
+  let visibleDocs = isManager() ? DOCUMENTS : DOCUMENTS.filter(d => d.uid === CU.id);
+
+  const renderDocSection = (title, docs, uid) => {
+    if (docs.length === 0 && !isManager()) return `<div style="color:var(--tx-3);font-size:13px;padding:20px 0">No documents uploaded yet. Contact your administrator.</div>`;
+    return docs.map(d => {
+      const uploader = USERS.find(u => u.id === d.uploadedBy);
+      const owner = USERS.find(u => u.id === d.uid);
+      return `<div class="doc-card">
+        <div class="doc-icon" style="background:var(--blue-lt)">${docTypeIcons[d.type]||'📁'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.name}</div>
+          <div style="font-size:11px;color:var(--tx-3);margin-top:3px">
+            ${isManager() ? `<strong>${owner?.name}</strong> · ` : ''}
+            ${docTypeLabels[d.type]||d.type} · ${d.size}
+          </div>
+          <div style="font-size:10.5px;color:var(--tx-4);margin-top:2px">Uploaded by ${uploader?.name||'Admin'} on ${d.uploadedOn}</div>
+        </div>
+        <div style="display:flex;gap:7px;align-items:center;flex-shrink:0">
+          <button class="btn btn-sm" onclick="toast('Opening ${d.name}…','info')"><i class="ti ti-eye"></i> View</button>
+          <button class="btn btn-sm" onclick="toast('Downloading ${d.name}…','info')"><i class="ti ti-download"></i></button>
+          ${isManager() ? `<button class="btn btn-sm btn-red" onclick="deleteDoc(${d.id})"><i class="ti ti-trash"></i></button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  };
+
+  if (isManager()) {
+    // Group by employee
+    const staffMembers = USERS.filter(u => u.role === 'staff' || u.role === 'office_assistant');
+    const totalDocs = DOCUMENTS.length;
+    $('content-area').innerHTML = `
+      <div class="g4" style="margin-bottom:20px">
+        <div class="metric"><div class="metric-label"><i class="ti ti-files"></i> Total Documents</div><div class="metric-val" style="color:var(--blue)">${totalDocs}</div></div>
+        <div class="metric"><div class="metric-label"><i class="ti ti-users"></i> Staff with Docs</div><div class="metric-val" style="color:var(--green)">${new Set(DOCUMENTS.map(d=>d.uid)).size}</div></div>
+        <div class="metric"><div class="metric-label"><i class="ti ti-certificate"></i> Certificates</div><div class="metric-val" style="color:var(--purple)">${DOCUMENTS.filter(d=>d.type==='certificate').length}</div></div>
+        <div class="metric"><div class="metric-label"><i class="ti ti-contract"></i> Contracts</div><div class="metric-val" style="color:var(--amber)">${DOCUMENTS.filter(d=>d.type==='contract').length}</div></div>
+      </div>
+      <div style="margin-bottom:18px">
+        <div class="tab-bar" id="doc-tabs">
+          <div class="tab active" onclick="docFilterTab('all',this)">All Documents</div>
+          <div class="tab" onclick="docFilterTab('contract',this)">Contracts</div>
+          <div class="tab" onclick="docFilterTab('certificate',this)">Certificates</div>
+          <div class="tab" onclick="docFilterTab('other',this)">Other</div>
+        </div>
+      </div>
+      <div id="doc-list">
+        ${staffMembers.map(u => {
+          const uDocs = DOCUMENTS.filter(d => d.uid === u.id);
+          if (uDocs.length === 0) return '';
+          return `<div style="margin-bottom:20px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+              ${mkAv(u, 28)}
+              <div style="font-weight:600;font-size:13px">${u.name}</div>
+              <span class="badge badge-gray">${uDocs.length} file${uDocs.length!==1?'s':''}</span>
+            </div>
+            ${renderDocSection(u.name, uDocs, u.id)}
+          </div>`;
+        }).join('')}
+        ${DOCUMENTS.length === 0 ? `<div class="card" style="text-align:center;padding:48px">
+          <i class="ti ti-file-off" style="font-size:48px;color:var(--tx-4);display:block;margin-bottom:14px"></i>
+          <div style="font-weight:700;font-size:16px;margin-bottom:6px">No documents yet</div>
+          <div style="font-size:13px;color:var(--tx-3)">Upload contracts, certificates and credentials using the button above.</div>
+        </div>` : ''}
+      </div>`;
+  } else {
+    const myDocs = DOCUMENTS.filter(d => d.uid === CU.id);
+    $('content-area').innerHTML = `
+      <div class="card" style="background:var(--navy);border:none;margin-bottom:20px;padding:18px 22px">
+        <div style="display:flex;align-items:center;gap:14px">${mkAv(CU,48)}<div>
+          <div style="font-family:var(--serif);color:#fff;font-size:18px;margin-bottom:3px">My Documents</div>
+          <div style="font-size:12px;color:rgba(255,255,255,.5)">${myDocs.length} file${myDocs.length!==1?'s':''} on record · All files are private and only visible to you and administrators</div>
+        </div></div>
+      </div>
+      <div class="card" style="margin-bottom:16px">
+        <div class="sec-hd" style="margin-bottom:14px">
+          <div class="sec-title"><i class="ti ti-files" style="color:var(--blue)"></i> My Files</div>
+        </div>
+        ${renderDocSection('My Documents', myDocs, CU.id)}
+      </div>
+      <div class="card" style="background:var(--blue-lt);border-color:var(--blue)">
+        <div style="font-size:12.5px;color:var(--blue);line-height:1.6">
+          <i class="ti ti-shield-lock" style="margin-right:5px"></i>
+          <strong>Privacy Notice:</strong> Your documents are stored securely and are only accessible to you and your school administrators. To request a document upload or removal, contact your manager.
+        </div>
+      </div>`;
+  }
+}
+
+function docFilterTab(type, tab) {
+  document.querySelectorAll('#doc-tabs .tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  const filtered = type === 'all' ? DOCUMENTS : DOCUMENTS.filter(d => d.type === type);
+  const container = $('doc-list');
+  if (!container) return;
+  const staffMembers = USERS.filter(u => u.role === 'staff' || u.role === 'office_assistant');
+  const docTypeIcons = { contract:'📄', certificate:'🏅', policy:'📋', id:'🪪', other:'📁' };
+  const docTypeLabels = { contract:'Contract', certificate:'Certificate', policy:'Policy', id:'ID / Credential', other:'Other' };
+  container.innerHTML = staffMembers.map(u => {
+    const uDocs = filtered.filter(d => d.uid === u.id);
+    if (uDocs.length === 0) return '';
+    const owner = USERS.find(x => x.id === u.id);
+    return `<div style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+        ${mkAv(u,28)}<div style="font-weight:600;font-size:13px">${u.name}</div>
+        <span class="badge badge-gray">${uDocs.length} file${uDocs.length!==1?'s':''}</span>
+      </div>
+      ${uDocs.map(d => {
+        const uploader = USERS.find(x => x.id === d.uploadedBy);
+        return `<div class="doc-card">
+          <div class="doc-icon" style="background:var(--blue-lt)">${docTypeIcons[d.type]||'📁'}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.name}</div>
+            <div style="font-size:11px;color:var(--tx-3);margin-top:3px">${docTypeLabels[d.type]||d.type} · ${d.size}</div>
+            <div style="font-size:10.5px;color:var(--tx-4);margin-top:2px">Uploaded by ${uploader?.name||'Admin'} on ${d.uploadedOn}</div>
+          </div>
+          <div style="display:flex;gap:7px;align-items:center;flex-shrink:0">
+            <button class="btn btn-sm" onclick="toast('Opening ${d.name}…','info')"><i class="ti ti-eye"></i> View</button>
+            <button class="btn btn-sm" onclick="toast('Downloading…','info')"><i class="ti ti-download"></i></button>
+            <button class="btn btn-sm btn-red" onclick="deleteDoc(${d.id})"><i class="ti ti-trash"></i></button>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }).join('') || `<div class="card" style="text-align:center;padding:32px;color:var(--tx-3)">No documents in this category.</div>`;
+}
+
+function showUploadDoc() {
+  const staff = USERS.filter(u => u.role === 'staff' || u.role === 'office_assistant');
+  openModal('Upload Staff Document', `
+    <div class="fg"><label class="fl">Staff Member</label>
+      <select class="fc" id="doc-uid">
+        ${staff.map(u=>`<option value="${u.id}">${u.name} — ${u.pos}</option>`).join('')}
+      </select>
+    </div>
+    <div class="fg"><label class="fl">Document Name</label>
+      <input class="fc" id="doc-name" placeholder="e.g. Employment Contract 2026, CPR Certificate…">
+    </div>
+    <div class="fg"><label class="fl">Document Type</label>
+      <select class="fc" id="doc-type">
+        <option value="contract">Contract</option>
+        <option value="certificate">Certificate / Credential</option>
+        <option value="policy">Policy Document</option>
+        <option value="id">ID / Identification</option>
+        <option value="other">Other</option>
+      </select>
+    </div>
+    <div style="background:var(--bg);border:2px dashed var(--bdr-2);border-radius:var(--r12);padding:28px;text-align:center;cursor:pointer;margin-top:4px" onclick="toast('File picker would open here in production','info')">
+      <i class="ti ti-cloud-upload" style="font-size:32px;color:var(--tx-4);display:block;margin-bottom:8px"></i>
+      <div style="font-size:13px;font-weight:600;color:var(--tx-2)">Click to upload file</div>
+      <div style="font-size:11.5px;color:var(--tx-3);margin-top:4px">PDF, DOC, JPG, PNG — max 10 MB</div>
+    </div>`,
+    `<button class="btn btn-primary" onclick="saveUploadDoc()"><i class="ti ti-upload"></i> Upload Document</button><button class="btn" onclick="closeModal()">Cancel</button>`);
+}
+
+function saveUploadDoc() {
+  const name = $('doc-name')?.value.trim();
+  const uid = parseInt($('doc-uid')?.value);
+  const type = $('doc-type')?.value;
+  if (!name || !uid) { toast('Document name and staff member are required.', 'err'); return; }
+  DOCUMENTS.push({ id: Date.now(), uid, name, type, size: `${Math.round(Math.random()*400+50)} KB`, uploadedBy: CU.id, uploadedOn: new Date().toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'}), visibility: 'private' });
+  saveDocuments();
+  closeModal(); pgDocuments(); toast('Document uploaded successfully!', 'ok');
+}
+
+function deleteDoc(id) {
+  const d = DOCUMENTS.find(x => x.id === id);
+  if (!d) return;
+  DOCUMENTS = DOCUMENTS.filter(x => x.id !== id);
+  saveDocuments(); pgDocuments(); toast(`"${d.name}" removed.`, 'info');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1776,7 +3061,7 @@ function pgStaff() {
     </div>
     <div class="card" style="padding:0;overflow:hidden">
       <div style="overflow-x:auto">
-        <table class="tbl" id="staff-tbl">
+        <table class="tbl tbl-responsive" id="staff-tbl">
           <thead><tr>
             <th style="min-width:200px">Name &amp; Email</th>
             <th>Role</th><th>Department</th><th>Position</th>
@@ -1796,14 +3081,14 @@ function renderStaffTable(list) {
   tb.innerHTML = list.map(u => {
     const canDelete = !u.active && (CU.role === 'principal_owner' || CU.role === 'administrator');
     return `<tr style="opacity:${u.active?1:.5}">
-    <td><div style="display:flex;align-items:center;gap:10px">${mkAv(u,32)}<div><div style="font-weight:600">${u.name}</div><div style="font-size:11px;color:var(--tx-3)">${u.email}</div></div></div></td>
-    <td>${roleBadge(u.role)}</td>
-    <td><div style="display:flex;align-items:center">${deptDot(u.dept)}<span>${u.dept}</span></div></td>
-    <td style="font-size:12.5px;color:var(--tx-2)">${u.pos}</td>
-    <td><code style="background:var(--bg);padding:2px 8px;border-radius:5px;font-size:12px;border:1px solid var(--bdr)">${u.pin}</code></td>
-    <td style="font-size:12px;color:var(--tx-2)">${u.phone}</td>
-    <td><span class="badge ${u.active?'badge-green':'badge-gray'}">${u.active?'Active':'Inactive'}</span></td>
-    ${can('manage_staff')?`<td><div style="display:flex;gap:5px"><button class="btn btn-sm" onclick="editStaff(${u.id})"><i class="ti ti-edit"></i></button><button class="btn btn-sm ${u.active?'btn-red':'btn-green'}" onclick="toggleStaff(${u.id})">${u.active?'Deactivate':'Activate'}</button>${canDelete?`<button class="btn btn-sm btn-red" onclick="confirmDeleteStaff(${u.id})" title="Permanently delete this inactive employee"><i class="ti ti-trash"></i> Delete</button>`:''}</div></td>`:''}
+    <td class="cell-header"><div style="display:flex;align-items:center;gap:10px">${mkAv(u,32)}<div><div style="font-weight:600">${u.name}</div><div style="font-size:11px;color:var(--tx-3)">${u.email}</div></div></div></td>
+    <td data-label="Role">${roleBadge(u.role)}</td>
+    <td data-label="Department"><div style="display:flex;align-items:center;gap:6px">${deptDot(u.dept)}<span>${u.dept}</span></div></td>
+    <td data-label="Position" style="font-size:12.5px;color:var(--tx-2)">${u.pos}</td>
+    <td data-label="PIN Code"><code style="background:var(--bg);padding:2px 8px;border-radius:5px;font-size:12px;border:1px solid var(--bdr)">${u.pin}</code></td>
+    <td data-label="Phone" style="font-size:12px;color:var(--tx-2)">${u.phone || '—'}</td>
+    <td data-label="Status"><span class="badge ${u.active?'badge-green':'badge-gray'}">${u.active?'Active':'Inactive'}</span></td>
+    ${can('manage_staff')?`<td data-label="Actions"><div style="display:flex;gap:5px"><button class="btn btn-sm" onclick="editStaff('${u.id}')"><i class="ti ti-edit"></i></button><button class="btn btn-sm ${u.active?'btn-red':'btn-green'}" onclick="toggleStaff('${u.id}')">${u.active?'Deactivate':'Activate'}</button>${canDelete?`<button class="btn btn-sm btn-red" onclick="confirmDeleteStaff('${u.id}')" title="Permanently delete this inactive employee"><i class="ti ti-trash"></i> Delete</button>`:''}</div></td>`:''}
   </tr>`;
   }).join('');
 }
@@ -1816,11 +3101,33 @@ function filterStaff(q, role, dept) {
   });
   renderStaffTable(filtered);
 }
-function toggleStaff(id) { 
-  USERS = USERS.map(u => u.id === id ? { ...u, active: !u.active } : u); 
+async function toggleStaff(id) { 
+  const u = USERS.find(x => x.id === id);
+  if (!u) return;
+  const newActive = !u.active;
+  USERS = USERS.map(x => x.id === id ? { ...x, active: newActive } : x); 
   saveUsers();
   pgStaff(); 
   toast('Staff status updated.', 'ok'); 
+  
+  if (USE_API) {
+    try {
+      await fetch(`${API_BASE}/staff/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: u.name,
+          email: u.email,
+          role: u.role,
+          dept: u.dept,
+          pos: u.pos,
+          active: newActive
+        })
+      });
+    } catch (e) {
+      console.error('Staff toggle sync error:', e);
+    }
+  }
 }
 
 function confirmDeleteStaff(id) {
@@ -1856,16 +3163,21 @@ function confirmDeleteStaff(id) {
         <strong>Warning:</strong> This will remove all schedule data, clock records, and messages associated with this employee.
       </div>
     </div>`,
-    `<button class="btn btn-red" onclick="permanentDeleteStaff(${id})"><i class="ti ti-trash"></i> Delete Permanently</button><button class="btn" onclick="closeModal()">Cancel — Keep Record</button>`);
+    `<button class="btn btn-red" onclick="permanentDeleteStaff('${id}')"><i class="ti ti-trash"></i> Delete Permanently</button><button class="btn" onclick="closeModal()">Cancel — Keep Record</button>`);
 }
 
-function permanentDeleteStaff(id) {
+async function permanentDeleteStaff(id) {
   const u = USERS.find(x => x.id === id);
   if (!u) return;
   
   // Remove from USERS
   USERS = USERS.filter(x => x.id !== id);
   saveUsers();
+  if (USE_API) {
+    try {
+      await fetch(`${API_BASE}/staff/${id}`, { method: 'DELETE' });
+    } catch (e) { console.error('Staff delete sync error:', e); }
+  }
   
   // Remove schedule data
   if (SCHEDULE.shifts[id]) {
@@ -1931,25 +3243,44 @@ function editStaff(id) {
     </div>`,
     `<button class="btn btn-primary" onclick="saveEditStaff(${id})"><i class="ti ti-device-floppy"></i> Save Changes</button><button class="btn" onclick="closeModal()">Cancel</button>`);
 }
-function saveEditStaff(id) {
+async function saveEditStaff(id) {
   const name = $('ef-name').value.trim();
   const duplicate = USERS.find(u => u.id !== id && u.name.trim().toLowerCase() === name.toLowerCase() && u.active);
   if (duplicate) {
     toast(`Duplicate staff member named "${name}" already exists.`, 'err');
     return;
   }
-  USERS = USERS.map(u => u.id === id ? { 
-    ...u, 
-    name: name, 
-    email: $('ef-email').value, 
-    role: $('ef-role').value, 
-    dept: $('ef-dept').value, 
-    pos: $('ef-pos').value, 
-    phone: $('ef-phone').value, 
-    pin: $('ef-pin').value || u.pin,
-    password: $('ef-pass')?.value || u.password || ''
+  const pin = $('ef-pin').value;
+  const password = $('ef-pass')?.value || '';
+  USERS = USERS.map(u => u.id === id ? {
+    ...u,
+    name,
+    email: $('ef-email').value,
+    role: $('ef-role').value,
+    dept: $('ef-dept').value,
+    pos: $('ef-pos').value,
+    phone: $('ef-phone').value,
+    pin: pin || u.pin,
+    password: password || u.password || ''
   } : u);
   saveUsers();
+  if (USE_API) {
+    try {
+      await fetch(`${API_BASE}/staff/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          email: $('ef-email').value,
+          role: $('ef-role').value,
+          dept: $('ef-dept').value,
+          pos: $('ef-pos').value,
+          ...(pin ? { pin } : {}),
+          ...(password ? { password } : {})
+        })
+      });
+    } catch (e) { console.error('Staff update sync error:', e); }
+  }
   closeModal(); pgStaff(); toast('Staff member updated!', 'ok');
 }
 function showAddStaff() {
@@ -1987,7 +3318,7 @@ function showAddStaff() {
     </div>`,
     `<button class="btn btn-primary" onclick="saveNewStaff()"><i class="ti ti-user-plus"></i> Add Staff Member</button><button class="btn" onclick="closeModal()">Cancel</button>`);
 }
-function saveNewStaff(bypassDuplicateCheck = false) {
+async function saveNewStaff(bypassDuplicateCheck = false) {
   const fn = $('nf-fn')?.value.trim(), ln = $('nf-ln')?.value.trim();
   if (!fn || !ln) { toast('First and last name are required.', 'err'); return; }
   const name = `${fn} ${ln}`;
@@ -2004,7 +3335,7 @@ function saveNewStaff(bypassDuplicateCheck = false) {
             To prevent reporting errors, we do not allow duplicate active staff names.
           </div>
           <div style="background:var(--bg);border-radius:var(--r10);padding:10px 12px;font-size:11px;color:var(--tx-2);margin-bottom:14px;text-align:left">
-            <strong>Existing profile:</strong> ${duplicate.pos} · ${duplicate.dept} Department · PIN: ${duplicate.pin}
+            <strong>Existing profile:</strong> ${duplicate.pos} · ${duplicate.dept} Department
           </div>
         </div>`,
         `<button class="btn btn-red" onclick="deleteAndConfirmAddStaff('${duplicate.name}', ${duplicate.id})"><i class="ti ti-trash"></i> Delete Duplicate & Add New</button>
@@ -2018,21 +3349,29 @@ function saveNewStaff(bypassDuplicateCheck = false) {
   const email = $('nf-email')?.value.trim();
   if (!email) { toast('Email is required.', 'err'); return; }
   const password = $('nf-pass')?.value || '';
-  
-  const newId = Date.now();
-  USERS.push({ 
-    id: newId, 
-    name, 
-    email, 
-    role: $('nf-role')?.value || 'staff', 
-    dept: $('nf-dept')?.value || 'Administration', 
-    pin, 
-    password, 
-    phone: $('nf-phone')?.value || '', 
-    pos: $('nf-pos')?.value || '', 
-    av: `${fn[0]}${ln[0]}`.toUpperCase(), 
-    active: true 
-  });
+  const role = $('nf-role')?.value || 'staff';
+  const dept = $('nf-dept')?.value || 'Administration';
+  const pos  = $('nf-pos')?.value || '';
+  const phone = $('nf-phone')?.value || '';
+  const av   = `${fn[0]}${ln[0]}`.toUpperCase();
+
+  let newId;
+  if (USE_API) {
+    try {
+      const r = await fetch(`${API_BASE}/staff`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, pin, password, role, dept, pos, av })
+      });
+      const data = await r.json();
+      if (!r.ok) { toast(data.error || 'Failed to add staff.', 'err'); return; }
+      newId = data.id; // DB-generated integer ID
+    } catch (e) { toast('Connection error saving staff.', 'err'); return; }
+  } else {
+    newId = Date.now();
+  }
+
+  USERS.push({ id: newId, name, email, role, dept, pin: USE_API ? '****' : pin, password, phone, pos, av, active: true });
   
   // Allocate default schedule slots
   SCHEDULE.shifts[newId] = {};
@@ -2048,8 +3387,8 @@ function saveNewStaff(bypassDuplicateCheck = false) {
   pgStaff();
   toast(`${name} added to the team!`, 'ok');
   
-  // Trigger welcome email simulation
-  setTimeout(() => showWelcomeEmail(newUser), 400);
+  // Trigger welcome email simulation — pass raw PIN before API mode masks it
+  setTimeout(() => showWelcomeEmail(newUser, pin), 400);
 }
 
 function deleteAndConfirmAddStaff(name, oldId) {
@@ -2117,76 +3456,171 @@ function deleteDuplicateUser(id) {
   toast("Duplicate staff record deleted successfully!", "ok");
 }
 
-function showWelcomeEmail(user) {
+function showWelcomeEmail(user, rawPin) {
   if (!user) return;
-  const schoolName = SCHOOL.name || 'Greenfield Academy';
-  const adminEmail = SCHOOL.email || 'admin@greenfield.edu';
-  const loginUrl = window.location.href;
-  
-  openModal(`✉️ Welcome Email — ${user.name}`, `
-    <div style="border:1px solid var(--bdr);border-radius:var(--r12);overflow:hidden">
-      <!-- Email Header -->
-      <div style="background:var(--navy);padding:20px 24px;text-align:center">
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:rgba(255,255,255,.4);margin-bottom:6px">AUTOMATED ONBOARDING EMAIL</div>
-        <div style="font-family:var(--serif);font-size:18px;color:#fff;margin-bottom:4px">Welcome to ${schoolName}</div>
-        <div style="font-size:11px;color:rgba(255,255,255,.45)">StaffBase · Employee Onboarding</div>
+  const schoolName = SCHOOL.name || 'SMP After School';
+  const adminEmail = SCHOOL.email || 'admin@smp.edu';
+  const displayPin = rawPin || (user.pin !== '****' ? user.pin : null);
+  const isAdmin = ['principal_owner','administrator','office_manager'].includes(user.role);
+
+  const emailText = buildWelcomeEmailText(user, schoolName, adminEmail, displayPin, isAdmin);
+
+  openModal(`✉️ Welcome Email — ${user.name}`,`
+    <div id="welcome-email-wrap" style="border:1px solid var(--bdr);border-radius:var(--r12);overflow:hidden;max-height:62vh;overflow-y:auto">
+
+      <!-- Header -->
+      <div style="background:var(--navy);padding:22px 26px;text-align:center">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:rgba(255,255,255,.35);margin-bottom:6px">AUTOMATED ONBOARDING EMAIL</div>
+        <div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:3px">${schoolName}</div>
+        <div style="font-size:11.5px;color:rgba(255,255,255,.45)">StaffBase Staff Portal · New Account</div>
       </div>
-      
-      <!-- Email Body -->
-      <div style="padding:20px 24px;font-size:12.5px;color:var(--tx-2);line-height:1.65">
-        <p style="margin-bottom:12px">Dear <strong>${user.name}</strong>,</p>
-        <p style="margin-bottom:12px">Welcome to the <strong>${schoolName}</strong> team! We're excited to have you on board as our new <strong>${user.pos}</strong> in the <strong>${user.dept}</strong> department.</p>
-        <p style="margin-bottom:12px">Your StaffBase portal account has been created. Here are your login credentials:</p>
-        
-        <div style="background:var(--bg);border:1.5px solid var(--bdr);border-radius:var(--r10);padding:14px 16px;margin-bottom:14px">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--tx-3);margin-bottom:8px;font-weight:700">YOUR LOGIN CREDENTIALS</div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
-            <div><span style="color:var(--tx-3)">Email:</span> <strong>${user.email}</strong></div>
-            <div><span style="color:var(--tx-3)">Mobile PIN:</span> <strong style="color:var(--gold);letter-spacing:2px">${user.pin}</strong></div>
-            <div><span style="color:var(--tx-3)">Role:</span> <strong>${ROLES[user.role]?.label || user.role}</strong></div>
-            <div><span style="color:var(--tx-3)">Department:</span> <strong>${user.dept}</strong></div>
+
+      <!-- Body -->
+      <div style="padding:22px 26px;font-size:13px;color:var(--tx-2);line-height:1.7">
+
+        <p style="margin:0 0 14px">Dear <strong style="color:var(--tx)">${user.name}</strong>,</p>
+        <p style="margin:0 0 16px">Welcome to the <strong>${schoolName}</strong> team! Your staff account has been created for your role as <strong>${user.pos || ROLES[user.role]?.label || user.role}</strong>${user.dept ? ` in the <strong>${user.dept}</strong> department` : ''}.
+
+        <!-- Credentials box -->
+        <div style="background:var(--bg);border:1.5px solid var(--bdr);border-radius:var(--r10);padding:15px 18px;margin-bottom:18px">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--tx-3);font-weight:700;margin-bottom:11px">YOUR ACCOUNT DETAILS</div>
+          <table style="width:100%;font-size:12.5px;border-collapse:collapse">
+            <tr><td style="padding:4px 0;color:var(--tx-3);width:38%">Name</td><td><strong>${user.name}</strong></td></tr>
+            <tr><td style="padding:4px 0;color:var(--tx-3)">Email</td><td><strong>${user.email}</strong></td></tr>
+            <tr><td style="padding:4px 0;color:var(--tx-3)">Role</td><td><strong>${ROLES[user.role]?.label || user.role}</strong></td></tr>
+            ${displayPin ? `<tr><td style="padding:4px 0;color:var(--tx-3)">Mobile PIN</td><td><strong style="color:var(--gold);font-size:15px;letter-spacing:3px">${displayPin}</strong> <span style="font-size:10px;color:var(--tx-3)">(keep private)</span></td></tr>` : ''}
+            ${isAdmin ? `<tr><td style="padding:4px 0;color:var(--tx-3)">Admin password</td><td><strong>Set by your administrator</strong></td></tr>` : ''}
+          </table>
+        </div>
+
+        <!-- Step 1: Download -->
+        <div style="margin-bottom:16px">
+          <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:8px;display:flex;align-items:center;gap:7px">
+            <span style="background:var(--navy);color:#fff;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">1</span>
+            Download the Expo Go app
           </div>
-          ${user.password ? `<div style="margin-top:8px;font-size:12px"><span style="color:var(--tx-3)">Password:</span> <strong style="letter-spacing:1px">••••••••</strong> <span style="font-size:10px;color:var(--tx-3)">(set by administrator)</span></div>` : ''}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px">
+            <div style="background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r8);padding:10px 13px;text-align:center">
+              <div style="font-size:18px;margin-bottom:4px">🍎</div>
+              <div style="font-weight:700;margin-bottom:2px">iPhone (iOS)</div>
+              <div style="color:var(--tx-3);font-size:11px">Open the <strong>App Store</strong><br>Search <strong>"Expo Go"</strong> and install</div>
+            </div>
+            <div style="background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r8);padding:10px 13px;text-align:center">
+              <div style="font-size:18px;margin-bottom:4px">🤖</div>
+              <div style="font-weight:700;margin-bottom:2px">Android</div>
+              <div style="color:var(--tx-3);font-size:11px">Open the <strong>Play Store</strong><br>Search <strong>"Expo Go"</strong> and install</div>
+            </div>
+          </div>
         </div>
-        
-        <div style="margin-bottom:14px">
-          <div style="font-weight:700;color:var(--tx);margin-bottom:6px"><i class="ti ti-clock" style="color:var(--green)"></i> Schedule & Time Tracking</div>
-          <ul style="margin:0;padding-left:20px;font-size:12px">
-            <li>Your weekly schedule will be published by your administrator</li>
-            <li>Use the <strong>Mobile Check-In</strong> screen to clock in/out using your 4-digit PIN</li>
-            <li>GPS verification is required — please enable location services on your device</li>
-            <li>Acknowledge each shift as soon as you see it to confirm your availability</li>
-          </ul>
+
+        <!-- Step 2: Open the app -->
+        <div style="margin-bottom:16px">
+          <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:8px;display:flex;align-items:center;gap:7px">
+            <span style="background:var(--navy);color:#fff;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">2</span>
+            Open the StaffBase mobile app
+          </div>
+          <div style="background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r8);padding:12px 14px;font-size:12px">
+            <p style="margin:0 0 8px">Ask your manager for the <strong>QR code</strong> to scan inside Expo Go, or open this link on your phone:</p>
+            <div style="background:var(--blue-lt);border:1px solid var(--blue);border-radius:6px;padding:7px 12px;word-break:break-all;font-size:11.5px;color:var(--blue);font-family:monospace">exp://${typeof REPLIT_EXPO_DEV_DOMAIN !== 'undefined' ? REPLIT_EXPO_DEV_DOMAIN : 'your-app-link'}</div>
+            <p style="margin:8px 0 0;font-size:11px;color:var(--tx-3)">Tip: once open, tap <strong>Home screen</strong> to add a shortcut — no Expo Go needed next time.</p>
+          </div>
         </div>
-        
-        <div style="margin-bottom:14px">
-          <div style="font-weight:700;color:var(--tx);margin-bottom:6px"><i class="ti ti-user" style="color:var(--blue)"></i> Profile & Account</div>
-          <ul style="margin:0;padding-left:20px;font-size:12px">
-            <li>Your profile is managed by the school administration</li>
-            <li>For PIN changes or account updates, contact your administrator</li>
-            <li>Use the <strong>Time-Off Requests</strong> feature to submit leave requests</li>
-          </ul>
+
+        <!-- Step 3: Log in -->
+        <div style="margin-bottom:18px">
+          <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:8px;display:flex;align-items:center;gap:7px">
+            <span style="background:var(--navy);color:#fff;border-radius:50%;width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">3</span>
+            Sign in with your PIN
+          </div>
+          <div style="background:var(--bg);border:1px solid var(--bdr);border-radius:var(--r8);padding:12px 14px;font-size:12px">
+            <ol style="margin:0;padding-left:18px;line-height:2">
+              <li>Tap <strong>Staff Login</strong> on the app's login screen</li>
+              <li>Select your name from the list — <strong>${user.name}</strong></li>
+              ${displayPin ? `<li>Enter your 4-digit PIN: <strong style="color:var(--gold);letter-spacing:2px;font-size:13px">${displayPin}</strong></li>` : '<li>Enter the 4-digit PIN provided by your administrator</li>'}
+              <li>Allow <strong>location access</strong> when prompted — required for GPS clock-in</li>
+            </ol>
+          </div>
         </div>
-        
-        <div style="background:var(--gold-pale);border:1px solid var(--gold-lt);border-radius:var(--r8);padding:10px 14px;font-size:11.5px;color:var(--amber);margin-bottom:14px">
-          <i class="ti ti-device-mobile" style="margin-right:4px"></i>
-          <strong>Mobile Access:</strong> Open <code style="background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px;font-size:10.5px">${loginUrl}</code> on your phone and add to homescreen for instant access.
+
+        <!-- What you can do -->
+        <div style="margin-bottom:18px">
+          <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:10px">What you can do in the app</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+            <div style="display:flex;align-items:flex-start;gap:8px"><span style="color:var(--green);font-size:15px">✓</span><div><strong>Clock in & out</strong><br><span style="color:var(--tx-3)">GPS-verified at school location</span></div></div>
+            <div style="display:flex;align-items:flex-start;gap:8px"><span style="color:var(--green);font-size:15px">✓</span><div><strong>View your schedule</strong><br><span style="color:var(--tx-3)">See shifts and acknowledge them</span></div></div>
+            <div style="display:flex;align-items:flex-start;gap:8px"><span style="color:var(--green);font-size:15px">✓</span><div><strong>Request time off</strong><br><span style="color:var(--tx-3)">Submit & track leave requests</span></div></div>
+            <div style="display:flex;align-items:flex-start;gap:8px"><span style="color:var(--green);font-size:15px">✓</span><div><strong>Announcements</strong><br><span style="color:var(--tx-3)">Push notifications from admin</span></div></div>
+          </div>
         </div>
-        
-        <p style="margin-bottom:8px">If you have any questions, please contact:</p>
-        <div style="font-size:12px;margin-bottom:14px">
-          <strong>Administrator:</strong> <a href="mailto:${adminEmail}" style="color:var(--blue)">${adminEmail}</a>
+
+        ${isAdmin ? `
+        <!-- Admin portal note -->
+        <div style="background:var(--gold-pale);border:1px solid var(--gold-lt);border-radius:var(--r8);padding:11px 14px;font-size:12px;color:var(--amber);margin-bottom:16px">
+          <strong><i class="ti ti-shield-check"></i> Admin access:</strong> As a manager, you also have access to the admin portal at <code style="font-size:11px;background:rgba(0,0,0,.06);padding:1px 5px;border-radius:3px">${window.location.origin}/uat</code> — sign in with your email and the password set by the school.
+        </div>` : ''}
+
+        <!-- Help -->
+        <div style="border-top:1px solid var(--bdr);padding-top:14px;margin-top:4px;font-size:12px;color:var(--tx-3)">
+          Questions? Contact your administrator: <a href="mailto:${adminEmail}" style="color:var(--blue)">${adminEmail}</a><br>
+          <span style="font-size:11px">Please keep your PIN private. Contact admin if you need it reset.</span>
         </div>
-        
-        <p style="color:var(--tx-3);font-size:11px;border-top:1px solid var(--bdr);padding-top:12px;margin-top:14px">This is an automated message from StaffBase at ${schoolName}. Please keep your login credentials secure and do not share them.</p>
+
       </div>
     </div>
-    <div style="margin-top:10px;padding:8px 12px;background:var(--blue-lt);border-radius:var(--r8);font-size:11px;color:var(--blue);display:flex;align-items:center;gap:6px">
-      <i class="ti ti-info-circle"></i> In production, this email would be sent automatically via SMTP/API (e.g. SendGrid, Mailgun).
+
+    <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+      <div style="flex:1;padding:8px 12px;background:var(--blue-lt);border-radius:var(--r8);font-size:11px;color:var(--blue);display:flex;align-items:center;gap:6px">
+        <i class="ti ti-info-circle"></i> In production this sends automatically via email (SendGrid / Mailgun).
+      </div>
+      <button class="btn" onclick="copyWelcomeEmail(${JSON.stringify(emailText).replace(/"/g,'&quot;')})" style="white-space:nowrap"><i class="ti ti-copy"></i> Copy text</button>
     </div>`,
-    `<button class="btn btn-primary" onclick="closeModal()"><i class="ti ti-check"></i> Done</button>`, 620);
-  
-  toast(`✉️ Welcome email sent to ${user.name} at ${user.email}!`, 'ok');
+    `<button class="btn btn-primary" onclick="closeModal()"><i class="ti ti-check"></i> Got it</button>`, 660);
+
+  toast(`✉️ Welcome email ready for ${user.name} (${user.email})`, 'ok');
+}
+
+function buildWelcomeEmailText(user, schoolName, adminEmail, displayPin, isAdmin) {
+  const lines = [
+    `Subject: Welcome to ${schoolName} — Your StaffBase Account`,
+    ``,
+    `Dear ${user.name},`,
+    ``,
+    `Welcome to the ${schoolName} team! Your staff account has been created.`,
+    ``,
+    `YOUR ACCOUNT DETAILS`,
+    `────────────────────`,
+    `Name:    ${user.name}`,
+    `Email:   ${user.email}`,
+    `Role:    ${ROLES[user.role]?.label || user.role}`,
+    displayPin ? `PIN:     ${displayPin}  (keep this private)` : `PIN:     Your administrator will provide your PIN separately.`,
+    isAdmin ? `Admin password: Provided separately by the school.` : '',
+    ``,
+    `HOW TO GET STARTED`,
+    `──────────────────`,
+    `1. Download "Expo Go" from the App Store (iPhone) or Play Store (Android).`,
+    `2. Open the app and scan the QR code from your manager, OR open this link on your phone:`,
+    `   exp://${typeof REPLIT_EXPO_DEV_DOMAIN !== 'undefined' ? REPLIT_EXPO_DEV_DOMAIN : '[ask your manager for the link]'}`,
+    `3. Tap "Staff Login", select your name (${user.name}), and enter your PIN.`,
+    `4. Allow location access — required for GPS clock-in at school.`,
+    ``,
+    `WHAT YOU CAN DO`,
+    `───────────────`,
+    `✓ Clock in & out (GPS-verified)`,
+    `✓ View and acknowledge your weekly schedule`,
+    `✓ Submit time-off requests`,
+    `✓ Receive announcements from admin`,
+    isAdmin ? `\nADMIN PORTAL\n────────────\nAs a manager, log in to the admin portal at:\n${window.location.origin}/uat\nUse your email and password to access scheduling and staff management.` : '',
+    ``,
+    `Questions? Contact: ${adminEmail}`,
+    `Please keep your PIN private and contact admin if you need it reset.`,
+    ``,
+    `— ${schoolName} Administration`,
+  ];
+  return lines.filter(l => l !== '').join('\n');
+}
+
+function copyWelcomeEmail(text) {
+  navigator.clipboard.writeText(text).then(() => toast('Email text copied to clipboard!', 'ok')).catch(() => toast('Copy failed — please select and copy manually.', 'err'));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2348,7 +3782,7 @@ function renderCommTab() {
               const snippet = lastMsg ? lastMsg.body : 'No messages yet';
               
               return `
-                <div onclick="selectChat(${u.id})" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r10);border:1.5px solid transparent;cursor:pointer;margin-bottom:4px;transition:all .15s;${activeClass}">
+                <div onclick="selectChat('${u.id}')" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r10);border:1.5px solid transparent;cursor:pointer;margin-bottom:4px;transition:all .15s;${activeClass}">
                   ${mkAv(u, 30)}
                   <div style="flex:1;min-width:0">
                     <div style="display:flex;justify-content:space-between;align-items:center">
@@ -2801,6 +4235,26 @@ function deleteSubjectFromSettings(sub) {
   saveSubjects();
   renderSettingsSubjects();
   toast(`Subject "${sub}" removed.`, 'ok');
+}
+
+// Close sidebar when clicking outside on mobile
+document.addEventListener('click', (e) => {
+  const sidebar = $('sidebar');
+  const toggleBtn = $('menu-toggle');
+  if (sidebar && toggleBtn && window.innerWidth <= 768 && sidebar.classList.contains('open')) {
+    if (!sidebar.contains(e.target) && !toggleBtn.contains(e.target)) {
+      sidebar.classList.remove('open');
+    }
+  }
+});
+
+// Register Service Worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('Service Worker registered', reg))
+      .catch(err => console.error('Service Worker registration failed', err));
+  });
 }
 </script>
 </body>
