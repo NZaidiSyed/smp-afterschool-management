@@ -2829,7 +2829,7 @@ def preview_reconciliation(rows, payment_method="PAD", match_rules=None):
                 (current_org_id(conn), branch_id),
             ).fetchall()
         else:
-            alias_rows = conn.execute("SELECT student_id, alias FROM payer_aliases WHERE branch_id=?", (branch_id,)).fetchall()
+            alias_rows = conn.execute("SELECT student_id, alias FROM payer_aliases").fetchall()
     aliases = {}
     for row in alias_rows:
         aliases.setdefault(str(row["student_id"]), []).append(row["alias"])
