@@ -821,6 +821,86 @@ const WEEKDAY_NAMES = { Mon: 'Monday', Tue: 'Tuesday', Wed: 'Wednesday', Thu: 'T
 let DAYS = SCHOOL.openDays;
 let FULL_DAYS = DAYS.map(d => WEEKDAY_NAMES[d]);
 
+// ISO Week Helpers
+function isoWeekToMondayDate(weekKey) {
+  const [yearStr, wStr] = weekKey.split('-W');
+  const year = parseInt(yearStr), week = parseInt(wStr);
+  const jan4 = new Date(year, 0, 4);
+  const startOfWeek1 = new Date(jan4);
+  startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
+  const monday = new Date(startOfWeek1);
+  monday.setDate(startOfWeek1.getDate() + (week - 1) * 7);
+  return monday;
+}
+function dateToIsoWeek(date) {
+  const d = new Date(date);
+  d.setHours(0,0,0,0);
+  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+  const week1 = new Date(d.getFullYear(), 0, 4);
+  const weekNum = 1 + Math.round(((d - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+  return `${d.getFullYear()}-W${String(weekNum).padStart(2,'0')}`;
+}
+function weekLabel(weekKey) {
+  const mon = isoWeekToMondayDate(weekKey);
+  const dayOffsets = { Mon:0, Tue:1, Wed:2, Thu:3, Fri:4, Sat:5, Sun:6 };
+  const firstOp = DAYS[0] || 'Tue';
+  const lastOp  = DAYS[DAYS.length-1] || 'Sat';
+  const startD  = new Date(mon); startD.setDate(mon.getDate() + (dayOffsets[firstOp] || 1));
+  const endD    = new Date(mon); endD.setDate(mon.getDate() + (dayOffsets[lastOp] || 5));
+  const fmt = d => d.toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'});
+  return `${fmt(startD)} – ${fmt(endD)}`;
+}
+function buildDefaultSchedule() {
+  const patterns = {
+    4: ['Teaching','Planning','Teaching','Teaching','Teaching'],
+    5: ['Teaching','Teaching','Supervision','Teaching','Meeting'],
+    6: ['Planning','Teaching','Teaching','Teaching','Teaching'],
+    7: ['Teaching','Teaching','Meeting','Teaching','Supervision'],
+    8: ['Teaching','Supervision','Teaching','Teaching','Teaching'],
+    9: ['Prof Dev','Teaching','Teaching','Teaching','Planning'],
+    10:['Teaching','Teaching','Planning','Meeting','Teaching'],
+    3: ['Meeting','Teaching','Planning','Teaching','Supervision'],
+  };
+  const shifts = {};
+  for (const uid in patterns) {
+    shifts[uid] = {};
+    DAYS.forEach((d, i) => {
+      const type = patterns[uid][i % patterns[uid].length] || 'Off';
+      const locs = { Teaching: `Room ${100 + parseInt(uid)}`, Meeting: 'Staff Room', Supervision: 'Main Hallway', Planning: 'Office', 'Prof Dev': 'Off-site' };
+      shifts[uid][d] = { type, start: type === 'Off' ? null : (SCHOOL.operatingStart || '15:00'), end: type === 'Off' ? null : (SCHOOL.operatingEnd || '20:00'), location: locs[type] || 'Office', notes: '', ack: false };
+    });
+  }
+  return shifts;
+}
+function getOrCreateWeekSchedule(weekKey) {
+  if (SCHEDULE_HISTORY[weekKey]) return JSON.parse(JSON.stringify(SCHEDULE_HISTORY[weekKey]));
+  return { published: false, publishedAt: '', week: weekLabel(weekKey), weekKey, shifts: buildDefaultSchedule() };
+}
+
+let SCHEDULE_HISTORY = JSON.parse(localStorage.getItem('sb_schedule_history')) || {};
+function saveScheduleHistory() {
+  if (SCHEDULE.weekKey) SCHEDULE_HISTORY[SCHEDULE.weekKey] = JSON.parse(JSON.stringify(SCHEDULE));
+  localStorage.setItem('sb_schedule_history', JSON.stringify(SCHEDULE_HISTORY));
+}
+
+const defaultWeekKey = dateToIsoWeek(new Date());
+const defaultWeekLabel = weekLabel(defaultWeekKey);
+
+let SCHEDULE = JSON.parse(localStorage.getItem('sb_schedule'));
+if (!SCHEDULE || SCHEDULE.weekKey !== defaultWeekKey) {
+  if (SCHEDULE_HISTORY[defaultWeekKey]) {
+    SCHEDULE = JSON.parse(JSON.stringify(SCHEDULE_HISTORY[defaultWeekKey]));
+  } else {
+    SCHEDULE = {
+      published: false,
+      publishedAt: '',
+      week: defaultWeekLabel,
+      weekKey: defaultWeekKey,
+      shifts: buildDefaultSchedule(),
+    };
+  }
+}
+
 let SUBJECTS = JSON.parse(localStorage.getItem('sb_subjects')) || ['Mathematics', 'Science', 'English', 'History', 'Arts', 'PE', 'Administration', 'Support'];
 function saveSubjects() {
   localStorage.setItem('sb_subjects', JSON.stringify(SUBJECTS));
@@ -954,37 +1034,7 @@ function checkAutoLogin() {
   return false;
 }
 
-// ─── SCHEDULE ────────────────────────────────────────────────────────────────
-function buildDefaultSchedule() {
-  const patterns = {
-    4: ['Teaching','Planning','Teaching','Teaching','Teaching'],
-    5: ['Teaching','Teaching','Supervision','Teaching','Meeting'],
-    6: ['Planning','Teaching','Teaching','Teaching','Teaching'],
-    7: ['Teaching','Teaching','Meeting','Teaching','Supervision'],
-    8: ['Teaching','Supervision','Teaching','Teaching','Teaching'],
-    9: ['Prof Dev','Teaching','Teaching','Teaching','Planning'],
-    10:['Teaching','Teaching','Planning','Meeting','Teaching'],
-    3: ['Meeting','Teaching','Planning','Teaching','Supervision'],
-  };
-  const shifts = {};
-  for (const uid in patterns) {
-    shifts[uid] = {};
-    DAYS.forEach((d, i) => {
-      const type = patterns[uid][i % patterns[uid].length] || 'Off';
-      const locs = { Teaching: `Room ${100 + parseInt(uid)}`, Meeting: 'Staff Room', Supervision: 'Main Hallway', Planning: 'Office', 'Prof Dev': 'Off-site' };
-      shifts[uid][d] = { type, start: type === 'Off' ? null : (SCHOOL.operatingStart || '15:00'), end: type === 'Off' ? null : (SCHOOL.operatingEnd || '20:00'), location: locs[type] || 'Office', notes: '', ack: false };
-    });
-  }
-  return shifts;
-}
 
-let SCHEDULE = JSON.parse(localStorage.getItem('sb_schedule')) || {
-  published: true,
-  publishedAt: 'May 26, 2026 at 08:45 AM',
-  week: 'May 26 – 30, 2026',
-  weekKey: '2026-W22',
-  shifts: buildDefaultSchedule(),
-};
 function saveSchedule() {
   localStorage.setItem('sb_schedule', JSON.stringify(SCHEDULE));
   syncToServer('schedule', SCHEDULE);
@@ -1688,46 +1738,7 @@ function pgDashboard() {
 // ═══════════════════════════════════════════════════════════════════════════
 // ── SCHEDULE WEEK NAVIGATION ─────────────────────────────────────────────────
 // Multi-week history keyed by ISO week string e.g. "2026-W22"
-// Each entry: { published, publishedAt, week, weekKey, shifts }
-let SCHEDULE_HISTORY = JSON.parse(localStorage.getItem('sb_schedule_history')) || {};
-function saveScheduleHistory() {
-  if (SCHEDULE.weekKey) SCHEDULE_HISTORY[SCHEDULE.weekKey] = JSON.parse(JSON.stringify(SCHEDULE));
-  localStorage.setItem('sb_schedule_history', JSON.stringify(SCHEDULE_HISTORY));
-}
-function isoWeekToMondayDate(weekKey) {
-  // weekKey = "2026-W22"
-  const [yearStr, wStr] = weekKey.split('-W');
-  const year = parseInt(yearStr), week = parseInt(wStr);
-  const jan4 = new Date(year, 0, 4);
-  const startOfWeek1 = new Date(jan4);
-  startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
-  const monday = new Date(startOfWeek1);
-  monday.setDate(startOfWeek1.getDate() + (week - 1) * 7);
-  return monday;
-}
-function dateToIsoWeek(date) {
-  const d = new Date(date);
-  d.setHours(0,0,0,0);
-  d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
-  const week1 = new Date(d.getFullYear(), 0, 4);
-  const weekNum = 1 + Math.round(((d - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
-  return `${d.getFullYear()}-W${String(weekNum).padStart(2,'0')}`;
-}
-function weekLabel(weekKey) {
-  const mon = isoWeekToMondayDate(weekKey);
-  // Find the operating days for this week (Tue-Sat by default)
-  const dayOffsets = { Mon:0, Tue:1, Wed:2, Thu:3, Fri:4, Sat:5, Sun:6 };
-  const firstOp = DAYS[0] || 'Tue';
-  const lastOp  = DAYS[DAYS.length-1] || 'Sat';
-  const startD  = new Date(mon); startD.setDate(mon.getDate() + (dayOffsets[firstOp] || 1));
-  const endD    = new Date(mon); endD.setDate(mon.getDate() + (dayOffsets[lastOp] || 5));
-  const fmt = d => d.toLocaleDateString('en-CA',{month:'short',day:'numeric',year:'numeric'});
-  return `${fmt(startD)} – ${fmt(endD)}`;
-}
-function getOrCreateWeekSchedule(weekKey) {
-  if (SCHEDULE_HISTORY[weekKey]) return JSON.parse(JSON.stringify(SCHEDULE_HISTORY[weekKey]));
-  return { published: false, publishedAt: '', week: weekLabel(weekKey), weekKey, shifts: buildDefaultSchedule() };
-}
+
 function navigateWeek(delta) {
   // Save current before moving
   saveScheduleHistory();
@@ -1954,7 +1965,15 @@ function pgSchedule() {
           <div style="overflow-x:auto">
             <div class="sched-grid" style="min-width:760px; grid-template-columns: 180px repeat(${DAYS.length}, 1fr);">
               <div class="sched-head" style="text-align:left;padding:10px 14px">Staff Member</div>
-              ${DAYS.map((d,i)=>`<div class="sched-head">${d}<div style="font-size:9px;margin-top:1px;opacity:.6">${FULL_DAYS[i]}</div></div>`).join('')}
+              ${DAYS.map((d,i)=>{
+                const mon = isoWeekToMondayDate(SCHEDULE.weekKey);
+                const dayOffsets = { Mon:0, Tue:1, Wed:2, Thu:3, Fri:4, Sat:5, Sun:6 };
+                const offset = dayOffsets[d] || 0;
+                const dayDate = new Date(mon);
+                dayDate.setDate(mon.getDate() + offset);
+                const dateStr = dayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                return `<div class="sched-head">${d} (${dateStr})<div style="font-size:9px;margin-top:1px;opacity:.6">${FULL_DAYS[i]}</div></div>`;
+              }).join('')}
               ${staff.map(u => {
                 const totalH = DAYS.reduce((a,d) => a + getShiftHours(SCHEDULE.shifts[u.id]?.[d]), 0);
                 return `
@@ -2086,12 +2105,22 @@ function pgSchedule() {
       </div>
       <div class="card" style="margin-bottom:16px">
         <div class="sec-hd"><div class="sec-title">Week of ${SCHEDULE.week}</div></div>
-        ${DAYS.map((d,i)=>{const sh=myS[d];if(!sh)return'';const today=new Date().getDay() === (i+1)%7;return`
+        ${DAYS.map((d,i)=>{
+          const sh=myS[d];
+          if(!sh)return'';
+          const mon = isoWeekToMondayDate(SCHEDULE.weekKey);
+          const dayOffsets = { Mon:0, Tue:1, Wed:2, Thu:3, Fri:4, Sat:5, Sun:6 };
+          const offset = dayOffsets[d] || 0;
+          const dayDate = new Date(mon);
+          dayDate.setDate(mon.getDate() + offset);
+          const dateStr = dayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+          const today=new Date().getDay() === (i+1)%7;
+          return `
           <div style="padding:14px 16px;border-radius:12px;border:${today?'2px solid var(--gold)':'1.5px solid var(--bdr)'};background:${today?'var(--gold-pale)':'var(--sfc)'};margin-bottom:10px">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
               <div style="flex:1">
                 <div style="display:flex;align-items:center;gap:10px;margin-bottom:5px">
-                  <span style="font-size:13px;font-weight:700;min-width:72px;color:${today?'var(--amber)':'var(--tx-2)'}">${FULL_DAYS[i]}</span>
+                  <span style="font-size:13px;font-weight:700;min-width:72px;color:${today?'var(--amber)':'var(--tx-2)'}">${FULL_DAYS[i]} (${dateStr})</span>
                   ${shiftTag(sh.type)}
                   ${today?'<span class="badge badge-gold">Today</span>':''}
                 </div>
