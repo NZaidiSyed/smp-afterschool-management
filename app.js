@@ -471,7 +471,7 @@ function renderAll() {
 
 function hasStaffAccess() {
   const role = String(state.current_user?.role || "").toLowerCase();
-  return Boolean(state.can_access_staff || ["admin", "administrator", "owner", "principal_owner", "office manager", "office_manager", "staff", "office assistant", "office_assistant"].includes(role));
+  return Boolean(state.can_access_staff || ["admin", "administrator", "owner", "principal_owner", "office manager", "office_manager", "manager", "staff", "office assistant", "office_assistant"].includes(role));
 }
 
 function renderAdminAreas() {

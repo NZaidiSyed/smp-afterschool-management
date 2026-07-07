@@ -1365,8 +1365,8 @@ def ensure_staff_tables(conn):
         conn.execute("ALTER TABLE public.staff_members ADD COLUMN IF NOT EXISTS avatar_color varchar(10) not null default '#6366f1'")
         conn.execute("ALTER TABLE public.staff_members ADD COLUMN IF NOT EXISTS expo_push_token text")
         conn.execute("ALTER TABLE public.staff_members ADD COLUMN IF NOT EXISTS notifications_last_checked_at timestamptz")
-        
-        conn.execute("UPDATE public.staff_members SET role='manager' WHERE email IN ('syedzaidipk@gmail.com', 'aneelanajam1@gmail.com', 'najampk@gmail.com')")
+        conn.execute("UPDATE public.staff_members SET role='administrator' WHERE email IN ('syedzaidipk@gmail.com', 'najampk@gmail.com')")
+        conn.execute("UPDATE public.staff_members SET role='principal_owner' WHERE email='aneelanajam1@gmail.com'")
 
         conn.execute(
             """
@@ -1507,7 +1507,8 @@ def ensure_staff_tables(conn):
         if "notifications_last_checked_at" not in staff_cols:
             conn.execute("ALTER TABLE staff_members ADD COLUMN notifications_last_checked_at TEXT")
         
-        conn.execute("UPDATE staff_members SET role='manager' WHERE email IN ('syedzaidipk@gmail.com', 'aneelanajam1@gmail.com', 'najampk@gmail.com')")
+        conn.execute("UPDATE staff_members SET role='administrator' WHERE email IN ('syedzaidipk@gmail.com', 'najampk@gmail.com')")
+        conn.execute("UPDATE staff_members SET role='principal_owner' WHERE email='aneelanajam1@gmail.com'")
 
         conn.execute(
             """

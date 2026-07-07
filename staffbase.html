@@ -860,6 +860,7 @@ const ROLES = {
   principal_owner:    { label: 'Principal/Owner', badge: 'badge-purple', perms: ['all'] },
   administrator:      { label: 'Administrator', badge: 'badge-gold', perms: ['manage_staff','schedule','timesheets','reports','approve','announce','gps_override','clock'] },
   office_manager:     { label: 'Office Manager', badge: 'badge-teal', perms: ['schedule','timesheets','reports','approve','announce','gps_override','clock'] },
+  manager:            { label: 'Manager', badge: 'badge-teal', perms: ['manage_staff','schedule','timesheets','reports','approve','announce','gps_override','clock'] },
   office_assistant:   { label: 'Office Assistant', badge: 'badge-indigo', perms: ['clock','request'] },
   staff:              { label: 'Staff', badge: 'badge-blue', perms: ['clock','request'] },
 };
@@ -870,7 +871,7 @@ function can(perm) {
   return (ROLES[CU.role]?.perms || []).includes(perm);
 }
 function isManager() {
-  return CU && (CU.role === 'principal_owner' || CU.role === 'administrator' || CU.role === 'office_manager');
+  return CU && (CU.role === 'principal_owner' || CU.role === 'administrator' || CU.role === 'office_manager' || CU.role === 'manager');
 }
 
 // ─── USERS ──────────────────────────────────────────────────────────────────
