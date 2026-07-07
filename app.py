@@ -6349,6 +6349,11 @@ class Handler(SimpleHTTPRequestHandler):
         except ValueError as exc:
             self.send_json({"ok": False, "error": str(exc)}, 400)
             return
+        except Exception as exc:
+            import traceback
+            traceback.print_exc()
+            self.send_json({"ok": False, "error": f"Internal Server Error: {str(exc)}"}, 500)
+            return
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def do_PUT(self):
