@@ -3230,57 +3230,71 @@ async function readCsvFile(file) {
 async function handlePaymentUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
-  state.reconciliationFileName = file.name;
-  state.reconciliationPaymentMethod = qs("#reconPaymentMethod")?.value || "PAD";
-  state.reconciliationMatchRules = [...document.querySelectorAll("[data-recon-rule]:checked")].map((node) => node.dataset.reconRule);
-  if (!state.reconciliationMatchRules.length) state.reconciliationMatchRules = [...DEFAULT_RECON_RULES];
-  const parsedPayment = paymentCsvRows(await readCsvFile(file));
-  const rows = parsedPayment.rows;
-  state.reconciliationSkippedZeroRows = parsedPayment.skippedZeroRows || 0;
-  if (!rows.length) {
-    toast(`No payable rows found. ${state.reconciliationSkippedZeroRows} zero-amount row${state.reconciliationSkippedZeroRows === 1 ? "" : "s"} skipped.`);
-    return;
+  try {
+    state.reconciliationFileName = file.name;
+    state.reconciliationPaymentMethod = qs("#reconPaymentMethod")?.value || "PAD";
+    state.reconciliationMatchRules = [...document.querySelectorAll("[data-recon-rule]:checked")].map((node) => node.dataset.reconRule);
+    if (!state.reconciliationMatchRules.length) state.reconciliationMatchRules = [...DEFAULT_RECON_RULES];
+    const parsedPayment = paymentCsvRows(await readCsvFile(file));
+    const rows = parsedPayment.rows;
+    state.reconciliationSkippedZeroRows = parsedPayment.skippedZeroRows || 0;
+    if (!rows.length) {
+      toast(`No payable rows found. ${state.reconciliationSkippedZeroRows} zero-amount row${state.reconciliationSkippedZeroRows === 1 ? "" : "s"} skipped.`);
+      return;
+    }
+    const result = await api("/api/reconciliation/preview", {
+      method: "POST",
+      body: JSON.stringify({
+        rows,
+        file_name: file.name,
+        payment_method: state.reconciliationPaymentMethod,
+        match_rules: state.reconciliationMatchRules,
+      }),
+    });
+    state.reconciliationSummary = result.summary || null;
+    state.reconciliationPreview = (result.rows || []).map((row) => ({
+      ...row,
+      selected_student_id: row.best_match?.confidence === "high" ? row.best_match?.student_id || "" : "",
+      selected_month: row.month_label || "",
+      corrected_student_name: row.student_name || "",
+      corrected_parent_name: row.parent_name || row.description || "",
+      roster_update_approved: false,
+      excluded: false,
+      verified: Number(row.amount || 0) > 0 && row.best_match?.confidence === "high" && !(row.warnings || []).length && !row.best_match?.already_paid,
+      manually_verified: false,
+    }));
+    saveReconciliationSession();
+    renderReconciliation();
+    toast(`${parsedPayment.totalRows} rows found. ${rows.length} payment row${rows.length === 1 ? "" : "s"} loaded. ${state.reconciliationSkippedZeroRows} zero-amount row${state.reconciliationSkippedZeroRows === 1 ? "" : "s"} skipped.`);
+  } catch (err) {
+    toast(`Reconciliation preview failed: ${err.message}`);
+    console.error(err);
+  } finally {
+    event.target.value = "";
   }
-  const result = await api("/api/reconciliation/preview", {
-    method: "POST",
-    body: JSON.stringify({
-      rows,
-      file_name: file.name,
-      payment_method: state.reconciliationPaymentMethod,
-      match_rules: state.reconciliationMatchRules,
-    }),
-  });
-  state.reconciliationSummary = result.summary || null;
-  state.reconciliationPreview = (result.rows || []).map((row) => ({
-    ...row,
-    selected_student_id: row.best_match?.confidence === "high" ? row.best_match?.student_id || "" : "",
-    selected_month: row.month_label || "",
-    corrected_student_name: row.student_name || "",
-    corrected_parent_name: row.parent_name || row.description || "",
-    roster_update_approved: false,
-    excluded: false,
-    verified: Number(row.amount || 0) > 0 && row.best_match?.confidence === "high" && !(row.warnings || []).length && !row.best_match?.already_paid,
-    manually_verified: false,
-  }));
-  saveReconciliationSession();
-  renderReconciliation();
-  toast(`${parsedPayment.totalRows} rows found. ${rows.length} payment row${rows.length === 1 ? "" : "s"} loaded. ${state.reconciliationSkippedZeroRows} zero-amount row${state.reconciliationSkippedZeroRows === 1 ? "" : "s"} skipped.`);
 }
 
 async function handleFeeImportCsv(event) {
   const file = event.target.files[0];
   if (!file) return;
-  const rows = await readCsvFile(file);
-  if (!rows.length) {
-    toast("No fee tracker rows found in this CSV");
-    return;
+  try {
+    const rows = await readCsvFile(file);
+    if (!rows.length) {
+      toast("No fee tracker rows found in this CSV");
+      return;
+    }
+    const result = await api("/api/fee-import/preview", { method: "POST", body: JSON.stringify({ rows }) });
+    state.feeImportRows = rows;
+    state.feeImportPreview = result.rows || [];
+    renderFeeImportPreview();
+    const ready = state.feeImportPreview.filter((row) => row.valid).length;
+    toast(`${ready} of ${state.feeImportPreview.length} fee rows validated`);
+  } catch (err) {
+    toast(`Fee import preview failed: ${err.message}`);
+    console.error(err);
+  } finally {
+    event.target.value = "";
   }
-  const result = await api("/api/fee-import/preview", { method: "POST", body: JSON.stringify({ rows }) });
-  state.feeImportRows = rows;
-  state.feeImportPreview = result.rows || [];
-  renderFeeImportPreview();
-  const ready = state.feeImportPreview.filter((row) => row.valid).length;
-  toast(`${ready} of ${state.feeImportPreview.length} fee rows validated`);
 }
 
 async function applyFeeImport() {
