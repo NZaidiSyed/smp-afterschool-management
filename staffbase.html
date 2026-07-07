@@ -1096,21 +1096,45 @@ function notifyParent(key, data) {
 window.addEventListener('message', (event) => {
   if (!event.data || event.data.type !== 'smp:settingsChanged') return;
   const d = event.data;
-  if (d.school_name) applySchoolName(d.school_name);
+  let changed = false;
+
+  if (d.school_name && SCHOOL.name !== d.school_name) {
+    applySchoolName(d.school_name);
+    changed = true;
+  }
   if (Array.isArray(d.subjects)) {
-    SUBJECTS = d.subjects;
-    try { localStorage.setItem('sb_subjects', JSON.stringify(SUBJECTS)); } catch(e) {}
+    const currentJSON = JSON.stringify(SUBJECTS);
+    const newJSON = JSON.stringify(d.subjects);
+    if (currentJSON !== newJSON) {
+      SUBJECTS = d.subjects;
+      saveSubjects();
+    }
   }
   if (d.weekdays && Array.isArray(d.weekdays)) {
-    SCHOOL.openDays = d.weekdays;
-    DAYS = d.weekdays;
-    FULL_DAYS = DAYS.map(day => ({ Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday',Sat:'Saturday',Sun:'Sunday' }[day] || day));
-    saveSchool();
+    const currentJSON = JSON.stringify(SCHOOL.openDays);
+    const newJSON = JSON.stringify(d.weekdays);
+    if (currentJSON !== newJSON) {
+      SCHOOL.openDays = d.weekdays;
+      DAYS = d.weekdays;
+      FULL_DAYS = DAYS.map(day => ({ Mon:'Monday',Tue:'Tuesday',Wed:'Wednesday',Thu:'Thursday',Fri:'Friday',Sat:'Saturday',Sun:'Sunday' }[day] || day));
+      changed = true;
+    }
   }
-  if (d.operating_start && SCHOOL) SCHOOL.shiftStart = d.operating_start;
-  if (d.operating_end && SCHOOL) SCHOOL.shiftEnd = d.operating_end;
-  if (d.support_email && SCHOOL) {
+  if (d.operating_start && SCHOOL.operatingStart !== d.operating_start) {
+    SCHOOL.operatingStart = d.operating_start;
+    SCHOOL.shiftStart = d.operating_start;
+    changed = true;
+  }
+  if (d.operating_end && SCHOOL.operatingEnd !== d.operating_end) {
+    SCHOOL.operatingEnd = d.operating_end;
+    SCHOOL.shiftEnd = d.operating_end;
+    changed = true;
+  }
+  if (d.support_email && SCHOOL.email !== d.support_email) {
     SCHOOL.email = d.support_email;
+    changed = true;
+  }
+  if (changed) {
     saveSchool();
   }
   if (Array.isArray(d.el_students)) {
