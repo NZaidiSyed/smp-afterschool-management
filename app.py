@@ -4810,8 +4810,19 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True})
                 return True
             week_start = get_monday_of_current_week()
+
+            def is_valid_uuid(val):
+                try:
+                    import uuid
+                    uuid.UUID(str(val))
+                    return True
+                except ValueError:
+                    return False
+
             with db() as conn:
                 for staff_id_str, day_map in shifts.items():
+                    if PG_MODE and not is_valid_uuid(staff_id_str):
+                        continue
                     if not day_map or not isinstance(day_map, dict):
                         continue
                     # Clear current week's shifts for this staff
@@ -5129,7 +5140,18 @@ class Handler(SimpleHTTPRequestHandler):
             today = datetime.now().strftime("%Y-%m-%d")
             with db() as conn:
                 org_id = current_org_id(conn) if PG_MODE else None
+                
+                def is_valid_uuid(val):
+                    try:
+                        import uuid
+                        uuid.UUID(str(val))
+                        return True
+                    except ValueError:
+                        return False
+
                 for staff_id_str, item in payload.items():
+                    if PG_MODE and not is_valid_uuid(staff_id_str):
+                        continue
                     if not isinstance(item, dict):
                         continue
                     cin = item.get("in")
