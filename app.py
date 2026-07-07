@@ -2825,7 +2825,12 @@ def preview_reconciliation(rows, payment_method="PAD", match_rules=None):
         payments = get_payments(conn)
         if PG_MODE:
             alias_rows = conn.execute(
-                "SELECT student_id::text AS student_id, alias FROM public.payer_aliases WHERE organization_id=%s AND branch_id=%s",
+                """
+                SELECT pa.student_id::text AS student_id, pa.alias
+                FROM public.payer_aliases pa
+                JOIN public.students s ON pa.student_id = s.id
+                WHERE pa.organization_id=%s AND s.branch_id=%s
+                """,
                 (current_org_id(conn), branch_id),
             ).fetchall()
         else:
