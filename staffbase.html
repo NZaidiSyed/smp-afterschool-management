@@ -1058,6 +1058,10 @@ window.addEventListener('message', (event) => {
   }
   if (d.operating_start && SCHOOL) SCHOOL.shiftStart = d.operating_start;
   if (d.operating_end && SCHOOL) SCHOOL.shiftEnd = d.operating_end;
+  if (d.support_email && SCHOOL) {
+    SCHOOL.email = d.support_email;
+    saveSchool();
+  }
   if (Array.isArray(d.el_students)) {
     try { localStorage.setItem('smp_el_cache', JSON.stringify(d.el_students)); } catch(e) {}
   }

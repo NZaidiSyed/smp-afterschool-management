@@ -3977,6 +3977,7 @@ function pushSettingsToStaffbase() {
     weekdays,
     operating_start: state.settings?.operating_start || '15:00',
     operating_end: state.settings?.operating_end || '20:00',
+    support_email: state.settings?.support_email || 'support@smp.edu',
     el_students: elStudents,
   }, '*');
 }

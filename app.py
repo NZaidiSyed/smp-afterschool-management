@@ -78,6 +78,7 @@ DEFAULT_SETTINGS = {
     "subjects_offered": "Math\nEnglish",
     "operating_start": "15:00",
     "operating_end": "20:00",
+    "support_email": "support@smp.edu",
 }
 STUDENT_SCHEDULE_WEEKDAYS = ["Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
@@ -1959,7 +1960,7 @@ def staff_data_snapshot(conn, staff_id=None):
             "name": f"{org_name} - {branch_name}" if branch_name else org_name,
             "address": f"{branch_name} Branch ({branch_code})" if branch_code else branch_name,
             "website": "www.kumon.com",
-            "email": "cityscape@kumon.com",
+            "email": settings.get("support_email", "support@smp.edu"),
             "otThreshold": 8.0,
             "openDays": ["Tue", "Wed", "Thu", "Fri", "Sat"],
             "operatingStart": settings.get("operating_start", "15:00"),
@@ -1977,6 +1978,197 @@ def staff_data_snapshot(conn, staff_id=None):
         "documents": [],
         "ts_approvals": []
     }
+
+
+def send_email_notification(to_email, subject, plain_text, html_content=None):
+    import os
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    
+    # 1. Try SendGrid
+    sendgrid_key = os.environ.get("SENDGRID_API_KEY")
+    if sendgrid_key:
+        try:
+            import urllib.request
+            import json
+            url = "https://api.sendgrid.com/v3/mail/send"
+            headers = {
+                "Authorization": f"Bearer {sendgrid_key}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "personalizations": [{"to": [{"email": to_email}]}],
+                "from": {"email": os.environ.get("FROM_EMAIL", "support@smp.edu")},
+                "subject": subject,
+                "content": [
+                    {"type": "text/plain", "value": plain_text}
+                ]
+            }
+            if html_content:
+                payload["content"].append({"type": "text/html", "value": html_content})
+            
+            req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
+            with urllib.request.urlopen(req) as resp:
+                if resp.status in [200, 201, 202]:
+                    print(f"Email sent via SendGrid to {to_email}")
+                    return True
+        except Exception as e:
+            print("Failed to send email via SendGrid:", e)
+
+    # 2. Try SMTP
+    smtp_host = os.environ.get("SMTP_HOST") or os.environ.get("SMTP_SERVER")
+    if smtp_host:
+        try:
+            port = int(os.environ.get("SMTP_PORT", 587))
+            user = os.environ.get("SMTP_USER") or os.environ.get("SMTP_USERNAME")
+            passwd = os.environ.get("SMTP_PASSWORD")
+            from_addr = os.environ.get("FROM_EMAIL") or os.environ.get("SMTP_FROM") or "support@smp.edu"
+            
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = subject
+            msg["From"] = from_addr
+            msg["To"] = to_email
+            
+            msg.attach(MIMEText(plain_text, "plain"))
+            if html_content:
+                msg.attach(MIMEText(html_content, "html"))
+                
+            with smtplib.SMTP(smtp_host, port, timeout=10) as server:
+                if port == 587:
+                    server.starttls()
+                if user and passwd:
+                    server.login(user, passwd)
+                server.sendmail(from_addr, [to_email], msg.as_string())
+            print(f"Email sent via SMTP to {to_email}")
+            return True
+        except Exception as e:
+            print("Failed to send email via SMTP:", e)
+            
+    # 3. Fallback: Log it locally
+    print(f"=== AUTOMATED EMAIL SIMULATION ===")
+    print(f"To: {to_email}")
+    print(f"Subject: {subject}")
+    print(f"Body:\n{plain_text}")
+    print(f"===================================")
+    # Write to a mock file for UAT verification
+    try:
+        import os
+        import time
+        os.makedirs("emails", exist_ok=True)
+        filename = f"emails/welcome_{to_email}_{int(time.time())}.txt"
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write(f"Subject: {subject}\nTo: {to_email}\n\n{plain_text}")
+        print(f"Mock email file saved to: {filename}")
+    except Exception as e:
+        print("Failed to save mock email file:", e)
+    return False
+
+def send_staff_welcome_email(conn, name, email, pin, role, pos, password, origin):
+    settings = get_settings(conn)
+    school_name = settings.get("institution_name", "SMP - After School Management Program")
+    support_email = settings.get("support_email", "support@smp.edu")
+    
+    subject = f"Welcome to {school_name} — Your StaffBase Account"
+    
+    role_labels = {
+        "principal_owner": "Principal/Owner",
+        "administrator": "Administrator",
+        "office_manager": "Office Manager",
+        "office_assistant": "Office Assistant",
+        "staff": "Staff"
+    }
+    role_label = role_labels.get(role.lower().strip(), role)
+    
+    # Render professional plain text email body
+    plain_text = f"""Dear {name},
+
+Welcome to the {school_name} team! Your StaffBase account has been created.
+
+YOUR ACCOUNT DETAILS
+────────────────────
+Name:    {name}
+Email:   {email}
+Role:    {role_label}
+PIN:     {pin}  (keep this private)
+"""
+    if password:
+        plain_text += f"Admin password: {password}  (keep this private)\n"
+        
+    plain_text += f"""
+HOW TO GET STARTED
+──────────────────
+1. Download "Expo Go" from the App Store (iPhone) or Play Store (Android).
+2. Open the app and scan the QR code from your manager.
+3. Tap "Staff Login", select your name ({name}), and enter your PIN ({pin}).
+4. Allow location access — required for GPS clock-in at the school.
+5. Alternatively, you can log in on your phone/computer's web browser at the Staff portal:
+   {origin}/staffbase.html
+
+Questions? Contact your administrator: {support_email}
+Please keep your PIN private. Contact admin if you need it reset.
+"""
+
+    # Beautiful, modern responsive HTML welcome email template matching design aesthetics!
+    html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f3f4f6; color: #1f2937; margin: 0; padding: 20px; }}
+  .card {{ max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }}
+  .header {{ background-color: #1e3a8a; padding: 30px; text-align: center; color: #ffffff; }}
+  .header h1 {{ margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.025em; }}
+  .header p {{ margin: 5px 0 0 0; font-size: 13px; color: #93c5fd; text-transform: uppercase; letter-spacing: 0.1em; }}
+  .content {{ padding: 30px; line-height: 1.6; font-size: 15px; }}
+  .details {{ background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0; }}
+  .details-title {{ font-weight: 700; font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 12px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }}
+  .row {{ display: flex; margin-bottom: 8px; }}
+  .label {{ width: 120px; font-weight: 600; color: #4b5563; }}
+  .value {{ font-family: monospace; font-size: 14px; font-weight: 700; color: #111827; }}
+  .btn {{ display: inline-block; background-color: #1e3a8a; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 700; font-size: 14px; margin-top: 15px; text-align: center; }}
+  .footer {{ text-align: center; padding: 20px; font-size: 12px; color: #6b7280; border-top: 1px solid #e5e7eb; background: #f9fafb; }}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="header">
+    <p>Automated Onboarding</p>
+    <h1>{school_name}</h1>
+  </div>
+  <div class="content">
+    <p>Dear <strong>{name}</strong>,</p>
+    <p>Welcome to the <strong>{school_name}</strong> team! Your new StaffBase portal account is set up and ready to use.</p>
+    
+    <div class="details">
+      <div class="details-title">Your Credentials</div>
+      <div class="row"><span class="label">Name:</span><span class="value">{name}</span></div>
+      <div class="row"><span class="label">Email:</span><span class="value">{email}</span></div>
+      <div class="row"><span class="label">Role:</span><span class="value">{role_label}</span></div>
+      <div class="row"><span class="label">PIN:</span><span class="value" style="color: #d97706; font-size: 16px;">{pin}</span></div>
+      {"<div class='row'><span class='label'>Password:</span><span class='value'>" + password + "</span></div>" if password else ""}
+    </div>
+
+    <h3>How to get started:</h3>
+    <ol>
+      <li>Download <strong>Expo Go</strong> on your smartphone.</li>
+      <li>Scan the QR code provided by your manager or navigate directly to the Staff portal.</li>
+      <li>To access the portal on your computer or phone's web browser, click below:</li>
+    </ol>
+    
+    <div style="text-align: center;">
+      <a href="{origin}/staffbase.html" class="btn" target="_blank">Access Staff Portal</a>
+    </div>
+  </div>
+  <div class="footer">
+    Questions? Contact your administrator at <a href="mailto:{support_email}" style="color: #2563eb; text-decoration: none;">{support_email}</a><br>
+    Please keep your PIN confidential. Contact admin if you need a reset.
+  </div>
+</div>
+</body>
+</html>"""
+
+    send_email_notification(email, subject, plain_text, html_content)
 
 
 def normalize_role(role):
@@ -2111,7 +2303,7 @@ def get_settings(conn):
         org_id = current_org_id(conn)
         row = conn.execute(
             """
-            SELECT name, phone, details, subjects_offered, current_month,
+            SELECT name, phone, details, subjects_offered, current_month, support_email,
                    to_char(operating_start, 'HH24:MI') AS operating_start,
                    to_char(operating_end, 'HH24:MI') AS operating_end
             FROM public.organizations
@@ -2145,6 +2337,7 @@ def get_settings(conn):
                     "current_month": row.get("current_month") or DEFAULT_SETTINGS["current_month"],
                     "operating_start": row.get("operating_start") or DEFAULT_SETTINGS["operating_start"],
                     "operating_end": row.get("operating_end") or DEFAULT_SETTINGS["operating_end"],
+                    "support_email": row.get("support_email") or DEFAULT_SETTINGS["support_email"],
                 }
             )
         values.update({
@@ -3644,6 +3837,7 @@ def ensure_pg_defaults():
         conn.execute("ALTER TABLE public.monthly_expenses ADD COLUMN IF NOT EXISTS utilities_expense NUMERIC(10, 2) DEFAULT 0.00")
         conn.execute("ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS operating_start time DEFAULT '15:00'")
         conn.execute("ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS operating_end time DEFAULT '20:00'")
+        conn.execute("ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS support_email text DEFAULT 'support@smp.edu'")
         for subject in ["Math", "English"]:
             conn.execute(
                 """
@@ -4949,6 +5143,17 @@ class Handler(SimpleHTTPRequestHandler):
                     )
                     new_id = cur.lastrowid
                 conn.commit()
+            
+            # Send welcome email asynchronously/inline
+            try:
+                host = self.headers.get("Host", "localhost:8765")
+                proto = self.headers.get("X-Forwarded-Proto", "http")
+                origin = f"{proto}://{host}"
+                with db() as conn:
+                    send_staff_welcome_email(conn, name, email, pin, role, pos, password, origin)
+            except Exception as email_err:
+                print("Failed to automatically send onboarding welcome email:", email_err)
+
             self.send_json({"ok": True, "id": new_id})
             return True
 
@@ -5617,7 +5822,7 @@ class Handler(SimpleHTTPRequestHandler):
                             """
                             UPDATE public.organizations
                             SET name=%s, phone=%s, details=%s, subjects_offered=%s, current_month=%s,
-                                operating_start=%s::time, operating_end=%s::time, updated_at=now()
+                                operating_start=%s::time, operating_end=%s::time, support_email=%s, updated_at=now()
                             WHERE id=%s
                             """,
                             (
@@ -5628,6 +5833,7 @@ class Handler(SimpleHTTPRequestHandler):
                                 str(payload.get("current_month", DEFAULT_SETTINGS["current_month"])),
                                 str(payload.get("operating_start", DEFAULT_SETTINGS["operating_start"])),
                                 str(payload.get("operating_end", DEFAULT_SETTINGS["operating_end"])),
+                                str(payload.get("support_email", DEFAULT_SETTINGS["support_email"])),
                                 org_id,
                             ),
                         )
