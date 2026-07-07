@@ -1972,7 +1972,7 @@ function pgSchedule() {
                 const dayDate = new Date(mon);
                 dayDate.setDate(mon.getDate() + offset);
                 const dateStr = dayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                return `<div class="sched-head">${d} (${dateStr})<div style="font-size:9px;margin-top:1px;opacity:.6">${FULL_DAYS[i]}</div></div>`;
+                return `<div class="sched-head">${d.toUpperCase()} (${dateStr})<div style="font-size:9px;margin-top:1px;opacity:.6">${FULL_DAYS[i]}</div></div>`;
               }).join('')}
               ${staff.map(u => {
                 const totalH = DAYS.reduce((a,d) => a + getShiftHours(SCHEDULE.shifts[u.id]?.[d]), 0);

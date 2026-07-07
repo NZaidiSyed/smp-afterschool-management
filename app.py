@@ -1953,19 +1953,39 @@ def staff_data_snapshot(conn, staff_id=None):
                     branch_code = branch_row[1] or ""
     except Exception as e:
         print("Error fetching org/branch info in staff_data_snapshot:", e)
+    branch_settings = {}
+    try:
+        if PG_MODE:
+            org_id = current_org_id(conn)
+            branch_row = conn.execute("SELECT settings FROM public.branches WHERE organization_id=%s ORDER BY created_at LIMIT 1", (org_id,)).fetchone()
+        else:
+            org_row = conn.execute("SELECT id FROM organizations ORDER BY created_at LIMIT 1").fetchone()
+            org_id = org_row[0] if org_row else 1
+            branch_row = conn.execute("SELECT settings FROM branches WHERE organization_id=? ORDER BY created_at LIMIT 1", (org_id,)).fetchone()
+        
+        if branch_row and branch_row[0]:
+            import json
+            if isinstance(branch_row[0], dict):
+                branch_settings = branch_row[0]
+            else:
+                branch_settings = json.loads(branch_row[0])
+    except Exception as e:
+        print("Error fetching branch settings JSON:", e)
 
     return {
         "teacher_assignments": teacher_assignments,
         "school": {
-            "lat": 43.7615, "lng": -79.4111, "radius": 300,
-            "name": f"{org_name} - {branch_name}" if branch_name else org_name,
-            "address": f"{branch_name} Branch ({branch_code})" if branch_code else branch_name,
-            "website": "www.kumon.com",
-            "email": settings.get("support_email", "support@smp.edu"),
-            "otThreshold": 8.0,
-            "openDays": ["Tue", "Wed", "Thu", "Fri", "Sat"],
-            "operatingStart": settings.get("operating_start", "15:00"),
-            "operatingEnd": settings.get("operating_end", "20:00")
+            "lat": branch_settings.get("lat", 43.7615),
+            "lng": branch_settings.get("lng", -79.4111),
+            "radius": branch_settings.get("radius", 300),
+            "name": branch_settings.get("name") or (f"{org_name} - {branch_name}" if branch_name else org_name),
+            "address": branch_settings.get("address") or (f"{branch_name} Branch ({branch_code})" if branch_code else branch_name),
+            "website": branch_settings.get("website", "www.kumon.com"),
+            "email": branch_settings.get("email") or settings.get("support_email", "support@smp.edu"),
+            "otThreshold": branch_settings.get("otThreshold", 8.0),
+            "openDays": branch_settings.get("openDays") or ["Tue", "Wed", "Thu", "Fri", "Sat"],
+            "operatingStart": branch_settings.get("operatingStart") or settings.get("operating_start", "15:00"),
+            "operatingEnd": branch_settings.get("operatingEnd") or settings.get("operating_end", "20:00")
         },
         "users": users,
         "subjects": configured_subjects(settings),
@@ -5000,10 +5020,80 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True})
             return True
 
+        # ── POST staff base school settings sync ──
+        if parsed.path == "/api/staffbase/school":
+            payload = self.read_json()
+            if payload and isinstance(payload, dict):
+                import json
+                with db() as conn:
+                    if PG_MODE:
+                        org_id = current_org_id(conn)
+                        conn.execute(
+                            "UPDATE public.branches SET settings=%s, updated_at=now() WHERE organization_id=%s",
+                            (json.dumps(payload), org_id)
+                        )
+                        conn.execute(
+                            """
+                            UPDATE public.organizations
+                            SET name=%s, support_email=%s, operating_start=%s::time, operating_end=%s::time, updated_at=now()
+                            WHERE id=%s
+                            """,
+                            (
+                                payload.get("name", ""),
+                                payload.get("email", ""),
+                                payload.get("operatingStart", "15:00"),
+                                payload.get("operatingEnd", "20:00"),
+                                org_id
+                            )
+                        )
+                    else:
+                        org_row = conn.execute("SELECT id FROM organizations ORDER BY created_at LIMIT 1").fetchone()
+                        org_id = org_row[0] if org_row else 1
+                        conn.execute(
+                            "UPDATE branches SET settings=?, updated_at=CURRENT_TIMESTAMP WHERE organization_id=?",
+                            (json.dumps(payload), org_id)
+                        )
+                        conn.execute(
+                            """
+                            UPDATE organizations
+                            SET name=?, support_email=?, operating_start=?, operating_end=?, updated_at=CURRENT_TIMESTAMP
+                            WHERE id=?
+                            """,
+                            (
+                                payload.get("name", ""),
+                                payload.get("email", ""),
+                                payload.get("operatingStart", "15:00"),
+                                payload.get("operatingEnd", "20:00"),
+                                org_id
+                            )
+                        )
+                    conn.commit()
+            self.send_json({"ok": True})
+            return True
+
+        # ── POST staff base subjects list sync ──
+        if parsed.path == "/api/staffbase/subjects":
+            payload = self.read_json()
+            if isinstance(payload, list):
+                subjects_str = "\n".join(payload)
+                with db() as conn:
+                    if PG_MODE:
+                        org_id = current_org_id(conn)
+                        conn.execute(
+                            "UPDATE public.organizations SET subjects_offered=%s, updated_at=now() WHERE id=%s",
+                            (subjects_str, org_id)
+                        )
+                    else:
+                        conn.execute(
+                            "INSERT OR REPLACE INTO app_meta(key, value) VALUES ('subjects_offered', ?)",
+                            (subjects_str,)
+                        )
+                    conn.commit()
+            self.send_json({"ok": True})
+            return True
+
         # ── POST staff base no-op stubs ──
         if parsed.path in [
-            "/api/staffbase/school",
-            "/api/staffbase/subjects",
             "/api/staffbase/users",
             "/api/staffbase/messages",
             "/api/staffbase/checkin_log",
