@@ -2983,19 +2983,54 @@ function renderReconciliation() {
     return;
   }
   const body = rows.map((row, index) => {
+    const isMultiple = Boolean(row.multiple_parent_matches);
     const best = row.best_match || {};
     const confidence = best.confidence || "low";
     const warnings = [...(row.warnings || [])];
     if (Number(row.amount || 0) <= 0) warnings.push("Zero amount: not postable");
-    const reasons = [...(best.reasons || []), ...warnings].join("; ") || "No strong matching reason yet";
+    const reasons = isMultiple ? 
+      "Multiple students share this Parent/Guardian. Proportional allocation required." :
+      [...(best.reasons || []), ...warnings].join("; ") || "No strong matching reason yet";
+      
     const options = reconciliationStudentOptions(row);
     const selectedStudentId = row.selected_student_id || (confidence === "high" ? best.student_id : "");
     const selectedCandidate = selectedStudentId ? (options.find((candidate) => String(candidate.student_id) === String(selectedStudentId)) || best) : {};
-    const showCreateStudent = reconciliationCanCreateStudent(row, options);
+    const showCreateStudent = !isMultiple && reconciliationCanCreateStudent(row, options);
     const monthValue = row.selected_month || row.month_label || "";
-    const blocked = row.excluded || warnings.length || selectedCandidate?.already_paid || row.rejected || Number(row.amount || 0) <= 0;
-    const buttonClass = row.verified ? "verify-action verified" : blocked ? "verify-action blocked" : "verify-action needs-review";
-    const buttonLabel = row.excluded ? "Excluded" : row.verified ? (row.manually_verified ? "Verified Now to ADD" : "Verified to ADD") : blocked ? "Manual Review Required" : "Verify and Correct";
+    
+    const blocked = !isMultiple && (row.excluded || warnings.length || selectedCandidate?.already_paid || row.rejected || Number(row.amount || 0) <= 0);
+    const buttonClass = row.verified ? "verify-action verified" : isMultiple ? "verify-action needs-review" : blocked ? "verify-action blocked" : "verify-action needs-review";
+    const buttonLabel = row.excluded ? "Excluded" : row.verified ? (row.manually_verified ? "Verified Now to ADD" : "Verified to ADD") : isMultiple ? "Review Allocation" : blocked ? "Manual Review Required" : "Verify and Correct";
+
+    const studentSelector = isMultiple ? 
+      `<span style="color: var(--primary); font-weight: 500;">Multiple Matches</span>` :
+      `<select data-recon-student="${index}">
+        <option value="">Select student for posting</option>
+        ${options.map((candidate) => `<option value="${candidate.student_id}" ${String(candidate.student_id) === String(selectedStudentId) ? "selected" : ""}>${escapeHtml(candidate.student_name)} - ${escapeHtml(candidate.parent_guardian || "No guardian")} - ${candidate.score || "manual"}%</option>`).join("")}
+      </select>`;
+
+    const expectedFeeHtml = isMultiple ? 
+      row.matching_students.map(s => `${escapeHtml(s.student_name)}: ${money(s.std_monthly_fee)}`).join("<br>") :
+      money(selectedCandidate?.expected_fee || 0);
+
+    const parentGuardianHtml = isMultiple ? 
+      escapeHtml(row.parent_name || row.description) :
+      escapeHtml(selectedCandidate?.parent_guardian || "-");
+
+    const payMethodHtml = isMultiple ? 
+      escapeHtml(state.reconciliationPaymentMethod || "PAD") :
+      escapeHtml(selectedCandidate?.payment_method || "PAD");
+
+    const prevCurrentHtml = isMultiple ? "-" :
+      (selectedCandidate?.previous_month ? `${selectedCandidate.previous_month}: ${money(selectedCandidate.previous_paid || 0)} / Current: ${money(selectedCandidate.current_paid || 0)}` : "-");
+
+    const confidenceHtml = isMultiple ? 
+      `<span class="confidence low">low</span>` : 
+      `<span class="confidence ${confidence}">${confidence}</span>`;
+
+    const rosterCorrectionHtml = isMultiple ? "-" :
+      `<label class="compact-check"><input type="checkbox" data-roster-update="${index}" ${row.roster_update_approved ? "checked" : ""}> Update roster names</label>`;
+
     return [
       row.date,
       escapeHtml(row.description),
@@ -3003,19 +3038,16 @@ function renderReconciliation() {
       `<input data-recon-parent-name="${index}" value="${escapeHtml(row.corrected_parent_name ?? row.parent_name ?? row.description ?? "")}" placeholder="CSV parent/payor">`,
       money(row.amount),
       escapeHtml(row.source || "-"),
-      `<input data-recon-search="${index}" value="${escapeHtml(row.student_search || "")}" placeholder="Search roster student">`,
-      `<select data-recon-student="${index}">
-        <option value="">Select student for posting</option>
-        ${options.map((candidate) => `<option value="${candidate.student_id}" ${String(candidate.student_id) === String(selectedStudentId) ? "selected" : ""}>${escapeHtml(candidate.student_name)} - ${escapeHtml(candidate.parent_guardian || "No guardian")} - ${candidate.score || "manual"}%</option>`).join("")}
-      </select>`,
-      escapeHtml(selectedCandidate?.parent_guardian || "-"),
-      escapeHtml(selectedCandidate?.payment_method || "PAD"),
-      money(selectedCandidate?.expected_fee || 0),
+      isMultiple ? "-" : `<input data-recon-search="${index}" value="${escapeHtml(row.student_search || "")}" placeholder="Search roster student">`,
+      studentSelector,
+      parentGuardianHtml,
+      payMethodHtml,
+      expectedFeeHtml,
       `<select data-recon-month="${index}">${state.months.map((month) => `<option value="${month}" ${month === monthValue ? "selected" : ""}>${month}</option>`).join("")}</select>`,
-      selectedCandidate?.previous_month ? `${selectedCandidate.previous_month}: ${money(selectedCandidate.previous_paid || 0)} / Current: ${money(selectedCandidate.current_paid || 0)}` : "-",
-      `<span class="confidence ${confidence}">${confidence}</span>`,
+      prevCurrentHtml,
+      confidenceHtml,
       `<span class="muted-note">${escapeHtml(reasons)}</span>`,
-      `<label class="compact-check"><input type="checkbox" data-roster-update="${index}" ${row.roster_update_approved ? "checked" : ""}> Update roster names</label>`,
+      rosterCorrectionHtml,
       `<div class="row-actions"><button class="${buttonClass}" data-verify-recon="${index}" ${row.excluded ? "disabled" : ""}>${buttonLabel}</button>${showCreateStudent ? `<button class="ghost" data-create-recon-student="${index}" type="button">Create Student</button>` : ""}<button class="ghost danger" data-exclude-recon="${index}" type="button">${row.excluded ? "Restore" : "Delete Row"}</button></div>`,
     ];
   });
@@ -3509,9 +3541,157 @@ function downloadExceptionReport() {
   URL.revokeObjectURL(link.href);
 }
 
+let currentAllocationIndex = -1;
+
+function openAllocationModal(index) {
+  currentAllocationIndex = index;
+  const row = state.reconciliationPreview[index];
+  if (!row) return;
+  
+  qs("#allocationParentName").textContent = row.parent_name || row.description || "Unknown";
+  qs("#allocationTotalPayment").textContent = money(row.amount);
+  
+  const studentListDiv = qs("#allocationStudentList");
+  studentListDiv.innerHTML = (row.matching_students || []).map((student) => {
+    const proposedVal = row.allocation_split?.[student.student_id] ?? row.proposed_split?.[student.student_id] ?? 0;
+    const isPaid = (row.candidates || []).find(c => String(c.student_id) === String(student.student_id))?.already_paid ?? false;
+    const selectedMonth = row.selected_month || row.month_label || "";
+    const warningHtml = isPaid ? `<span style="color: var(--danger); font-size: 0.85em; font-weight: bold; margin-left: 8px;">Already paid for ${selectedMonth}</span>` : "";
+    
+    return `
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 6px;">
+        <div style="flex: 1;">
+          <strong style="display: block;">${escapeHtml(student.student_name)} ${warningHtml}</strong>
+          <span class="muted-note">Last STD Payment: ${money(student.std_monthly_fee)}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span>$</span>
+          <input type="number" step="0.01" min="0" class="allocation-input" data-student-id="${student.student_id}" value="${proposedVal.toFixed(2)}" style="width: 100px; text-align: right; padding: 6px; border: 1px solid var(--line); border-radius: 4px;">
+        </div>
+      </div>
+    `;
+  }).join("");
+  
+  const inputs = document.querySelectorAll(".allocation-input");
+  inputs.forEach(input => {
+    input.addEventListener("input", () => updateAllocationTotal(row));
+  });
+  
+  updateAllocationTotal(row);
+  qs("#allocationModal").classList.remove("collapsed");
+}
+
+function updateAllocationTotal(row) {
+  const inputs = document.querySelectorAll(".allocation-input");
+  let sum = 0;
+  inputs.forEach(input => {
+    sum += Number(input.value || 0);
+  });
+  qs("#allocationTotalAllocated").textContent = money(sum);
+  const diff = Math.abs(sum - row.amount);
+  const discrepancy = qs("#allocationDiscrepancy");
+  const confirmBtn = qs("#confirmAllocationBtn");
+  if (diff > 0.01) {
+    discrepancy.textContent = `Allocated total (${money(sum)}) must equal the bank payment amount (${money(row.amount)}).`;
+    discrepancy.style.display = "block";
+    confirmBtn.disabled = true;
+  } else {
+    discrepancy.style.display = "none";
+    confirmBtn.disabled = false;
+  }
+}
+
+function closeAllocationModal() {
+  qs("#allocationModal").classList.add("collapsed");
+  currentAllocationIndex = -1;
+}
+
+function confirmAllocation(event) {
+  if (event) event.preventDefault();
+  const index = currentAllocationIndex;
+  const row = state.reconciliationPreview[index];
+  if (!row) return;
+  
+  const inputs = document.querySelectorAll(".allocation-input");
+  const allocationSplit = {};
+  let isManuallyAdjusted = false;
+  
+  inputs.forEach(input => {
+    const studentId = input.dataset.studentId;
+    const amt = Number(input.value || 0);
+    allocationSplit[studentId] = amt;
+    const proposedVal = row.proposed_split?.[studentId] ?? 0;
+    if (Math.abs(amt - proposedVal) > 0.01) {
+      isManuallyAdjusted = true;
+    }
+  });
+  
+  const auditComment = isManuallyAdjusted ?
+    "Payment allocated across multiple students with the same Parent/Guardian name based on each student's Last STD Payment. Manually adjusted by Admin." :
+    "Payment allocated across multiple students with the same Parent/Guardian name based on each student's Last STD Payment. Allocation confirmed by Admin.";
+    
+  const newRows = [];
+  const selectedMonth = row.selected_month || row.month_label || "";
+  
+  row.matching_students.forEach(student => {
+    const allocatedAmount = allocationSplit[student.student_id] || 0;
+    if (allocatedAmount <= 0) return;
+    
+    const candidate = (row.candidates || []).find(c => String(c.student_id) === String(student.student_id)) || {
+      student_id: student.student_id,
+      student_name: student.student_name,
+      parent_guardian: student.parent_guardian,
+      payment_method: state.reconciliationPaymentMethod || "PAD",
+      expected_fee: student.std_monthly_fee,
+      score: 100,
+      confidence: "high",
+      current_paid: 0,
+      already_paid: false,
+      reasons: ["proportional allocation match"]
+    };
+    
+    newRows.push({
+      ...row,
+      amount: allocatedAmount,
+      best_match: candidate,
+      candidates: row.candidates || [candidate],
+      selected_student_id: student.student_id,
+      selected_month: selectedMonth,
+      notes: auditComment,
+      verified: true,
+      manually_verified: true,
+      multiple_parent_matches: false,
+      warnings: []
+    });
+  });
+  
+  if (newRows.length === 0) {
+    toast("No positive allocations made");
+    return;
+  }
+  
+  state.reconciliationPreview.splice(index, 1, ...newRows);
+  saveReconciliationSession();
+  closeAllocationModal();
+  renderReconciliation();
+  toast(`Payment split into ${newRows.length} sub-payments`);
+}
+
+function rejectAllocation() {
+  const index = currentAllocationIndex;
+  closeAllocationModal();
+  toggleExcludeReconciliationRow(index);
+}
+
 function verifyReconciliationRow(index) {
   const row = state.reconciliationPreview[index];
   if (!row) return;
+  
+  if (row.multiple_parent_matches) {
+    openAllocationModal(index);
+    return;
+  }
+  
   updateReconCorrection(index);
   const selectedStudentId = qs(`[data-recon-student="${index}"]`)?.value || row.selected_student_id || "";
   const selectedMonth = qs(`[data-recon-month="${index}"]`)?.value || row.selected_month || row.month_label || "";
@@ -3670,6 +3850,11 @@ qs("#closeWorkflow").addEventListener("click", closeWorkflow);
 qs("#chooseAdd").addEventListener("click", showAddStudentForm);
 qs("#chooseModify").addEventListener("click", showModifySearch);
 qs("#modifySearch").addEventListener("input", renderModifyResults);
+
+qs("#closeAllocationModal").addEventListener("click", closeAllocationModal);
+qs("#cancelAllocationBtn").addEventListener("click", closeAllocationModal);
+qs("#rejectAllocationBtn").addEventListener("click", rejectAllocation);
+qs("#allocationForm").addEventListener("submit", confirmAllocation);
 
 qs("#dashboardMonth").addEventListener("change", async (event) => {
   state.settings.current_month = event.target.value;

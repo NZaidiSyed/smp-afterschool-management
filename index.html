@@ -796,6 +796,39 @@
       </div>
     </section>
   </div>
+  <div id="allocationModal" class="modal-backdrop collapsed">
+    <section class="workflow-modal surface" style="max-height: 90vh; overflow-y: auto;">
+      <div class="section-title">
+        <div>
+          <h2>Payment Allocation Review</h2>
+          <span>Multiple students share this Parent/Guardian name</span>
+        </div>
+        <button type="button" class="ghost" id="closeAllocationModal">Close</button>
+      </div>
+      
+      <div class="allocation-details" style="margin-bottom: 16px;">
+        <p><strong>Parent/Guardian:</strong> <span id="allocationParentName">-</span></p>
+        <p><strong>Total CSV Payment:</strong> <span id="allocationTotalPayment">-</span></p>
+      </div>
+
+      <form id="allocationForm">
+        <div id="allocationStudentList" style="margin-bottom: 20px; display: grid; gap: 14px;">
+          <!-- Student inputs will be populated here -->
+        </div>
+
+        <div class="allocation-summary" style="padding-top: 14px; border-top: 1px solid var(--line); margin-bottom: 14px;">
+          <p><strong>Total Allocated:</strong> <span id="allocationTotalAllocated">$0.00</span></p>
+          <p id="allocationDiscrepancy" style="color: var(--danger); font-weight: bold; display: none;"></p>
+        </div>
+
+        <div class="actions" style="display: flex; gap: 12px; justify-content: flex-end;">
+          <button type="button" id="rejectAllocationBtn" class="ghost danger">Reject & Exclude Row</button>
+          <button type="button" id="cancelAllocationBtn" class="ghost">Cancel</button>
+          <button type="submit" id="confirmAllocationBtn" class="primary">Confirm Allocation</button>
+        </div>
+      </form>
+    </section>
+  </div>
 
   <div id="toast" role="status"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>

@@ -2783,6 +2783,48 @@ def score_payment_match(row, student, aliases, payments, match_rules=None, uploa
     }
 
 
+def find_matching_parent_students(parent_query, method_students, aliases):
+    if not parent_query or not parent_query.strip():
+        return []
+    
+    pq_norm = "".join(c for c in parent_query.lower() if c.isalnum())
+    if not pq_norm:
+        return []
+        
+    matches = []
+    for student in method_students:
+        parent = student.get("parent_guardian") or ""
+        if not parent.strip():
+            continue
+            
+        sp_norm = "".join(c for c in parent.lower() if c.isalnum())
+        sp_rev_norm = "".join(c for c in comma_name_variant(parent).lower() if c.isalnum())
+        
+        # 1. Exact match (or reversed comma name)
+        if pq_norm == sp_norm or pq_norm == sp_rev_norm:
+            matches.append(student)
+            continue
+            
+        # 2. Token overlap check
+        pq_tokens = set(meaningful_tokens(parent_query))
+        sp_tokens = set(meaningful_tokens(parent))
+        if pq_tokens and sp_tokens and len(pq_tokens & sp_tokens) >= min(len(pq_tokens), len(sp_tokens), 2):
+            matches.append(student)
+            continue
+            
+        # 3. Payer aliases check
+        matched_alias = False
+        for alias in aliases.get(str(student["id"]), []):
+            alias_norm = "".join(c for c in alias.lower() if c.isalnum())
+            if alias_norm and (alias_norm in pq_norm or pq_norm in alias_norm):
+                matched_alias = True
+                break
+        if matched_alias:
+            matches.append(student)
+            
+    return matches
+
+
 def reconciliation_summary_from_previews(previews, students, upload_method):
     verified = [row for row in previews if row.get("suggestion") == "auto-fill"]
     rejected = [row for row in previews if row.get("rejected")]
@@ -2795,7 +2837,7 @@ def reconciliation_summary_from_previews(previews, students, upload_method):
         "csv": {
             "total_rows": len(previews),
             "processed_rows": len(previews),
-            "matched_rows": len([row for row in previews if row.get("best_match")]),
+            "matched_rows": len([row for row in previews if row.get("best_match") or row.get("multiple_parent_matches")]),
             "ready_rows": len(verified),
             "rejected_rows": len(rejected),
             "manual_review_rows": len(manual),
@@ -2810,7 +2852,7 @@ def reconciliation_summary_from_previews(previews, students, upload_method):
         },
         "students": {
             "matched_students": len(matched_ids),
-            "students_not_found": len([row for row in previews if not row.get("best_match")]),
+            "students_not_found": len([row for row in previews if not row.get("best_match") and not row.get("multiple_parent_matches")]),
             "students_with_payment_discrepancies": len([row for row in previews if row.get("warnings")]),
             "outstanding_students": max(0, len(students) - len(matched_ids)),
         },
@@ -2867,15 +2909,58 @@ def preview_reconciliation(rows, payment_method="PAD", match_rules=None):
             key=lambda match: match["score"],
             reverse=True,
         )[:5]
-        best = matches[0] if matches and matches[0]["score"] >= 50 else None
-        warnings = []
-        if float(normalized.get("amount") or 0) <= 0:
-            warnings.append("Zero amount rows are not posted. Review only.")
-        if not method_students:
-            warnings.append(f"No active {upload_method} students are available for matching")
-        if best and best.get("already_paid"):
-            warnings.append(f"{best['student_name']} already has {best['month_label']} payment recorded")
-        rejected = not best
+        
+        # Detect multiple matching students with the same parent
+        parent_query = normalized["parent_name"] or normalized["description"] or ""
+        parent_matches = find_matching_parent_students(parent_query, method_students, aliases)
+        
+        if len(parent_matches) > 1:
+            best = None
+            multiple_parent_matches = True
+            warnings = ["Multiple students share this Parent/Guardian. Proportional allocation required."]
+            
+            # Calculate proportional proposed split
+            total_amount = float(normalized.get("amount") or 0)
+            total_std_fee = sum(float(s.get("std_monthly_fee") or 0) for s in parent_matches)
+            proposed_split = {}
+            if total_amount > 0 and total_std_fee > 0:
+                allocated_sum = 0.0
+                for idx, s in enumerate(parent_matches):
+                    s_id = str(s["id"])
+                    std_fee = float(s.get("std_monthly_fee") or 0)
+                    if idx < len(parent_matches) - 1:
+                        allocated = round(total_amount * (std_fee / total_std_fee), 2)
+                        allocated_sum += allocated
+                    else:
+                        allocated = round(total_amount - allocated_sum, 2)
+                    proposed_split[s_id] = allocated
+            else:
+                for s in parent_matches:
+                    proposed_split[str(s["id"])] = round(total_amount / len(parent_matches), 2)
+            
+            matching_students_info = [
+                {
+                    "student_id": str(s["id"]),
+                    "student_name": s["student_name"],
+                    "std_monthly_fee": float(s.get("std_monthly_fee") or 0),
+                    "parent_guardian": s.get("parent_guardian") or ""
+                }
+                for s in parent_matches
+            ]
+        else:
+            best = matches[0] if matches and matches[0]["score"] >= 50 else None
+            multiple_parent_matches = False
+            warnings = []
+            proposed_split = None
+            matching_students_info = None
+            if float(normalized.get("amount") or 0) <= 0:
+                warnings.append("Zero amount rows are not posted. Review only.")
+            if not method_students:
+                warnings.append(f"No active {upload_method} students are available for matching")
+            if best and best.get("already_paid"):
+                warnings.append(f"{best['student_name']} already has {best['month_label']} payment recorded")
+        
+        rejected = not best and not multiple_parent_matches
         previews.append(
             {
                 **normalized,
@@ -2886,6 +2971,9 @@ def preview_reconciliation(rows, payment_method="PAD", match_rules=None):
                 "warnings": warnings,
                 "payment_method_mode": upload_method,
                 "suggestion": "auto-fill" if best and best["confidence"] == "high" and not warnings else "review",
+                "multiple_parent_matches": multiple_parent_matches,
+                "matching_students": matching_students_info,
+                "proposed_split": proposed_split,
             }
         )
     return {"rows": previews, "summary": reconciliation_summary_from_previews(previews, method_students, upload_method)}
