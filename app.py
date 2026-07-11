@@ -3116,7 +3116,7 @@ def preview_fee_import(rows):
     return preview
 
 
-def apply_fee_import(rows):
+def apply_fee_import(rows, actor_email="system"):
     preview = preview_fee_import(rows)
     applied = 0
     skipped = 0
@@ -3146,6 +3146,16 @@ def apply_fee_import(rows):
                         (item["student_id"], month, amount),
                     )
                 applied += 1
+        if applied > 0:
+            record_audit(
+                conn,
+                "fee_import",
+                "payment",
+                None,
+                f"Imported bulk payments for {applied} student-months",
+                after={"applied_count": applied, "skipped_count": skipped},
+                actor_email=actor_email,
+            )
         conn.commit()
     return {"applied": applied, "skipped": skipped, "rows": preview}
 
@@ -5965,6 +5975,15 @@ class Handler(SimpleHTTPRequestHandler):
                 payload = self.read_json()
                 with db() as conn:
                     new_id = save_staff_member(conn, payload)
+                    record_audit(
+                        conn,
+                        "staff_create",
+                        "staff",
+                        str(new_id),
+                        f"Created staff member: {payload.get('staff_name')} ({payload.get('email')})",
+                        after=payload,
+                        actor_email=self.actor_email(),
+                    )
                     conn.commit()
                     self.send_json({"ok": True, "id": new_id})
                 return
@@ -5974,6 +5993,15 @@ class Handler(SimpleHTTPRequestHandler):
                 payload = self.read_json()
                 with db() as conn:
                     save_staff_schedule(conn, payload)
+                    record_audit(
+                        conn,
+                        "staff_schedule_update",
+                        "staff_schedule",
+                        payload.get("staff_id"),
+                        f"Updated schedule for staff id {payload.get('staff_id')}",
+                        after=payload,
+                        actor_email=self.actor_email(),
+                    )
                     conn.commit()
                     self.send_json({"ok": True})
                 return
@@ -5983,6 +6011,15 @@ class Handler(SimpleHTTPRequestHandler):
                 payload = self.read_json()
                 with db() as conn:
                     new_id = save_staff_punch(conn, payload)
+                    record_audit(
+                        conn,
+                        "staff_punch_update",
+                        "staff_punch",
+                        str(new_id),
+                        f"Logged punch action: {payload.get('action')} for staff id {payload.get('staff_id')}",
+                        after=payload,
+                        actor_email=self.actor_email(),
+                    )
                     conn.commit()
                     self.send_json({"ok": True, "id": new_id})
                 return
@@ -6088,6 +6125,15 @@ class Handler(SimpleHTTPRequestHandler):
                                 "UPDATE branches SET name=?, code=?, slug=? WHERE organization_id=?",
                                 (new_name, new_code, new_slug, org_id)
                             )
+                    record_audit(
+                        conn,
+                        "settings_update",
+                        "settings",
+                        "global",
+                        f"Updated settings: {list(payload.keys())}",
+                        after=payload,
+                        actor_email=self.actor_email(),
+                    )
                     conn.commit()
                 self.send_json({"ok": True})
                 return
@@ -6116,6 +6162,15 @@ class Handler(SimpleHTTPRequestHandler):
                             (subject, rate_type, money(payload.get("monthly_fee")), str(payload.get("description", "")).strip()),
                         )
                         new_id = cur.lastrowid
+                    record_audit(
+                        conn,
+                        "rate_create",
+                        "rate",
+                        str(new_id),
+                        f"Created rate: {subject} ({rate_type}) at {money(payload.get('monthly_fee'))}",
+                        after=payload,
+                        actor_email=self.actor_email(),
+                    )
                     conn.commit()
                 self.send_json({"ok": True, "id": new_id})
                 return
@@ -6154,6 +6209,15 @@ class Handler(SimpleHTTPRequestHandler):
                             (email, display_name, role, "email", 1 if active else 0),
                         )
                         new_id = cur.lastrowid
+                    record_audit(
+                        conn,
+                        "user_save",
+                        "user",
+                        str(new_id),
+                        f"Saved user: {email} as {role} (active: {active})",
+                        after=payload,
+                        actor_email=self.actor_email(),
+                    )
                     conn.commit()
                 self.send_json({"ok": True, "id": new_id})
                 return
@@ -6191,6 +6255,15 @@ class Handler(SimpleHTTPRequestHandler):
                             ),
                         )
                         new_id = cur.lastrowid
+                    record_audit(
+                        conn,
+                        "discount_create",
+                        "discount",
+                        str(new_id),
+                        f"Created discount code: {code}",
+                        after=payload,
+                        actor_email=self.actor_email(),
+                    )
                     conn.commit()
                     self.send_json({"ok": True, "id": new_id})
                 return
@@ -6437,7 +6510,7 @@ class Handler(SimpleHTTPRequestHandler):
                 rows = payload.get("rows", [])
                 if not isinstance(rows, list) or not rows:
                     raise ValueError("Upload at least one fee tracker CSV row")
-                self.send_json({"ok": True, **apply_fee_import(rows[:1000])})
+                self.send_json({"ok": True, **apply_fee_import(rows[:1000], self.actor_email())})
                 return
         except ValueError as exc:
             self.send_json({"ok": False, "error": str(exc)}, 400)
@@ -6635,6 +6708,15 @@ class Handler(SimpleHTTPRequestHandler):
                 payload = self.read_json()
                 with db() as conn:
                     save_staff_member(conn, payload, staff_member_match.group(1))
+                    record_audit(
+                        conn,
+                        "staff_update",
+                        "staff",
+                        staff_member_match.group(1),
+                        f"Updated staff member: {payload.get('staff_name')} ({payload.get('email')})",
+                        after=payload,
+                        actor_email=self.actor_email(),
+                    )
                     conn.commit()
                     self.send_json({"ok": True})
                 return
@@ -6674,6 +6756,15 @@ class Handler(SimpleHTTPRequestHandler):
                             "UPDATE rates SET subject=?, rate_type=?, monthly_fee=?, description=? WHERE id=?",
                             (subject, rate_type, money(payload.get("monthly_fee")), str(payload.get("description", "")).strip(), int(rate_match.group(1))),
                         )
+                    record_audit(
+                        conn,
+                        "rate_update",
+                        "rate",
+                        rate_match.group(1),
+                        f"Updated rate: {subject} ({rate_type}) to {money(payload.get('monthly_fee'))}",
+                        after=payload,
+                        actor_email=self.actor_email(),
+                    )
                     conn.commit()
                 self.send_json({"ok": True})
                 return
@@ -6711,6 +6802,15 @@ class Handler(SimpleHTTPRequestHandler):
                                 int(discount_match.group(1)),
                             ),
                         )
+                    record_audit(
+                        conn,
+                        "discount_update",
+                        "discount",
+                        discount_match.group(1),
+                        f"Updated discount code: {code}",
+                        after=payload,
+                        actor_email=self.actor_email(),
+                    )
                     conn.commit()
                 self.send_json({"ok": True})
                 return
@@ -6747,6 +6847,15 @@ class Handler(SimpleHTTPRequestHandler):
                             "UPDATE users SET email=?, display_name=?, role=?, active=? WHERE id=?",
                             (email, display_name, role, 1 if active else 0, int(user_match.group(1))),
                         )
+                    record_audit(
+                        conn,
+                        "user_update",
+                        "user",
+                        user_match.group(1),
+                        f"Updated user: {email} as {role} (active: {active})",
+                        after=payload,
+                        actor_email=self.actor_email(),
+                    )
                     conn.commit()
                 self.send_json({"ok": True})
                 return
@@ -6907,6 +7016,14 @@ class Handler(SimpleHTTPRequestHandler):
                     conn.execute("DELETE FROM public.rates WHERE id=%s AND organization_id=%s", (rate_match.group(1), current_org_id(conn)))
                 else:
                     conn.execute("DELETE FROM rates WHERE id=?", (int(rate_match.group(1)),))
+                record_audit(
+                    conn,
+                    "rate_delete",
+                    "rate",
+                    rate_match.group(1),
+                    f"Deleted rate id {rate_match.group(1)}",
+                    actor_email=self.actor_email(),
+                )
                 conn.commit()
             self.send_json({"ok": True})
             return
@@ -6918,6 +7035,14 @@ class Handler(SimpleHTTPRequestHandler):
                     conn.execute("DELETE FROM public.discount_codes WHERE id=%s AND (organization_id=%s OR organization_id IS NULL)", (discount_match.group(1), current_org_id(conn)))
                 else:
                     conn.execute("DELETE FROM discount_codes WHERE id=?", (int(discount_match.group(1)),))
+                record_audit(
+                    conn,
+                    "discount_delete",
+                    "discount",
+                    discount_match.group(1),
+                    f"Deleted discount code id {discount_match.group(1)}",
+                    actor_email=self.actor_email(),
+                )
                 conn.commit()
             self.send_json({"ok": True})
             return
@@ -6936,6 +7061,14 @@ class Handler(SimpleHTTPRequestHandler):
                     conn.execute("DELETE FROM public.app_users WHERE id=%s AND organization_id=%s", (user_match.group(1), current_org_id(conn)))
                 else:
                     conn.execute("DELETE FROM users WHERE id=?", (int(user_match.group(1)),))
+                record_audit(
+                    conn,
+                    "user_delete",
+                    "user",
+                    user_match.group(1),
+                    f"Deleted user id {user_match.group(1)}",
+                    actor_email=self.actor_email(),
+                )
                 conn.commit()
             self.send_json({"ok": True})
             return
@@ -6947,6 +7080,14 @@ class Handler(SimpleHTTPRequestHandler):
                     conn.execute("DELETE FROM public.staff_members WHERE id=%s AND organization_id=%s", (staff_member_match.group(1), current_org_id(conn)))
                 else:
                     conn.execute("DELETE FROM staff_members WHERE id=?", (int(staff_member_match.group(1)),))
+                record_audit(
+                    conn,
+                    "staff_delete",
+                    "staff",
+                    staff_member_match.group(1),
+                    f"Deleted staff member id {staff_member_match.group(1)}",
+                    actor_email=self.actor_email(),
+                )
                 conn.commit()
             self.send_json({"ok": True})
             return
