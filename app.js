@@ -3542,6 +3542,7 @@ function downloadExceptionReport() {
 }
 
 let currentAllocationIndex = -1;
+let currentModalAllocations = []; // Array of { student_id: string, amount: number }
 
 function openAllocationModal(index) {
   currentAllocationIndex = index;
@@ -3551,48 +3552,136 @@ function openAllocationModal(index) {
   qs("#allocationParentName").textContent = row.parent_name || row.description || "Unknown";
   qs("#allocationTotalPayment").textContent = money(row.amount);
   
-  const studentListDiv = qs("#allocationStudentList");
-  studentListDiv.innerHTML = (row.matching_students || []).map((student) => {
+  // Set up audit comments/reason
+  let defaultComment = row.notes || "";
+  if (!defaultComment) {
+    defaultComment = `Payment allocated across multiple students with the same Parent/Guardian name (${row.parent_name || row.description || "Unknown"}).`;
+  }
+  qs("#allocationAuditComment").value = defaultComment;
+  
+  // Populate allocations array
+  currentModalAllocations = [];
+  const matchingStudents = row.matching_students || [];
+  matchingStudents.forEach(student => {
     const proposedVal = row.allocation_split?.[student.student_id] ?? row.proposed_split?.[student.student_id] ?? 0;
-    const isPaid = (row.candidates || []).find(c => String(c.student_id) === String(student.student_id))?.already_paid ?? false;
+    currentModalAllocations.push({
+      student_id: String(student.student_id),
+      amount: proposedVal
+    });
+  });
+  
+  if (currentModalAllocations.length === 0) {
+    currentModalAllocations.push({
+      student_id: "",
+      amount: row.amount
+    });
+  }
+  
+  renderAllocationModalList();
+  qs("#allocationModal").classList.remove("collapsed");
+}
+
+function getStudentSelectOptions(selectedId) {
+  const sorted = [...(state.students || [])].sort((a, b) => a.student_name.localeCompare(b.student_name));
+  return `
+    <option value="">Select student...</option>
+    ${sorted.map(s => `<option value="${s.id}" ${String(s.id) === String(selectedId) ? "selected" : ""}>${escapeHtml(s.student_name)} (Guardian: ${escapeHtml(s.parent_guardian || "None")} - Std Fee: ${money(s.std_monthly_fee)})</option>`).join("")}
+  `;
+}
+
+function renderAllocationModalList() {
+  const studentListDiv = qs("#allocationStudentList");
+  if (!studentListDiv) return;
+  
+  const row = state.reconciliationPreview[currentAllocationIndex];
+  if (!row) return;
+  
+  studentListDiv.innerHTML = currentModalAllocations.map((item, index) => {
+    const isPaid = (row.candidates || []).find(c => String(c.student_id) === String(item.student_id))?.already_paid ?? false;
     const selectedMonth = row.selected_month || row.month_label || "";
     const warningHtml = isPaid ? `<span style="color: var(--danger); font-size: 0.85em; font-weight: bold; margin-left: 8px;">Already paid for ${selectedMonth}</span>` : "";
     
+    // Find if we have the student standard fee
+    const studentObj = (state.students || []).find(s => String(s.id) === String(item.student_id));
+    const stdFeeHtml = studentObj ? `<span class="muted-note" style="display:block; margin-top:2px;">Standard Fee: ${money(studentObj.std_monthly_fee)}</span>` : "";
+    
     return `
-      <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 6px;">
-        <div style="flex: 1;">
-          <strong style="display: block;">${escapeHtml(student.student_name)} ${warningHtml}</strong>
-          <span class="muted-note">Last STD Payment: ${money(student.std_monthly_fee)}</span>
+      <div class="allocation-row-item" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 6px;">
+        <div style="flex: 1; display: flex; flex-direction: column;">
+          <select class="allocation-student-select" data-index="${index}" style="width: 100%; padding: 6px; border: 1px solid var(--line); border-radius: 4px; font-size: 13px;">
+            ${getStudentSelectOptions(item.student_id)}
+          </select>
+          ${warningHtml}
+          ${stdFeeHtml}
         </div>
         <div style="display: flex; align-items: center; gap: 6px;">
           <span>$</span>
-          <input type="number" step="0.01" min="0" class="allocation-input" data-student-id="${student.student_id}" value="${proposedVal.toFixed(2)}" style="width: 100px; text-align: right; padding: 6px; border: 1px solid var(--line); border-radius: 4px;">
+          <input type="number" step="0.01" min="0" class="allocation-amount-input" data-index="${index}" value="${item.amount.toFixed(2)}" style="width: 100px; text-align: right; padding: 6px; border: 1px solid var(--line); border-radius: 4px;">
+          <button type="button" class="ghost danger remove-allocation-row-btn" data-index="${index}" style="padding: 6px 10px;">Remove</button>
         </div>
       </div>
     `;
   }).join("");
   
-  const inputs = document.querySelectorAll(".allocation-input");
-  inputs.forEach(input => {
-    input.addEventListener("input", () => updateAllocationTotal(row));
+  // Attach listeners
+  document.querySelectorAll(".allocation-student-select").forEach(select => {
+    select.addEventListener("change", (e) => {
+      const idx = Number(e.target.dataset.index);
+      currentModalAllocations[idx].student_id = e.target.value;
+      // Re-render to update standard fee label & warnings
+      renderAllocationModalList();
+    });
   });
   
-  updateAllocationTotal(row);
-  qs("#allocationModal").classList.remove("collapsed");
+  document.querySelectorAll(".allocation-amount-input").forEach(input => {
+    input.addEventListener("input", (e) => {
+      const idx = Number(e.target.dataset.index);
+      currentModalAllocations[idx].amount = Number(e.target.value || 0);
+      updateAllocationTotal();
+    });
+    input.addEventListener("change", (e) => {
+      const idx = Number(e.target.dataset.index);
+      currentModalAllocations[idx].amount = Number(e.target.value || 0);
+      // Format to 2 decimal places on blur/change
+      e.target.value = currentModalAllocations[idx].amount.toFixed(2);
+      updateAllocationTotal();
+    });
+  });
+  
+  document.querySelectorAll(".remove-allocation-row-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const idx = Number(e.target.dataset.index);
+      currentModalAllocations.splice(idx, 1);
+      renderAllocationModalList();
+    });
+  });
+  
+  updateAllocationTotal();
 }
 
-function updateAllocationTotal(row) {
-  const inputs = document.querySelectorAll(".allocation-input");
-  let sum = 0;
-  inputs.forEach(input => {
-    sum += Number(input.value || 0);
+function addStudentToAllocationRow() {
+  currentModalAllocations.push({
+    student_id: "",
+    amount: 0.00
   });
+  renderAllocationModalList();
+}
+
+function updateAllocationTotal() {
+  const row = state.reconciliationPreview[currentAllocationIndex];
+  if (!row) return;
+  
+  const sum = currentModalAllocations.reduce((acc, item) => acc + item.amount, 0);
+  const remaining = row.amount - sum;
+  
   qs("#allocationTotalAllocated").textContent = money(sum);
-  const diff = Math.abs(sum - row.amount);
+  qs("#allocationRemainingAmount").textContent = money(remaining);
+  
   const discrepancy = qs("#allocationDiscrepancy");
   const confirmBtn = qs("#confirmAllocationBtn");
-  if (diff > 0.01) {
-    discrepancy.textContent = `Allocated total (${money(sum)}) must equal the bank payment amount (${money(row.amount)}).`;
+  
+  if (Math.abs(remaining) > 0.01) {
+    discrepancy.textContent = `Allocated total (${money(sum)}) must equal the bank payment amount (${money(row.amount)}). Unallocated remaining: ${money(remaining)}`;
     discrepancy.style.display = "block";
     confirmBtn.disabled = true;
   } else {
@@ -3604,6 +3693,7 @@ function updateAllocationTotal(row) {
 function closeAllocationModal() {
   qs("#allocationModal").classList.add("collapsed");
   currentAllocationIndex = -1;
+  currentModalAllocations = [];
 }
 
 function confirmAllocation(event) {
@@ -3612,33 +3702,31 @@ function confirmAllocation(event) {
   const row = state.reconciliationPreview[index];
   if (!row) return;
   
-  const inputs = document.querySelectorAll(".allocation-input");
-  const allocationSplit = {};
-  let isManuallyAdjusted = false;
+  // Validate that all rows have a student selected
+  const missingStudent = currentModalAllocations.some(item => !item.student_id);
+  if (missingStudent) {
+    toast("Please select a student for all allocation entries.", "err");
+    return;
+  }
   
-  inputs.forEach(input => {
-    const studentId = input.dataset.studentId;
-    const amt = Number(input.value || 0);
-    allocationSplit[studentId] = amt;
-    const proposedVal = row.proposed_split?.[studentId] ?? 0;
-    if (Math.abs(amt - proposedVal) > 0.01) {
-      isManuallyAdjusted = true;
-    }
-  });
+  // Validate total match
+  const sum = currentModalAllocations.reduce((acc, item) => acc + item.amount, 0);
+  if (Math.abs(sum - row.amount) > 0.01) {
+    toast(`Allocation total must equal bank payment of ${money(row.amount)}`, "err");
+    return;
+  }
   
-  const auditComment = isManuallyAdjusted ?
-    "Payment allocated across multiple students with the same Parent/Guardian name based on each student's Last STD Payment. Manually adjusted by Admin." :
-    "Payment allocated across multiple students with the same Parent/Guardian name based on each student's Last STD Payment. Allocation confirmed by Admin.";
-    
+  const auditComment = qs("#allocationAuditComment").value.trim() || `Payment split confirmed by Admin.`;
   const newRows = [];
   const selectedMonth = row.selected_month || row.month_label || "";
   
-  row.matching_students.forEach(student => {
-    const allocatedAmount = allocationSplit[student.student_id] || 0;
-    if (allocatedAmount <= 0) return;
+  currentModalAllocations.forEach(item => {
+    if (item.amount <= 0) return;
+    const student = (state.students || []).find(s => String(s.id) === String(item.student_id));
+    if (!student) return;
     
-    const candidate = (row.candidates || []).find(c => String(c.student_id) === String(student.student_id)) || {
-      student_id: student.student_id,
+    const candidate = (row.candidates || []).find(c => String(c.student_id) === String(student.id)) || {
+      student_id: String(student.id),
       student_name: student.student_name,
       parent_guardian: student.parent_guardian,
       payment_method: state.reconciliationPaymentMethod || "PAD",
@@ -3647,15 +3735,15 @@ function confirmAllocation(event) {
       confidence: "high",
       current_paid: 0,
       already_paid: false,
-      reasons: ["proportional allocation match"]
+      reasons: ["manual allocation match"]
     };
     
     newRows.push({
       ...row,
-      amount: allocatedAmount,
+      amount: item.amount,
       best_match: candidate,
       candidates: row.candidates || [candidate],
-      selected_student_id: student.student_id,
+      selected_student_id: String(student.id),
       selected_month: selectedMonth,
       notes: auditComment,
       verified: true,
@@ -3737,7 +3825,7 @@ async function postReconciliationRow(row) {
       student_id: selectedStudentId,
       month_label: selectedMonth,
       score: candidate.score || 0,
-      notes: (candidate.reasons || []).join("; "),
+      notes: row.notes || (candidate.reasons || []).join("; "),
       file_name: state.reconciliationFileName,
       payment_method: state.reconciliationPaymentMethod,
       match_rules: state.reconciliationMatchRules,
@@ -3855,6 +3943,7 @@ qs("#closeAllocationModal").addEventListener("click", closeAllocationModal);
 qs("#cancelAllocationBtn").addEventListener("click", closeAllocationModal);
 qs("#rejectAllocationBtn").addEventListener("click", rejectAllocation);
 qs("#allocationForm").addEventListener("submit", confirmAllocation);
+qs("#addStudentAllocationBtn").addEventListener("click", addStudentToAllocationRow);
 
 qs("#dashboardMonth").addEventListener("change", async (event) => {
   state.settings.current_month = event.target.value;

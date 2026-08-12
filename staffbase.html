@@ -1073,9 +1073,9 @@ function saveMessages() {
 }
 
 let CLOCK_DATA = JSON.parse(localStorage.getItem('sb_clock_data')) || {};
-function saveClockData() {
+function saveClockData(skipSync = false) {
   localStorage.setItem('sb_clock_data', JSON.stringify(CLOCK_DATA));
-  syncToServer('clock_data', CLOCK_DATA);
+  if (!skipSync) syncToServer('clock_data', CLOCK_DATA);
   notifyParent('sb_clock_data', CLOCK_DATA);
 }
 
@@ -1594,20 +1594,43 @@ function startClock() {
 // ═══════════════════════════════════════════════════════════════════════════
 // CLOCK IN / OUT ENGINE
 // ═══════════════════════════════════════════════════════════════════════════
-function doClock(uid, type, gpsOK, lat, lng, dist) {
+async function doClock(uid, type, gpsOK, lat, lng, dist) {
   const t = fmtTime(new Date());
   const dateStr = new Date().toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+  const newClockData = JSON.parse(JSON.stringify(CLOCK_DATA));
   if (type === 'in') {
-    CLOCK_DATA[uid] = { in: t, out: null, status: 'in', gpsOK, lat, lng, dist, date: dateStr };
+    newClockData[uid] = { in: t, out: null, status: 'in', gpsOK, lat, lng, dist, date: dateStr };
   } else {
-    CLOCK_DATA[uid] = { ...(CLOCK_DATA[uid] || {}), out: t, status: 'out', gpsOK, lat, lng, dist, date: dateStr };
+    newClockData[uid] = { ...(newClockData[uid] || {}), out: t, status: 'out', gpsOK, lat, lng, dist, date: dateStr };
   }
+
+  if (USE_API) {
+    try {
+      const res = await sbFetch(`${API_BASE}/clock_data`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newClockData)
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        toast(err.message || 'Server rejected clock action.', 'err');
+        return;
+      }
+    } catch (e) {
+      toast('Network error. Could not verify punch.', 'err');
+      return;
+    }
+  }
+
+  CLOCK_DATA = newClockData;
   CHECKIN_LOG.unshift({ uid, type, time: t, date: dateStr, gpsOK, lat, lng, dist });
-  saveClockData();
+  saveClockData(true);
   saveCheckinLog();
   const u = USERS.find(x => x.id === uid);
   const gpsLabel = gpsOK ? ' · GPS verified ✓' : ' · Location override';
   toast(`${u?.name} clocked ${type === 'in' ? 'IN' : 'OUT'} at ${t}${gpsLabel}`, gpsOK ? 'ok' : 'warn');
+  
+  if (document.getElementById('content-area')?.querySelector('.metric')) pgDashboard();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -79,6 +79,7 @@ DEFAULT_SETTINGS = {
     "operating_start": "15:00",
     "operating_end": "20:00",
     "support_email": "support@smp.edu",
+    "center_wifi_ip": "",
 }
 STUDENT_SCHEDULE_WEEKDAYS = ["Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
@@ -2619,7 +2620,7 @@ def token_overlap_score(left, right):
     return len(left_tokens & right_tokens) / max(len(left_tokens), len(right_tokens))
 
 
-def score_payment_match(row, student, aliases, payments, match_rules=None, upload_method="PAD"):
+def score_payment_match(row, student, aliases, payments, match_rules=None, upload_method="PAD", hist_student_id=None, hist_month=None):
     rules = set(match_rules or DEFAULT_RECON_MATCH_RULES)
     description = clean_match_text(f"{row.get('description', '')} {row.get('source', '')}")
     amount = money(row.get("amount"))
@@ -2627,6 +2628,12 @@ def score_payment_match(row, student, aliases, payments, match_rules=None, uploa
     score = 0
     identity_score = 0
     reasons = []
+    
+    if hist_student_id and str(student["id"]) == str(hist_student_id):
+        score += 60
+        identity_score += 60
+        reasons.append(f"matched historically approved student ID from previous month ({hist_month})")
+        
     row_identity_text = " ".join(str(row.get(key, "")) for key in ["description", "source", "student_name", "parent_name", "email", "reference"])
     row_text = clean_match_text(row_identity_text)
     csv_student_text = clean_match_text(row.get("student_name", ""))
@@ -2875,11 +2882,48 @@ def preview_reconciliation(rows, payment_method="PAD", match_rules=None):
                 """,
                 (current_org_id(conn), branch_id),
             ).fetchall()
+            history_rows = conn.execute(
+                """
+                SELECT student_id::text AS student_id, description, amount, month_label, applied_at
+                FROM public.payment_import_rows
+                WHERE organization_id = %s AND match_status = 'approved'
+                ORDER BY applied_at DESC, id DESC
+                """,
+                (current_org_id(conn),)
+            ).fetchall()
         else:
             alias_rows = conn.execute("SELECT student_id, alias FROM payer_aliases").fetchall()
+            history_rows = conn.execute(
+                """
+                SELECT student_id, description, amount, month_label, applied_at
+                FROM payment_import_rows
+                WHERE match_status = 'approved'
+                ORDER BY applied_at DESC, id DESC
+                """
+            ).fetchall()
     aliases = {}
     for row in alias_rows:
         aliases.setdefault(str(row["student_id"]), []).append(row["alias"])
+        
+    history_by_desc = {}
+    for h in history_rows:
+        desc = clean_match_text(h["description"])
+        if not desc:
+            continue
+        std_id = str(h["student_id"])
+        amt = float(h["amount"] or 0)
+        month = h["month_label"]
+        
+        if desc not in history_by_desc:
+            history_by_desc[desc] = {
+                "month": month,
+                "splits": {std_id: amt},
+                "total": amt
+            }
+        else:
+            if history_by_desc[desc]["month"] == month:
+                history_by_desc[desc]["splits"][std_id] = history_by_desc[desc]["splits"].get(std_id, 0) + amt
+                history_by_desc[desc]["total"] += amt
     method_students = [
         student for student in students
         if str(student.get("status", "")).upper() == "C"
@@ -2904,61 +2948,118 @@ def preview_reconciliation(rows, payment_method="PAD", match_rules=None):
             "organization_id": str(row.get("organization_id") or "").strip(),
             "branch_id": str(row.get("branch_id") or "").strip(),
         }
+        desc_clean = clean_match_text(normalized["description"])
+        hist_pattern = history_by_desc.get(desc_clean)
+        hist_student_id = None
+        hist_month = None
+        
+        if hist_pattern:
+            hist_month = hist_pattern["month"]
+            if len(hist_pattern["splits"]) == 1:
+                hist_student_id = list(hist_pattern["splits"].keys())[0]
+
         matches = sorted(
-            [score_payment_match(normalized, student, aliases, payments, match_rules, upload_method) for student in method_students],
+            [score_payment_match(normalized, student, aliases, payments, match_rules, upload_method, hist_student_id, hist_month) for student in method_students],
             key=lambda match: match["score"],
             reverse=True,
         )[:5]
         
-        # Detect multiple matching students with the same parent
-        parent_query = normalized["parent_name"] or normalized["description"] or ""
-        parent_matches = find_matching_parent_students(parent_query, method_students, aliases)
+        # Check historical pattern for split matches first
+        is_historical_split = False
+        proposed_split = None
+        matching_students_info = None
+        parent_matches = []
         
-        if len(parent_matches) > 1:
-            best = None
-            multiple_parent_matches = True
-            warnings = ["Multiple students share this Parent/Guardian. Proportional allocation required."]
+        if hist_pattern and len(hist_pattern["splits"]) > 1:
+            for s_id in hist_pattern["splits"].keys():
+                std_obj = next((s for s in students if str(s["id"]) == s_id), None)
+                if std_obj and str(std_obj.get("status", "")).upper() == "C":
+                    parent_matches.append(std_obj)
             
-            # Calculate proportional proposed split
-            total_amount = float(normalized.get("amount") or 0)
-            total_std_fee = sum(float(s.get("std_monthly_fee") or 0) for s in parent_matches)
-            proposed_split = {}
-            if total_amount > 0 and total_std_fee > 0:
-                allocated_sum = 0.0
-                for idx, s in enumerate(parent_matches):
-                    s_id = str(s["id"])
-                    std_fee = float(s.get("std_monthly_fee") or 0)
-                    if idx < len(parent_matches) - 1:
-                        allocated = round(total_amount * (std_fee / total_std_fee), 2)
-                        allocated_sum += allocated
-                    else:
-                        allocated = round(total_amount - allocated_sum, 2)
-                    proposed_split[s_id] = allocated
+            if len(parent_matches) > 1:
+                best = None
+                is_historical_split = True
+                multiple_parent_matches = True
+                warnings = [f"Multiple students matched based on previous month's confirmed split ({hist_pattern['month']})."]
+                
+                total_amount = float(normalized.get("amount") or 0)
+                hist_total = hist_pattern["total"]
+                proposed_split = {}
+                if total_amount > 0 and hist_total > 0:
+                    allocated_sum = 0.0
+                    for idx, s in enumerate(parent_matches):
+                        s_id = str(s["id"])
+                        hist_amt = hist_pattern["splits"].get(s_id, 0)
+                        if idx < len(parent_matches) - 1:
+                            allocated = round(total_amount * (hist_amt / hist_total), 2)
+                            allocated_sum += allocated
+                        else:
+                            allocated = round(total_amount - allocated_sum, 2)
+                        proposed_split[s_id] = allocated
+                else:
+                    for s in parent_matches:
+                        proposed_split[str(s["id"])] = round(total_amount / len(parent_matches), 2)
+                
+                matching_students_info = [
+                    {
+                        "student_id": str(s["id"]),
+                        "student_name": s["student_name"],
+                        "std_monthly_fee": float(s.get("std_monthly_fee") or 0),
+                        "parent_guardian": s.get("parent_guardian") or ""
+                    }
+                    for s in parent_matches
+                ]
+
+        if not is_historical_split:
+            # Detect multiple matching students with the same parent
+            parent_query = normalized["parent_name"] or normalized["description"] or ""
+            parent_matches = find_matching_parent_students(parent_query, method_students, aliases)
+            
+            if len(parent_matches) > 1:
+                best = None
+                multiple_parent_matches = True
+                warnings = ["Multiple students share this Parent/Guardian. Proportional allocation required."]
+                
+                # Calculate proportional proposed split
+                total_amount = float(normalized.get("amount") or 0)
+                total_std_fee = sum(float(s.get("std_monthly_fee") or 0) for s in parent_matches)
+                proposed_split = {}
+                if total_amount > 0 and total_std_fee > 0:
+                    allocated_sum = 0.0
+                    for idx, s in enumerate(parent_matches):
+                        s_id = str(s["id"])
+                        std_fee = float(s.get("std_monthly_fee") or 0)
+                        if idx < len(parent_matches) - 1:
+                            allocated = round(total_amount * (std_fee / total_std_fee), 2)
+                            allocated_sum += allocated
+                        else:
+                            allocated = round(total_amount - allocated_sum, 2)
+                        proposed_split[s_id] = allocated
+                else:
+                    for s in parent_matches:
+                        proposed_split[str(s["id"])] = round(total_amount / len(parent_matches), 2)
+                
+                matching_students_info = [
+                    {
+                        "student_id": str(s["id"]),
+                        "student_name": s["student_name"],
+                        "std_monthly_fee": float(s.get("std_monthly_fee") or 0),
+                        "parent_guardian": s.get("parent_guardian") or ""
+                    }
+                    for s in parent_matches
+                ]
             else:
-                for s in parent_matches:
-                    proposed_split[str(s["id"])] = round(total_amount / len(parent_matches), 2)
-            
-            matching_students_info = [
-                {
-                    "student_id": str(s["id"]),
-                    "student_name": s["student_name"],
-                    "std_monthly_fee": float(s.get("std_monthly_fee") or 0),
-                    "parent_guardian": s.get("parent_guardian") or ""
-                }
-                for s in parent_matches
-            ]
-        else:
-            best = matches[0] if matches and matches[0]["score"] >= 50 else None
-            multiple_parent_matches = False
-            warnings = []
-            proposed_split = None
-            matching_students_info = None
-            if float(normalized.get("amount") or 0) <= 0:
-                warnings.append("Zero amount rows are not posted. Review only.")
-            if not method_students:
-                warnings.append(f"No active {upload_method} students are available for matching")
-            if best and best.get("already_paid"):
-                warnings.append(f"{best['student_name']} already has {best['month_label']} payment recorded")
+                best = matches[0] if matches and matches[0]["score"] >= 50 else None
+                multiple_parent_matches = False
+                warnings = []
+                proposed_split = None
+                matching_students_info = None
+                if float(normalized.get("amount") or 0) <= 0:
+                    warnings.append("Zero amount rows are not posted. Review only.")
+                if not method_students:
+                    warnings.append(f"No active {upload_method} students are available for matching")
+                if best and best.get("already_paid"):
+                    warnings.append(f"{best['student_name']} already has {best['month_label']} payment recorded")
         
         rejected = not best and not multiple_parent_matches
         previews.append(
@@ -5243,6 +5344,10 @@ class Handler(SimpleHTTPRequestHandler):
 
             today = datetime.now().strftime("%Y-%m-%d")
             with db() as conn:
+                settings = get_settings(conn)
+                authorized_ip = str(settings.get("center_wifi_ip", "")).strip()
+                client_ip = self.headers.get("X-Forwarded-For", self.client_address[0]).split(",")[0].strip() if authorized_ip else None
+
                 org_id = current_org_id(conn) if PG_MODE else None
                 
                 def is_valid_uuid(val):
@@ -5266,17 +5371,35 @@ class Handler(SimpleHTTPRequestHandler):
                     
                     if PG_MODE:
                         existing = conn.execute(
-                            "SELECT id FROM public.staff_shift_punches WHERE staff_id=%s AND punch_date=%s LIMIT 1",
+                            "SELECT id, clock_in, clock_out FROM public.staff_shift_punches WHERE staff_id=%s AND punch_date=%s LIMIT 1",
                             (staff_id_str, today)
                         ).fetchone()
+                        role_row = conn.execute("SELECT role FROM public.staff_members WHERE id=%s", (staff_id_str,)).fetchone()
                     else:
                         existing = conn.execute(
-                            "SELECT id FROM staff_shift_punches WHERE staff_id=? AND punch_date=? LIMIT 1",
+                            "SELECT id, clock_in, clock_out FROM staff_shift_punches WHERE staff_id=? AND punch_date=? LIMIT 1",
                             (int(staff_id_str), today)
                         ).fetchone()
+                        role_row = conn.execute("SELECT role FROM staff_members WHERE id=?", (int(staff_id_str),)).fetchone()
+                    
+                    role = role_row[0] if role_row else "staff"
+
+                    if role == "staff" and authorized_ip and client_ip != authorized_ip:
+                        is_changed = True
+                        if existing:
+                            d_ext = dict(existing) if type(existing) is dict else {"clock_in": existing[1], "clock_out": existing[2]}
+                            if d_ext.get("clock_in") == cin and d_ext.get("clock_out") == cout:
+                                is_changed = False
+                        
+                        if is_changed:
+                            self.send_json({
+                                "error": "Unauthorized IP",
+                                "message": "Clock-in blocked: Teaching Assistants must be connected to the Center Wi-Fi."
+                            }, status=403)
+                            return True
                     
                     if existing:
-                        row_id = rowdict(existing)["id"]
+                        row_id = existing[0]
                         if PG_MODE:
                             conn.execute(
                                 """

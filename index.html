@@ -562,6 +562,13 @@
               <label>Support Email Address<input type="email" name="support_email" placeholder="support@smp.edu" required></label>
               <label>Operating Start Time<input type="time" name="operating_start" required></label>
               <label>Operating End Time<input type="time" name="operating_end" required></label>
+              <label class="full" style="display:flex; flex-direction:column; gap:4px;">
+                <span>Authorized Center Wi-Fi IP (for Staff Clock-in)</span>
+                <div style="display:flex; gap:8px;">
+                  <input type="text" name="center_wifi_ip" id="setup-wifi-ip" placeholder="e.g. 203.0.113.50" style="flex:1">
+                  <button type="button" class="ghost" onclick="fetch('https://api.ipify.org?format=json').then(r=>r.json()).then(d=>document.getElementById('setup-wifi-ip').value=d.ip).catch(()=>alert('Could not auto-detect IP'))">Auto-detect my IP</button>
+                </div>
+              </label>
               <div class="actions full">
                 <button type="submit">Save Centre Setup</button>
               </div>
@@ -812,12 +819,22 @@
       </div>
 
       <form id="allocationForm">
-        <div id="allocationStudentList" style="margin-bottom: 20px; display: grid; gap: 14px;">
+        <div id="allocationStudentList" style="margin-bottom: 14px; display: grid; gap: 14px;">
           <!-- Student inputs will be populated here -->
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <button type="button" id="addStudentAllocationBtn" class="ghost" style="display: inline-flex; align-items: center; gap: 6px;">+ Add Student to Allocation</button>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; font-weight: bold; margin-bottom: 6px; font-size: 14px;">Audit Comments / Reason</label>
+          <textarea id="allocationAuditComment" style="width: 100%; height: 80px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 13px; resize: vertical;" placeholder="Specify the reason for manual allocation adjustments..."></textarea>
         </div>
 
         <div class="allocation-summary" style="padding-top: 14px; border-top: 1px solid var(--line); margin-bottom: 14px;">
           <p><strong>Total Allocated:</strong> <span id="allocationTotalAllocated">$0.00</span></p>
+          <p><strong>Remaining / Unallocated:</strong> <span id="allocationRemainingAmount">$0.00</span></p>
           <p id="allocationDiscrepancy" style="color: var(--danger); font-weight: bold; display: none;"></p>
         </div>
 
