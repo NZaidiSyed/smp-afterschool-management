@@ -3061,10 +3061,49 @@ def preview_reconciliation(rows, payment_method="PAD", match_rules=None):
                 if best and best.get("already_paid"):
                     warnings.append(f"{best['student_name']} already has {best['month_label']} payment recorded")
         
-        rejected = not best and not multiple_parent_matches
-        previews.append(
-            {
+        if multiple_parent_matches and len(parent_matches) > 1:
+            group_id = f"group-{index}"
+            for sibling in parent_matches:
+                s_id = str(sibling["id"])
+                split_amount = proposed_split.get(s_id, 0.0) if proposed_split else 0.0
+                
+                candidate = next((m for m in matches if str(m["student_id"]) == s_id), None)
+                if not candidate:
+                    candidate = {
+                        "student_id": sibling["id"],
+                        "student_name": sibling["student_name"],
+                        "parent_guardian": sibling.get("parent_guardian", ""),
+                        "payment_method": payment_method_label(sibling.get("payment_method", "")),
+                        "expected_fee": float(sibling.get("std_monthly_fee") or 0),
+                        "score": 100,
+                        "confidence": "high",
+                        "current_paid": 0,
+                        "already_paid": False,
+                        "reasons": ["auto-split match"]
+                    }
+                
+                previews.append({
+                    **normalized,
+                    "amount": split_amount,
+                    "original_amount": normalized["amount"],
+                    "group_id": group_id,
+                    "month_label": candidate.get("month_label") or transaction_month_label(normalized["date"]),
+                    "best_match": candidate,
+                    "candidates": matches,
+                    "rejected": False,
+                    "warnings": warnings,
+                    "payment_method_mode": upload_method,
+                    "suggestion": "review",
+                    "multiple_parent_matches": False,
+                    "selected_student_id": s_id,
+                    "notes": "; ".join(warnings)
+                })
+        else:
+            rejected = not best
+            previews.append({
                 **normalized,
+                "original_amount": normalized["amount"],
+                "group_id": None,
                 "month_label": best["month_label"] if best else transaction_month_label(normalized["date"]),
                 "best_match": best,
                 "candidates": matches,
@@ -3072,11 +3111,10 @@ def preview_reconciliation(rows, payment_method="PAD", match_rules=None):
                 "warnings": warnings,
                 "payment_method_mode": upload_method,
                 "suggestion": "auto-fill" if best and best["confidence"] == "high" and not warnings else "review",
-                "multiple_parent_matches": multiple_parent_matches,
-                "matching_students": matching_students_info,
-                "proposed_split": proposed_split,
-            }
-        )
+                "multiple_parent_matches": False,
+                "selected_student_id": best["student_id"] if best else "",
+                "notes": "; ".join(warnings)
+            })
     return {"rows": previews, "summary": reconciliation_summary_from_previews(previews, method_students, upload_method)}
 
 

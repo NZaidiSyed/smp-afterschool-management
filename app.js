@@ -2914,10 +2914,22 @@ function reconciliationStudentOptions(row) {
   const query = String(manualQuery || row.corrected_student_name || row.student_name || row.parent_name || row.description || "").trim();
   const existing = new Map((row.candidates || []).filter(reconMeaningfulCandidate).map((candidate) => [String(candidate.student_id), candidate]));
   if (row.best_match && reconMeaningfulCandidate(row.best_match)) existing.set(String(row.best_match.student_id), row.best_match);
+  const threshold = manualQuery ? 1 : 30;
   const rosterMatches = (state.students || [])
     .filter((student) => String(student.status || "").toUpperCase() === "C")
-    .map((student) => ({ student, score: reconSearchScore(student, query, manualQuery ? {} : row) }))
-    .filter((item) => item.score >= 30)
+    .map((student) => {
+      let score = reconSearchScore(student, query, manualQuery ? {} : row);
+      if (manualQuery) {
+        const qText = manualQuery.toLowerCase();
+        const sName = (student.student_name || "").toLowerCase();
+        const pName = (student.parent_guardian || "").toLowerCase();
+        if (sName.includes(qText) || pName.includes(qText)) {
+          score = Math.max(score, 80);
+        }
+      }
+      return { student, score };
+    })
+    .filter((item) => item.score >= threshold)
     .sort((a, b) => b.score - a.score || String(a.student.student_name || "").localeCompare(String(b.student.student_name || "")))
     .slice(0, 25)
     .map(({ student, score }) => ({
@@ -2982,11 +2994,27 @@ function renderReconciliation() {
     qs("#reconciliationTable").innerHTML = `<tbody><tr><td class="empty-state">Upload a bank or credit-card CSV to preview matches.</td></tr></tbody>`;
     return;
   }
+  const groupSums = {};
+  rows.forEach(r => {
+    if (r.group_id && !r.excluded) {
+      groupSums[r.group_id] = (groupSums[r.group_id] || 0) + Number(r.amount || 0);
+    }
+  });
+
   const body = rows.map((row, index) => {
     const isMultiple = Boolean(row.multiple_parent_matches);
     const best = row.best_match || {};
     const confidence = best.confidence || "low";
     const warnings = [...(row.warnings || [])];
+    
+    if (row.group_id && !row.excluded) {
+      const sum = groupSums[row.group_id] || 0;
+      if (Math.abs(sum - row.original_amount) > 0.01) {
+        warnings.push(`Group split total ($${sum.toFixed(2)}) must equal bank payment ($${row.original_amount.toFixed(2)}). Unallocated: $${(row.original_amount - sum).toFixed(2)}`);
+        row.verified = false;
+      }
+    }
+    
     if (Number(row.amount || 0) <= 0) warnings.push("Zero amount: not postable");
     const reasons = isMultiple ? 
       "Multiple students share this Parent/Guardian. Proportional allocation required." :
@@ -3036,7 +3064,7 @@ function renderReconciliation() {
       escapeHtml(row.description),
       `<input data-recon-student-name="${index}" value="${escapeHtml(row.corrected_student_name ?? row.student_name ?? "")}" placeholder="CSV student">`,
       `<input data-recon-parent-name="${index}" value="${escapeHtml(row.corrected_parent_name ?? row.parent_name ?? row.description ?? "")}" placeholder="CSV parent/payor">`,
-      money(row.amount),
+      `<input type="number" step="0.01" min="0" data-recon-amount="${index}" value="${Number(row.amount || 0).toFixed(2)}" style="width: 80px; padding: 4px; border: 1px solid var(--line); border-radius: 4px; text-align: right;">`,
       escapeHtml(row.source || "-"),
       isMultiple ? "-" : `<input data-recon-search="${index}" value="${escapeHtml(row.student_search || "")}" placeholder="Search roster student">`,
       studentSelector,
@@ -3058,6 +3086,10 @@ function renderReconciliation() {
   document.querySelectorAll("[data-recon-student-name]").forEach((input) => input.addEventListener("input", () => updateReconCorrection(Number(input.dataset.reconStudentName))));
   document.querySelectorAll("[data-recon-parent-name]").forEach((input) => input.addEventListener("input", () => updateReconCorrection(Number(input.dataset.reconParentName))));
   document.querySelectorAll("[data-roster-update]").forEach((input) => input.addEventListener("change", () => updateReconCorrection(Number(input.dataset.rosterUpdate))));
+  document.querySelectorAll("[data-recon-amount]").forEach((input) => {
+    input.addEventListener("change", () => updateReconAmount(Number(input.dataset.reconAmount), Number(input.value || 0)));
+    input.addEventListener("input", () => updateReconAmount(Number(input.dataset.reconAmount), Number(input.value || 0), true));
+  });
   document.querySelectorAll("[data-create-recon-student]").forEach((button) => button.addEventListener("click", () => createStudentFromReconciliationRow(Number(button.dataset.createReconStudent))));
   document.querySelectorAll("[data-exclude-recon]").forEach((button) => button.addEventListener("click", () => toggleExcludeReconciliationRow(Number(button.dataset.excludeRecon))));
   document.querySelectorAll("[data-verify-recon]").forEach((button) => button.addEventListener("click", () => verifyReconciliationRow(Number(button.dataset.verifyRecon))));
@@ -3348,12 +3380,42 @@ function updateReconSelection(index) {
   if (!row) return;
   const select = qs(`[data-recon-student="${index}"]`);
   const month = qs(`[data-recon-month="${index}"]`);
-  row.selected_student_id = select?.value || "";
+  
+  const oldSelected = row.selected_student_id;
+  const newSelected = select?.value || "";
+  
+  row.selected_student_id = newSelected;
   row.selected_month = month?.value || row.month_label || "";
   row.verified = false;
   row.manually_verified = false;
+  
+  if (newSelected && String(newSelected) !== String(row.best_match?.student_id)) {
+    const originalName = row.best_match?.student_name || "none";
+    const newStudent = (state.students || []).find(s => String(s.id) === String(newSelected));
+    const newName = newStudent ? newStudent.student_name : "unknown";
+    row.notes = `Admin manually matched student to ${newName} (previously matched to ${originalName}).`;
+  }
+  
   saveReconciliationSession();
   renderReconciliation();
+}
+
+function updateReconAmount(index, amount, quiet = false) {
+  const row = state.reconciliationPreview[index];
+  if (!row) return;
+  
+  row.amount = amount;
+  row.verified = false;
+  row.manually_verified = false;
+  
+  if (row.initial_amount !== undefined && Math.abs(row.initial_amount - amount) > 0.01) {
+    row.notes = `Admin manually adjusted split amount from $${Number(row.initial_amount).toFixed(2)} to $${Number(amount).toFixed(2)}.`;
+  }
+  
+  saveReconciliationSession();
+  if (!quiet) {
+    renderReconciliation();
+  }
 }
 
 function updateReconSearch(index) {
@@ -3785,6 +3847,16 @@ function verifyReconciliationRow(index) {
   const selectedMonth = qs(`[data-recon-month="${index}"]`)?.value || row.selected_month || row.month_label || "";
   row.selected_student_id = selectedStudentId;
   row.selected_month = selectedMonth;
+  
+  if (row.group_id) {
+    const activeRows = (state.reconciliationPreview || []).filter(r => r.group_id === row.group_id && !r.excluded);
+    const sum = activeRows.reduce((s, r) => s + Number(r.amount || 0), 0);
+    if (Math.abs(sum - row.original_amount) > 0.01) {
+      toast(`Group allocation mismatch: split sum is $${sum.toFixed(2)}, expected $${row.original_amount.toFixed(2)}`);
+      return;
+    }
+  }
+  
   const eligibility = reconciliationEligibility(row);
   if (!eligibility.ok) {
     toast(eligibility.reason);
@@ -3818,6 +3890,20 @@ async function postReconciliationRow(row) {
   }
   const eligibility = reconciliationEligibility(row);
   if (!eligibility.ok) throw new Error(eligibility.reason);
+  let finalNotes = row.notes || (candidate.reasons || []).join("; ");
+  const isManualOverride = (selectedStudentId && String(selectedStudentId) !== String(row.best_match?.student_id));
+  const isAmountChanged = (row.initial_amount !== undefined && Math.abs(row.initial_amount - row.amount) > 0.01);
+  const isRejectedRow = row.rejected;
+  
+  const exceptionFlags = [];
+  if (isManualOverride) exceptionFlags.push("Manual Student Match");
+  if (isAmountChanged) exceptionFlags.push("Manual Split Amount Adjustment");
+  if (isRejectedRow) exceptionFlags.push("No Auto-Match Found");
+  
+  if (exceptionFlags.length > 0) {
+    finalNotes = `[EXCEPTION: ${exceptionFlags.join(", ")}] ${finalNotes}`;
+  }
+
   await api("/api/reconciliation/apply", {
     method: "POST",
     body: JSON.stringify({
@@ -3825,7 +3911,7 @@ async function postReconciliationRow(row) {
       student_id: selectedStudentId,
       month_label: selectedMonth,
       score: candidate.score || 0,
-      notes: row.notes || (candidate.reasons || []).join("; "),
+      notes: finalNotes,
       file_name: state.reconciliationFileName,
       payment_method: state.reconciliationPaymentMethod,
       match_rules: state.reconciliationMatchRules,
