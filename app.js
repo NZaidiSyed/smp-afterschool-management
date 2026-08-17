@@ -283,7 +283,25 @@ async function signOut() {
   if (supabaseClient) await supabaseClient.auth.signOut();
   window.sessionStorage.clear();
   authSession = null;
-  renderAuthState();
+  
+  if (window.caches) {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(key => caches.delete(key)));
+    } catch (e) {
+      console.error("Cache purge failed:", e);
+    }
+  }
+  if (navigator.serviceWorker) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map(r => r.unregister()));
+    } catch (e) {
+      console.error("Service worker unregistration failed:", e);
+    }
+  }
+  
+  window.location.reload();
 }
 
 async function switchAccount() {
@@ -328,10 +346,25 @@ async function signInWithPassword() {
       storage.setItem("smp_mock_session", JSON.stringify(authSession));
       
       qs("#authMessage").textContent = "";
-      renderAuthState();
       
-      await load();
-      renderAll();
+      if (window.caches) {
+        try {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(key => caches.delete(key)));
+        } catch (e) {
+          console.error("Cache purge failed:", e);
+        }
+      }
+      if (navigator.serviceWorker) {
+        try {
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(registrations.map(r => r.unregister()));
+        } catch (e) {
+          console.error("Service worker unregistration failed:", e);
+        }
+      }
+      
+      window.location.reload();
     } else {
       qs("#authMessage").textContent = data.error || "Login failed. Incorrect credentials.";
     }
@@ -3450,15 +3483,26 @@ function reconciliationEligibility(row) {
   if (!row) return { ok: false, reason: "Row was not found" };
   if (row.excluded) return { ok: false, reason: "Excluded row" };
   if (Number(row.amount || 0) <= 0) return { ok: false, reason: "Zero amount rows cannot be posted" };
-  if (!row.selected_student_id) return { ok: false, reason: "Student must be selected" };
-  if (!(row.selected_month || row.month_label)) return { ok: false, reason: "Fee month must be selected" };
-  const candidate = reconciliationSelectedCandidate(row);
-  if (!candidate.student_id) return { ok: false, reason: "Selected student is not in the candidate list" };
+  
+  const best = row.best_match || {};
+  const confidence = best.confidence || "low";
+  const selectedStudentId = row.selected_student_id || (confidence === "high" ? best.student_id : "");
+  const selectedMonth = row.selected_month || row.month_label || "";
+  
+  if (!selectedStudentId) return { ok: false, reason: "Student must be selected" };
+  if (!selectedMonth) return { ok: false, reason: "Fee month must be selected" };
+  
+  let candidate = (row.candidates || []).find((item) => String(item.student_id) === String(selectedStudentId));
+  if (!candidate && String(best.student_id) === String(selectedStudentId)) {
+    candidate = best;
+  }
+  if (!candidate || !candidate.student_id) return { ok: false, reason: "Selected student is not in the candidate list" };
+  
   if (candidate.payment_method && candidate.payment_method !== state.reconciliationPaymentMethod) {
     return { ok: false, reason: `${state.reconciliationPaymentMethod} upload can only update ${state.reconciliationPaymentMethod} students` };
   }
   if (candidate.already_paid || Number(candidate.current_paid || 0) > 0) {
-    return { ok: false, reason: `${row.selected_month || row.month_label} already has a payment for this student` };
+    return { ok: false, reason: `${selectedMonth} already has a payment for this student` };
   }
   if (row.rejected || (row.warnings || []).length) return { ok: false, reason: "Row has warnings or was rejected" };
   return { ok: true, candidate };
@@ -3483,8 +3527,18 @@ function verifyAllEligibleRows() {
   let verified = 0;
   let skipped = 0;
   (state.reconciliationPreview || []).forEach((row) => {
+    const best = row.best_match || {};
+    const confidence = best.confidence || "low";
+    const selectedStudentId = row.selected_student_id || (confidence === "high" ? best.student_id : "");
+    const selectedMonth = row.selected_month || row.month_label || "";
+    
+    row.selected_student_id = selectedStudentId;
+    row.selected_month = selectedMonth;
+    
     const eligibility = reconciliationEligibility(row);
     if (!eligibility.ok) {
+      row.selected_student_id = "";
+      row.selected_month = "";
       skipped += 1;
       return;
     }
@@ -3882,9 +3936,20 @@ async function applyReconciliation(index) {
 }
 
 async function postReconciliationRow(row) {
-  const selectedStudentId = row.selected_student_id || "";
+  const best = row.best_match || {};
+  const confidence = best.confidence || "low";
+  const selectedStudentId = row.selected_student_id || (confidence === "high" ? best.student_id : "");
   const selectedMonth = row.selected_month || row.month_label || "";
-  const candidate = (row.candidates || []).find((item) => String(item.student_id) === String(selectedStudentId)) || {};
+  
+  row.selected_student_id = selectedStudentId;
+  row.selected_month = selectedMonth;
+  
+  let candidate = (row.candidates || []).find((item) => String(item.student_id) === String(selectedStudentId));
+  if (!candidate && String(best.student_id) === String(selectedStudentId)) {
+    candidate = best;
+  }
+  if (!candidate) candidate = {};
+
   if (!selectedStudentId || !selectedMonth || !row.verified) {
     throw new Error("Verify each row before adding");
   }
