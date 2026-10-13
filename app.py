@@ -3151,8 +3151,8 @@ def csv_response(rows, headers):
 
 def roster_export_rows(conn):
     headers = [
-        "number", "student_name", "parent_guardian", "status", "enrol_date", "subjects", "last_modification",
-        "rate_type", "std_monthly_fee", "payment_method", "phone", "email", "siblings", "notes",
+        "number", "student_name", "parent_guardian", "rate_type", "status", "enrol_date", "subjects",
+        "std_monthly_fee", "payment_method", "phone", "email", "siblings", "notes", "last_modification",
     ]
     return headers, [{header: row.get(header, "") for header in headers} for row in get_students(conn)]
 

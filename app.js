@@ -1601,11 +1601,13 @@ async function savePayment(input) {
 }
 
 function sortHeader(field, label) {
-  let indicator = "";
+  let indicator = '<span class="sort-indicator unsorted" style="margin-left: 5px; font-size: 11px; opacity: 0.45; color: var(--muted); vertical-align: middle;">⇅</span>';
   if (state.rosterSortField === field) {
-    indicator = state.rosterSortOrder === "asc" ? " ▲" : " ▼";
+    indicator = state.rosterSortOrder === "asc"
+      ? '<span class="sort-indicator active" style="margin-left: 5px; font-size: 11px; color: var(--accent); font-weight: 900; vertical-align: middle;">▲</span>'
+      : '<span class="sort-indicator active" style="margin-left: 5px; font-size: 11px; color: var(--accent); font-weight: 900; vertical-align: middle;">▼</span>';
   }
-  return `<span class="sortable-header" onclick="toggleRosterSort('${field}')" style="cursor:pointer;user-select:none;color:var(--accent);font-weight:bold">${label}${indicator}</span>`;
+  return `<span class="sortable-header" data-sort-field="${field}" onclick="toggleRosterSort('${field}')" title="Click to sort by ${label} (Ascending/Descending)" style="cursor: pointer; user-select: none; display: inline-flex; align-items: center; color: var(--accent); font-weight: 700;">${label}${indicator}</span>`;
 }
 
 function toggleRosterSort(field) {
@@ -1617,6 +1619,7 @@ function toggleRosterSort(field) {
   }
   renderRoster();
 }
+window.toggleRosterSort = toggleRosterSort;
 
 function renderRoster() {
   const term = qs("#search").value.toLowerCase();
@@ -1643,69 +1646,108 @@ function renderRoster() {
         return isAsc ? numA - numB : numB - numA;
       }
 
+      if (field === "rate_type") {
+        const rawA = String(a.rate_type || "").trim().toUpperCase();
+        const typeA = rawA === "EL" || rawA.includes("EARLY") ? "EL" : "R";
+        const rawB = String(b.rate_type || "").trim().toUpperCase();
+        const typeB = rawB === "EL" || rawB.includes("EARLY") ? "EL" : "R";
+        const comp = typeA.localeCompare(typeB);
+        if (comp !== 0) return isAsc ? comp : -comp;
+        return (a.student_name || "").localeCompare(b.student_name || "");
+      }
+
+      if (field === "enrol_date") {
+        const strA = a.enrol_date ? String(a.enrol_date).trim() : "";
+        const strB = b.enrol_date ? String(b.enrol_date).trim() : "";
+        if (!strA && strB) return 1;
+        if (strA && !strB) return -1;
+        if (!strA && !strB) return 0;
+        const timeA = Date.parse(strA);
+        const timeB = Date.parse(strB);
+        let comp = 0;
+        if (!isNaN(timeA) && !isNaN(timeB)) {
+          comp = isAsc ? timeA - timeB : timeB - timeA;
+        } else {
+          comp = isAsc ? strA.localeCompare(strB, undefined, { numeric: true, sensitivity: "base" }) : -strA.localeCompare(strB, undefined, { numeric: true, sensitivity: "base" });
+        }
+        if (comp !== 0) return comp;
+        return (a.student_name || "").localeCompare(b.student_name || "");
+      }
+
       let valA = "";
       let valB = "";
       if (field === "name") {
-        valA = a.student_name || "";
-        valB = b.student_name || "";
+        valA = (a.student_name || "").trim();
+        valB = (b.student_name || "").trim();
       } else if (field === "status") {
-        valA = a.status || "";
-        valB = b.status || "";
-      } else if (field === "enrol_date") {
-        valA = a.enrol_date || "";
-        valB = b.enrol_date || "";
+        valA = (a.status || "").trim();
+        valB = (b.status || "").trim();
       } else if (field === "subjects") {
-        valA = subjectText(a.subjects) || "";
-        valB = subjectText(b.subjects) || "";
+        valA = subjectText(a.subjects).trim();
+        valB = subjectText(b.subjects).trim();
       }
 
-      // Handle cases where enrol_date or other values are missing/blank
-      if (!valA && valB) return isAsc ? 1 : -1;
-      if (valA && !valB) return isAsc ? -1 : 1;
+      // Handle blank / missing values: always keep empty values at the bottom
+      if (!valA && valB) return 1;
+      if (valA && !valB) return -1;
       if (!valA && !valB) return 0;
 
-      const comp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: 'base' });
+      const comp = valA.localeCompare(valB, undefined, { numeric: true, sensitivity: "base" });
       return isAsc ? comp : -comp;
     });
   }
 
-  const rows = filtered.map((s) => [
-    s.number,
-    `<button class="link-button ${[isStudentOverdue(s.id) ? "overdue-name" : "", isActiveDuplicateName(s) ? "duplicate-name" : ""].filter(Boolean).join(" ")}" data-profile="${s.id}">${s.student_name}</button>`,
-    s.parent_guardian,
-    `<span class="status-badge ${s.deleted_at ? "inactive" : s.status.toUpperCase() === "C" ? "current" : "inactive"}">${s.deleted_at ? "Deleted" : s.status}</span>`,
-    s.enrol_date,
-    subjectText(s.subjects),
-    scheduleText(s),
-    String(s.rate_type || "").toUpperCase() === "EL"
-      ? `<span class="timetable-badge is-el">EL</span>`
-      : `<span class="timetable-badge is-r">R</span>`,
-    money(s.std_monthly_fee),
-    s.payment_method,
-    s.phone || "",
-    s.email || "",
-    s.last_modification || "",
-    `<div class="row-actions"><button class="small" data-profile="${s.id}">Profile</button>${s.deleted_at && canDeleteStudentRecords() ? `<button class="small" data-restore-student="${s.id}">Restore</button>` : deleteAction(s.id)}</div>`,
-  ]);
+  const rows = filtered.map((s) => {
+    const rawRate = String(s.rate_type || "").trim().toUpperCase();
+    const rateTypeLabel = rawRate === "EL" || rawRate.includes("EARLY") ? "EL" : "R";
+    const rateTypeBadge = `<span class="timetable-badge is-${rateTypeLabel.toLowerCase()}">${rateTypeLabel}</span>`;
+
+    return [
+      s.number,
+      `<button class="link-button ${[isStudentOverdue(s.id) ? "overdue-name" : "", isActiveDuplicateName(s) ? "duplicate-name" : ""].filter(Boolean).join(" ")}" data-profile="${s.id}">${s.student_name}</button>`,
+      s.parent_guardian || "",
+      rateTypeBadge,
+      `<span class="status-badge ${s.deleted_at ? "inactive" : s.status && s.status.toUpperCase() === "C" ? "current" : "inactive"}">${s.deleted_at ? "Deleted" : (s.status || "")}</span>`,
+      s.enrol_date || "",
+      subjectText(s.subjects),
+      scheduleText(s),
+      money(s.std_monthly_fee),
+      s.payment_method || "",
+      s.phone || "",
+      s.email || "",
+      s.last_modification || "",
+      `<div class="row-actions"><button class="small" data-profile="${s.id}">Profile</button>${s.deleted_at && canDeleteStudentRecords() ? `<button class="small" data-restore-student="${s.id}">Restore</button>` : deleteAction(s.id)}</div>`,
+    ];
+  });
 
   const headers = [
     sortHeader("number", "No#"),
     sortHeader("name", "Student Name"),
     "Parent / Guardian",
+    sortHeader("rate_type", "Rate Type"),
     sortHeader("status", "Status"),
     sortHeader("enrol_date", "Enrol Date"),
     sortHeader("subjects", "Subjects"),
     "Weekly Schedule",
-    "Rate Type",
     "STD Fee",
     "Pay Method",
     "Phone",
     "Email",
     "Last Modification",
-    "Actions"
+    "Actions",
   ];
 
   renderTable(qs("#rosterTable"), headers, rows);
+  document.querySelectorAll("#rosterTable th").forEach((th) => {
+    const sortEl = th.querySelector("[data-sort-field]");
+    if (sortEl) {
+      th.style.cursor = "pointer";
+      th.onclick = (e) => {
+        e.preventDefault();
+        toggleRosterSort(sortEl.dataset.sortField);
+      };
+    }
+  });
   document.querySelectorAll("[data-profile]").forEach((button) => button.addEventListener("click", () => showStudentProfile(button.dataset.profile)));
   document.querySelectorAll("[data-review-delete]").forEach((button) => button.addEventListener("click", () => showStudentDeleteReview(button.dataset.reviewDelete)));
   document.querySelectorAll("[data-restore-student]").forEach((button) => button.addEventListener("click", () => restoreStudent(button.dataset.restoreStudent)));
