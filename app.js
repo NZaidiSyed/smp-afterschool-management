@@ -1601,13 +1601,13 @@ async function savePayment(input) {
 }
 
 function sortHeader(field, label) {
-  let indicator = '<span class="sort-indicator unsorted" style="margin-left: 5px; font-size: 11px; opacity: 0.45; color: var(--muted); vertical-align: middle;">⇅</span>';
+  let indicator = '<span class="sort-indicator unsorted" style="margin-left: 6px; font-size: 13px; font-weight: bold; color: var(--accent); opacity: 0.75; vertical-align: middle;">⇅</span>';
   if (state.rosterSortField === field) {
     indicator = state.rosterSortOrder === "asc"
-      ? '<span class="sort-indicator active" style="margin-left: 5px; font-size: 11px; color: var(--accent); font-weight: 900; vertical-align: middle;">▲</span>'
-      : '<span class="sort-indicator active" style="margin-left: 5px; font-size: 11px; color: var(--accent); font-weight: 900; vertical-align: middle;">▼</span>';
+      ? '<span class="sort-indicator active" style="margin-left: 6px; font-size: 11px; font-weight: 900; color: #ffffff; background: var(--accent); padding: 1px 5px; border-radius: 3px; vertical-align: middle;">▲</span>'
+      : '<span class="sort-indicator active" style="margin-left: 6px; font-size: 11px; font-weight: 900; color: #ffffff; background: var(--accent); padding: 1px 5px; border-radius: 3px; vertical-align: middle;">▼</span>';
   }
-  return `<span class="sortable-header" data-sort-field="${field}" onclick="toggleRosterSort('${field}')" title="Click to sort by ${label} (Ascending/Descending)" style="cursor: pointer; user-select: none; display: inline-flex; align-items: center; color: var(--accent); font-weight: 700;">${label}${indicator}</span>`;
+  return `<span class="sortable-header" data-sort-field="${field}" onclick="toggleRosterSort('${field}')" title="Click to sort by ${label} (Ascending/Descending)" style="cursor: pointer; user-select: none; display: inline-flex; align-items: center; color: var(--accent); font-weight: 700; padding: 2px 4px; border-radius: 4px;">${label}${indicator}</span>`;
 }
 
 function toggleRosterSort(field) {
