@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login — SMP After School Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.10.0/dist/tabler-icons.min.css">
+  <style>
+    :root {
+      --navy: #0c1e35;
+      --navy-light: #162c4a;
+      --gold: #e08820;
+      --gold-hover: #c97514;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --red: #ef4444;
+      --red-bg: #fef2f2;
+      --radius: 12px;
+      --shadow: 0 20px 25px -5px rgba(12, 30, 53, 0.1), 0 8px 10px -6px rgba(12, 30, 53, 0.05);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: radial-gradient(circle at 10% 20%, #eef2f6 0%, #f8fafc 90%);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .login-container { width: 100%; max-width: 440px; }
+    .brand-header { text-align: center; margin-bottom: 28px; }
+    .brand-icon {
+      width: 64px; height: 64px; margin: 0 auto 16px;
+      background: linear-gradient(135deg, #0c1e35, #1e3a5f);
+      border-radius: 18px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 32px;
+      box-shadow: 0 10px 15px -3px rgba(12, 30, 53, 0.2);
+      border: 2px solid rgba(224, 136, 32, 0.3);
+    }
+    .brand-header h1 {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 26px; font-weight: 700; color: var(--navy);
+      letter-spacing: -0.02em; margin-bottom: 6px;
+    }
+    .brand-header p { font-size: 13.5px; color: var(--text-muted); font-weight: 500; }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 32px 28px;
+    }
+    .card-title { font-size: 19px; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+    .card-subtitle { font-size: 13px; color: var(--text-muted); margin-bottom: 22px; line-height: 1.4; }
+    .error-banner {
+      display: none; background: var(--red-bg); border: 1px solid #fecaca;
+      color: var(--red); padding: 12px 14px; border-radius: 8px;
+      font-size: 13px; font-weight: 600; margin-bottom: 18px;
+      align-items: center; gap: 8px;
+    }
+    .error-banner.visible { display: flex; }
+    .form-group { margin-bottom: 18px; }
+    .form-label {
+      display: block; font-size: 12.5px; font-weight: 700; color: var(--navy);
+      margin-bottom: 6px; letter-spacing: 0.02em; text-transform: uppercase;
+    }
+    .input-wrapper { position: relative; display: flex; align-items: center; }
+    .input-icon { position: absolute; left: 14px; color: #94a3b8; font-size: 18px; pointer-events: none; }
+    .form-input {
+      width: 100%; height: 44px; padding: 0 14px 0 42px;
+      border: 1.5px solid var(--border); border-radius: 8px;
+      font-size: 14px; font-family: inherit; color: var(--text-main);
+      background: #ffffff; transition: all 0.15s ease; outline: none;
+    }
+    .form-input:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 3px rgba(224, 136, 32, 0.15);
+    }
+    .toggle-password {
+      position: absolute; right: 12px; background: none; border: none;
+      color: #94a3b8; cursor: pointer; font-size: 18px; padding: 4px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .toggle-password:hover { color: var(--navy); }
+    .remember-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 22px; font-size: 13px;
+    }
+    .remember-label {
+      display: flex; align-items: center; gap: 8px;
+      color: var(--text-muted); cursor: pointer; user-select: none;
+    }
+    .remember-label input[type="checkbox"] {
+      width: 16px; height: 16px; accent-color: var(--navy); cursor: pointer;
+    }
+    .btn-submit {
+      width: 100%; height: 46px; background: var(--navy); color: #ffffff;
+      border: none; border-radius: 8px; font-size: 14.5px; font-weight: 700;
+      font-family: inherit; cursor: pointer; display: flex; align-items: center;
+      justify-content: center; gap: 8px; transition: all 0.15s ease;
+      box-shadow: 0 4px 6px -1px rgba(12, 30, 53, 0.2);
+    }
+    .btn-submit:hover { background: var(--navy-light); transform: translateY(-1px); }
+    .btn-submit:active { transform: translateY(0); }
+    .btn-submit:disabled { opacity: 0.7; cursor: not-allowed; transform: none; }
+    .divider {
+      display: flex; align-items: center; text-align: center;
+      margin: 20px 0; color: #94a3b8; font-size: 12px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .divider::before, .divider::after { content: ''; flex: 1; border-bottom: 1px solid var(--border); }
+    .divider span { padding: 0 12px; }
+    .btn-google {
+      width: 100%; height: 44px; background: #ffffff; color: var(--text-main);
+      border: 1.5px solid var(--border); border-radius: 8px; font-size: 14px;
+      font-weight: 600; font-family: inherit; cursor: pointer; display: flex;
+      align-items: center; justify-content: center; gap: 10px; transition: all 0.15s ease;
+    }
+    .btn-google:hover { background: #f8fafc; border-color: #cbd5e1; }
+    .credentials-hint {
+      margin-top: 22px; padding: 12px 14px; background: #f8fafc;
+      border: 1px solid #e2e8f0; border-radius: 8px; font-size: 12px;
+      color: var(--text-muted); line-height: 1.5;
+    }
+    .credentials-hint strong { color: var(--navy); }
+    .credentials-hint code {
+      background: #e2e8f0; padding: 2px 6px; border-radius: 4px;
+      font-size: 11.5px; color: var(--navy); font-family: monospace;
+    }
+    .portal-footer { text-align: center; margin-top: 24px; font-size: 12px; color: var(--text-muted); }
+    .spinner {
+      display: inline-block; width: 16px; height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 50%;
+      border-top-color: #ffffff; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="login-container">
+    <div class="brand-header">
+      <div class="brand-icon">🏫</div>
+      <h1>SMP After School</h1>
+      <p>Education Centre Tracking & Management Portal</p>
+    </div>
+    <div class="card">
+      <h2 class="card-title">Sign In</h2>
+      <p class="card-subtitle">Enter your User ID / Email address and password to access the centre portal.</p>
+      <div id="errorBanner" class="error-banner">
+        <i class="ti ti-alert-circle"></i>
+        <span id="errorMessage">Invalid email or password.</span>
+      </div>
+      <form id="loginForm" autocomplete="on">
+        <div class="form-group">
+          <label class="form-label" for="loginEmail">User ID / Email</label>
+          <div class="input-wrapper">
+            <i class="ti ti-mail input-icon"></i>
+            <input id="loginEmail" name="email" type="email" class="form-input" placeholder="e.g. syedzaidipk@gmail.com" required autocomplete="email" autofocus>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="loginPassword">Password</label>
+          <div class="input-wrapper">
+            <i class="ti ti-lock input-icon"></i>
+            <input id="loginPassword" name="password" type="password" class="form-input" placeholder="Enter your password" required autocomplete="current-password">
+            <button type="button" class="toggle-password" id="togglePasswordBtn" title="Toggle password visibility">
+              <i class="ti ti-eye" id="toggleIcon"></i>
+            </button>
+          </div>
+        </div>
+        <div class="remember-row">
+          <label class="remember-label">
+            <input type="checkbox" id="keepSignedIn" checked>
+            <span>Keep me signed in</span>
+          </label>
+        </div>
+        <button type="submit" class="btn-submit" id="submitBtn">
+          <span id="btnText">Sign In →</span>
+        </button>
+      </form>
+      <div class="divider"><span>Or</span></div>
+      <button type="button" class="btn-google" id="googleBtn">
+        <svg width="18" height="18" viewBox="0 0 24 24">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+        </svg>
+        Continue with Google
+      </button>
+      <div class="credentials-hint">
+        <strong>Administrator Access:</strong> Use your registered centre email and password. Default admin password is <code>school2026</code>.
+      </div>
+    </div>
+    <div class="portal-footer">
+      SMP Portal v2.0 · All connections encrypted via SSL
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    'use strict';
+    const toggleBtn = document.getElementById('togglePasswordBtn');
+    const passwordInput = document.getElementById('loginPassword');
+    const toggleIcon = document.getElementById('toggleIcon');
+    toggleBtn.addEventListener('click', () => {
+      const isPassword = passwordInput.type === 'password';
+      passwordInput.type = isPassword ? 'text' : 'password';
+      toggleIcon.className = isPassword ? 'ti ti-eye-off' : 'ti ti-eye';
+    });
+    const errorBanner = document.getElementById('errorBanner');
+    const errorMessage = document.getElementById('errorMessage');
+    function showError(msg) {
+      errorMessage.textContent = msg;
+      errorBanner.classList.add('visible');
+    }
+    function hideError() {
+      errorBanner.classList.remove('visible');
+    }
+    (function checkExistingSession() {
+      const savedMock = localStorage.getItem('smp_mock_session') || sessionStorage.getItem('smp_mock_session');
+      if (savedMock) {
+        try {
+          const parsed = JSON.parse(savedMock);
+          if (parsed && parsed.access_token) {
+            window.location.href = '/';
+            return;
+          }
+        } catch (_) {}
+      }
+    })();
+    const loginForm = document.getElementById('loginForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const btnText = document.getElementById('btnText');
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideError();
+      const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+      const password = document.getElementById('loginPassword').value.trim();
+      const keepSignedIn = document.getElementById('keepSignedIn').checked;
+      if (!email || !password) {
+        showError('Please enter both User ID / Email and Password.');
+        return;
+      }
+      submitBtn.disabled = true;
+      btnText.innerHTML = '<span class="spinner"></span> Signing In...';
+      try {
+        const response = await fetch('/api/staffbase/auth/password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await response.json();
+        if (response.ok && data.ok) {
+          const mockToken = 'mock-token-' + email;
+          const sessionObj = {
+            access_token: mockToken,
+            user: {
+              email: email,
+              user_metadata: {
+                full_name: data.user?.name || email,
+                name: data.user?.name || email
+              }
+            }
+          };
+          const storage = keepSignedIn ? localStorage : sessionStorage;
+          storage.setItem('smp_mock_session', JSON.stringify(sessionObj));
+          localStorage.setItem('smp_keep_signed_in', keepSignedIn ? '1' : '0');
+          const maxAge = keepSignedIn ? 604800 : 86400;
+          document.cookie = `access_token=${mockToken}; path=/; max-age=${maxAge}; SameSite=Lax`;
+          if (window.caches) {
+            try {
+              const keys = await caches.keys();
+              await Promise.all(keys.map(k => caches.delete(k)));
+            } catch (_) {}
+          }
+          const role = String(data.user?.role || '').toLowerCase();
+          if (role === 'staff') {
+            window.location.href = '/staffbase.html';
+          } else {
+            window.location.href = '/';
+          }
+        } else {
+          showError(data.error || 'Invalid credentials. Please verify your Email and Password.');
+          submitBtn.disabled = false;
+          btnText.textContent = 'Sign In →';
+        }
+      } catch (err) {
+        showError('Connection error. Please check your internet connection and try again.');
+        submitBtn.disabled = false;
+        btnText.textContent = 'Sign In →';
+      }
+    });
+    const googleBtn = document.getElementById('googleBtn');
+    googleBtn.addEventListener('click', async () => {
+      try {
+        const cfgRes = await fetch('/api/config');
+        const cfg = await cfgRes.json();
+        if (cfg.supabase_url && cfg.supabase_anon_key && window.supabase) {
+          const client = window.supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
+          await client.auth.signInWithOAuth({
+            provider: 'google',
+            options: { redirectTo: window.location.origin }
+          });
+        } else {
+          showError('Google SSO is not configured on this centre server. Please use Email and Password.');
+        }
+      } catch (err) {
+        showError('Failed to initialize Google login. Please use Email and Password.');
+      }
+    });
+  </script>
+</body>
+</html>

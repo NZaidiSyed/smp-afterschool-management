@@ -4724,10 +4724,22 @@ class Handler(SimpleHTTPRequestHandler):
 
         return False
 
-
     def do_GET(self):
         parsed = urlparse(self.path)
         if self.handle_staffbase_get(parsed):
+            return
+        if parsed.path in ["/login", "/login.html", "/signin", "/auth"]:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            try:
+                with open(ROOT / "login.html", "rb") as f:
+                    content = f.read()
+                self.send_header("Content-Length", str(len(content)))
+                self.end_headers()
+                self.wfile.write(content)
+            except Exception:
+                self.send_error(404, "File not found")
             return
         if parsed.path == "/manifest.json":
             self.send_response(200)

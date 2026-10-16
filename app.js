@@ -167,11 +167,8 @@ async function initAuth() {
     }
   }
 
-  // No session found — always show the login form
-  // Force auth_required so renderAuthState() shows the login panel
-  appConfig.auth_required = true;
-  qs("#authMessage").textContent = "";
-  renderAuthState();
+  // No session found — redirect to dedicated login page
+  window.location.replace("/login.html");
   return false;
 }
 
@@ -301,12 +298,10 @@ async function signOut() {
     try {
       const registrations = await navigator.serviceWorker.getRegistrations();
       await Promise.all(registrations.map(r => r.unregister()));
-    } catch (e) {
-      console.error("Service worker unregistration failed:", e);
     }
   }
-  
-  window.location.reload();
+  document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  window.location.replace("/login.html");
 }
 
 async function switchAccount() {

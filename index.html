@@ -6,6 +6,14 @@
   <title>Education Centre Tracking</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="manifest" href="manifest.json">
+  <script>
+    (function checkAuthEarly() {
+      var s = localStorage.getItem('smp_mock_session') || sessionStorage.getItem('smp_mock_session');
+      if (!s) {
+        window.location.replace('/login.html');
+      }
+    })();
+  </script>
 </head>
 <body>
   <header class="topbar">
@@ -808,7 +816,7 @@
   <div id="toast" role="status"></div>
   <script>
     // --- Cache busting: always clear everything on production load ---
-    const SMP_VERSION = '20261017';
+    const SMP_VERSION = '20261018';
     (function clearStaleCaches() {
       // 1. Unregister all service workers
       if ('serviceWorker' in navigator) {
@@ -833,6 +841,6 @@
     })();
   </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=20261017"></script>
+  <script src="app.js?v=20261018"></script>
 </body>
 </html>
