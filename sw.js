@@ -1,61 +1,17 @@
-const CACHE_NAME = "kumon-tracking-cache-v4";
-const ASSETS = [
-  "/",
-  "/index.html",
-  "/staffbase.html",
-  "/app.js",
-  "/styles.css",
-  "/manifest.json"
-];
+// SMP Service Worker - v20261017
+// Caching is DISABLED. This SW clears all old caches on activate.
+// All assets are served fresh from the network on every request.
 
-// Install Service Worker immediately
-self.addEventListener("install", (event) => {
+self.addEventListener('install', function() {
   self.skipWaiting();
+});
+
+self.addEventListener('activate', function(event) {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      console.log("[Service Worker] Caching app shell assets");
-      return cache.addAll(ASSETS);
-    })
+    caches.keys().then(function(keys) {
+      return Promise.all(keys.map(function(key) { return caches.delete(key); }));
+    }).then(function() { return self.clients.claim(); })
   );
 });
 
-// Activate Service Worker, purge all old caches, and claim all open clients immediately
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            console.log("[Service Worker] Removing old cache:", key);
-            return caches.delete(key);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
-  );
-});
-
-// Network-First for HTML and JS scripts, fallback to cache for offline support
-self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
-  if (event.request.url.includes("/api/")) return;
-
-  event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
-        }
-        return networkResponse;
-      })
-      .catch(() => {
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) return cachedResponse;
-          return caches.match("/");
-        });
-      })
-  );
-});
+// No fetch handler - all requests go straight to the network.

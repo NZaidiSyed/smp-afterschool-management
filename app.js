@@ -4506,14 +4506,6 @@ window.addEventListener("message", (event) => {
   }
 })().catch((error) => toast(error.message));
 
-// Register Service Worker for PWA
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(reg => {
-        console.log('Service Worker registered', reg);
-        reg.update();
-      })
-      .catch(err => console.error('Service Worker registration failed', err));
-  });
-}
+// Service Worker is intentionally NOT registered here.
+// index.html unregisters all service workers on every load to prevent stale caches.
+// PWA offline caching is disabled to ensure users always receive the latest version.
