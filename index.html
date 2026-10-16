@@ -806,7 +806,14 @@
 
 
   <div id="toast" role="status"></div>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        for (let r of regs) r.unregister();
+      });
+    }
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=20261013-4"></script>
+  <script src="app.js?v=20261016"></script>
 </body>
 </html>

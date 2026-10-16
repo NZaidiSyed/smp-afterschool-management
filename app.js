@@ -1632,7 +1632,7 @@ function renderRoster() {
     .filter((s) => {
       if (filter === "deleted") return Boolean(s.deleted_at);
       if (s.deleted_at) return false;
-      return filter === "all" || s.status.toUpperCase() === "C";
+      return filter === "all" || String(s.status || "").toUpperCase() === "C";
     })
     .filter((s) => JSON.stringify(s).toLowerCase().includes(term));
 
