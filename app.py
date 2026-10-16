@@ -4172,25 +4172,21 @@ class Handler(SimpleHTTPRequestHandler):
 
         if token and token.startswith("mock-token-"):
             email = token.replace("mock-token-", "", 1).strip().lower()
-            if email in ["syedzaidipk@gmail.com", "najampk@gmail.com", "aneelanajam1@gmail.com", "sarah@smp.edu"]:
-                name_map = {
-                    "syedzaidipk@gmail.com": "Syed Zaidi (Admin)",
-                    "najampk@gmail.com": "Syed Zaidi (Admin)",
-                    "aneelanajam1@gmail.com": "Aneela Najam (Owner)",
-                    "sarah@smp.edu": "Sarah Chen (Admin)"
-                }
+            with db() as conn:
+                access = get_user_access(conn, {"email": email, "name": email})
+                if not access:
+                    ensure_first_admin(conn, {"email": email, "name": email})
+                    access = get_user_access(conn, {"email": email, "name": email})
+                if not access:
+                    self.send_json({"ok": False, "error": "Your email is not authorized for this centre. Ask the Admin to add your user access in Settings."}, 403)
+                    return False
                 self.auth_user = {
                     "id": "mock-user-id-" + email.replace("@", "-").replace(".", "-"),
                     "email": email,
-                    "name": name_map.get(email, "Local Administrator")
+                    "name": access.get("display_name") or email,
                 }
-                with db() as conn:
-                    access = get_user_access(conn, self.auth_user)
-                    if not access:
-                        self.send_json({"ok": False, "error": "Your email is not authorized for this centre."}, 403)
-                        return False
-                    self.auth_access = access
-                return True
+                self.auth_access = access
+            return True
 
         if not SUPABASE_REQUIRE_AUTH:
             self.auth_access = {"role": "Admin", "email": "admin@local.smp", "display_name": "Local Admin"}
@@ -4991,54 +4987,49 @@ class Handler(SimpleHTTPRequestHandler):
             if not email or not password:
                 self.send_json({"error": "Missing email or password"}, 400)
                 return True
-            if email in ["syedzaidipk@gmail.com", "najampk@gmail.com", "aneelanajam1@gmail.com", "sarah@smp.edu"]:
+            # Check against app users (Settings → Users) first
+            with db() as conn:
+                app_user = get_user_access(conn, {"email": email, "name": email})
+            if app_user:
+                # Accept the shared admin password for any registered app user
                 if password == "school2026":
-                    name_map = {
-                        "syedzaidipk@gmail.com": "Syed Zaidi (Admin)",
-                        "najampk@gmail.com": "Syed Zaidi (Admin)",
-                        "aneelanajam1@gmail.com": "Aneela Najam (Owner)",
-                        "sarah@smp.edu": "Sarah Chen (Admin)"
-                    }
-                    av_map = {
-                        "syedzaidipk@gmail.com": "SZ",
-                        "najampk@gmail.com": "SZ",
-                        "aneelanajam1@gmail.com": "AN",
-                        "sarah@smp.edu": "SC"
-                    }
+                    name = app_user.get("display_name") or email
+                    initials = "".join([p[0].upper() for p in name.split()[:2]]) if name else "SU"
                     token = sign_jwt({"staffId": 9999})
                     self.send_json({
                         "ok": True,
                         "token": token,
                         "user": {
                             "id": 9999,
-                            "name": name_map.get(email, "Local Administrator"),
+                            "name": name,
                             "email": email,
                             "role": "principal_owner",
                             "dept": "Administration",
-                            "pos": "Principal",
-                            "av": av_map.get(email, "LA"),
+                            "pos": app_user.get("role") or "Admin",
+                            "av": initials,
                             "active": True,
                             "phone": ""
                         }
                     })
                     return True
+                else:
+                    self.send_json({"error": "Incorrect password"}, 401)
+                    return True
+            # Fall back to staff_members table
             with db() as conn:
                 if PG_MODE:
                     row = conn.execute("SELECT * FROM public.staff_members WHERE lower(email)=%s AND active=true LIMIT 1", (email,)).fetchone()
                 else:
                     row = conn.execute("SELECT * FROM staff_members WHERE lower(email)=? AND active=1 LIMIT 1", (email,)).fetchone()
                 if not row:
-                    self.send_json({"error": "Invalid credentials"}, 401)
+                    self.send_json({"error": "Invalid credentials. This email is not registered. Ask Admin to add you in Settings."}, 401)
                     return True
-                
                 d = rowdict(row)
-                # Ensure the user has password hash or password set
                 p_hash = d.get("password_hash")
-                p_plain = d.get("notes") # In legacy, password might be stored in notes or somewhere else, but let's check verify
+                p_plain = d.get("notes")
                 if not verify_staff_password(password, p_hash or p_plain or ""):
                     self.send_json({"error": "Invalid credentials"}, 401)
                     return True
-                
                 token = sign_jwt({"staffId": d["id"]})
                 self.send_json({"ok": True, "token": token, "user": desktop_staff_row(row)})
             return True

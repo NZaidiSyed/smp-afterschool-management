@@ -141,12 +141,8 @@ async function initAuth() {
   } catch (_error) {
     throw new Error("Server configuration could not be loaded. Please restart the SMP server.");
   }
-  if (!appConfig.auth_required) {
-    renderAuthState();
-    return true;
-  }
-  
-  // Check for saved mock session first
+
+  // Always check for a saved session first (mock password login or Supabase)
   const savedMock = window.localStorage.getItem("smp_mock_session") || window.sessionStorage.getItem("smp_mock_session");
   if (savedMock) {
     try {
@@ -158,18 +154,27 @@ async function initAuth() {
       window.sessionStorage.removeItem("smp_mock_session");
     }
   }
-  if (!window.supabase || !appConfig.supabase_url || !appConfig.supabase_anon_key) {
-    qs("#authMessage").textContent = "Authentication is not ready. Check Render environment variables.";
-    renderAuthState();
-    return false;
+
+  // If Supabase is configured, check for an existing Supabase session
+  if (window.supabase && appConfig.supabase_url && appConfig.supabase_anon_key) {
+    if (qs("#keepSignedIn")) qs("#keepSignedIn").checked = window.localStorage.getItem("smp_keep_signed_in") === "1";
+    supabaseClient = createSupabaseClient(window.localStorage.getItem("smp_keep_signed_in") === "1");
+    const { data } = await supabaseClient.auth.getSession();
+    authSession = data.session;
+    if (authSession) {
+      renderAuthState();
+      return true;
+    }
   }
-  if (qs("#keepSignedIn")) qs("#keepSignedIn").checked = window.localStorage.getItem("smp_keep_signed_in") === "1";
-  supabaseClient = createSupabaseClient(window.localStorage.getItem("smp_keep_signed_in") === "1");
-  const { data } = await supabaseClient.auth.getSession();
-  authSession = data.session;
+
+  // No session found — always show the login form
+  // Force auth_required so renderAuthState() shows the login panel
+  appConfig.auth_required = true;
+  qs("#authMessage").textContent = "";
   renderAuthState();
-  return Boolean(authSession);
+  return false;
 }
+
 
 function createSupabaseClient(keepSignedIn) {
   supabasePersistenceMode = keepSignedIn ? "local" : "session";
