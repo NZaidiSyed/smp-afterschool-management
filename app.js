@@ -141,8 +141,12 @@ async function initAuth() {
   } catch (_error) {
     throw new Error("Server configuration could not be loaded. Please restart the SMP server.");
   }
-
-  // Always check for a saved session first (mock password login or Supabase)
+  if (!appConfig.auth_required) {
+    renderAuthState();
+    return true;
+  }
+  
+  // Check for saved mock session first
   const savedMock = window.localStorage.getItem("smp_mock_session") || window.sessionStorage.getItem("smp_mock_session");
   if (savedMock) {
     try {
@@ -154,24 +158,18 @@ async function initAuth() {
       window.sessionStorage.removeItem("smp_mock_session");
     }
   }
-
-  // If Supabase is configured, check for an existing Supabase session
-  if (window.supabase && appConfig.supabase_url && appConfig.supabase_anon_key) {
-    if (qs("#keepSignedIn")) qs("#keepSignedIn").checked = window.localStorage.getItem("smp_keep_signed_in") === "1";
-    supabaseClient = createSupabaseClient(window.localStorage.getItem("smp_keep_signed_in") === "1");
-    const { data } = await supabaseClient.auth.getSession();
-    authSession = data.session;
-    if (authSession) {
-      renderAuthState();
-      return true;
-    }
+  if (!window.supabase || !appConfig.supabase_url || !appConfig.supabase_anon_key) {
+    qs("#authMessage").textContent = "Authentication is not ready. Check Render environment variables.";
+    renderAuthState();
+    return false;
   }
-
-  // No session found — redirect to dedicated login page
-  window.location.replace("/login.html");
-  return false;
+  if (qs("#keepSignedIn")) qs("#keepSignedIn").checked = window.localStorage.getItem("smp_keep_signed_in") === "1";
+  supabaseClient = createSupabaseClient(window.localStorage.getItem("smp_keep_signed_in") === "1");
+  const { data } = await supabaseClient.auth.getSession();
+  authSession = data.session;
+  renderAuthState();
+  return Boolean(authSession);
 }
-
 
 function createSupabaseClient(keepSignedIn) {
   supabasePersistenceMode = keepSignedIn ? "local" : "session";
@@ -298,10 +296,12 @@ async function signOut() {
     try {
       const registrations = await navigator.serviceWorker.getRegistrations();
       await Promise.all(registrations.map(r => r.unregister()));
+    } catch (e) {
+      console.error("Service worker unregistration failed:", e);
     }
   }
-  document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-  window.location.replace("/login.html");
+  
+  window.location.reload();
 }
 
 async function switchAccount() {
@@ -1632,7 +1632,7 @@ function renderRoster() {
     .filter((s) => {
       if (filter === "deleted") return Boolean(s.deleted_at);
       if (s.deleted_at) return false;
-      return filter === "all" || String(s.status || "").toUpperCase() === "C";
+      return filter === "all" || s.status.toUpperCase() === "C";
     })
     .filter((s) => JSON.stringify(s).toLowerCase().includes(term));
 
@@ -4506,6 +4506,14 @@ window.addEventListener("message", (event) => {
   }
 })().catch((error) => toast(error.message));
 
-// Service Worker is intentionally NOT registered here.
-// index.html unregisters all service workers on every load to prevent stale caches.
-// PWA offline caching is disabled to ensure users always receive the latest version.
+// Register Service Worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => {
+        console.log('Service Worker registered', reg);
+        reg.update();
+      })
+      .catch(err => console.error('Service Worker registration failed', err));
+  });
+}

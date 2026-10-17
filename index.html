@@ -6,14 +6,6 @@
   <title>Education Centre Tracking</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="manifest" href="manifest.json">
-  <script>
-    (function checkAuthEarly() {
-      var s = localStorage.getItem('smp_mock_session') || sessionStorage.getItem('smp_mock_session');
-      if (!s) {
-        window.location.replace('/login.html');
-      }
-    })();
-  </script>
 </head>
 <body>
   <header class="topbar">
@@ -814,33 +806,7 @@
 
 
   <div id="toast" role="status"></div>
-  <script>
-    // --- Cache busting: always clear everything on production load ---
-    const SMP_VERSION = '20261018';
-    (function clearStaleCaches() {
-      // 1. Unregister all service workers
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(regs) {
-          for (let r of regs) r.unregister();
-        });
-      }
-      // 2. Delete all browser caches (Cache API)
-      if (window.caches) {
-        caches.keys().then(function(keys) {
-          keys.forEach(function(key) { caches.delete(key); });
-        });
-      }
-      // 3. Detect version mismatch and hard-reload once if stale
-      const storedVer = sessionStorage.getItem('smp_app_version');
-      if (storedVer && storedVer !== SMP_VERSION) {
-        sessionStorage.setItem('smp_app_version', SMP_VERSION);
-        window.location.reload(true);
-      } else {
-        sessionStorage.setItem('smp_app_version', SMP_VERSION);
-      }
-    })();
-  </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=20261018"></script>
+  <script src="app.js?v=20261013-4"></script>
 </body>
 </html>
