@@ -2261,14 +2261,14 @@ def get_user_access(conn, user):
         return None
     ensure_access_tables(conn)
     email = user["email"].lower()
-    if email in ["syedzaidipk@gmail.com", "najampk@gmail.com", "aneelanajam1@gmail.com"]:
+    if email in ["syedzaidipk@gmail.com", "najampk@gmail.com", "aneelanajam1@gmail.com", "syednajamzaidi@icloud.com"]:
         role = "Admin"
         if email == "aneelanajam1@gmail.com":
             role = "Owner"
         return {
             "id": "admin-bypass-syed",
             "email": email,
-            "display_name": "Syed Zaidi (Admin)" if email != "aneelanajam1@gmail.com" else "Aneela Najam (Owner)",
+            "display_name": "Syed Zaidi (Admin)" if ("syed" in email or "najam" in email) and email != "aneelanajam1@gmail.com" else "Aneela Najam (Owner)",
             "role": role,
             "active": True
         }
@@ -4172,10 +4172,11 @@ class Handler(SimpleHTTPRequestHandler):
 
         if token and token.startswith("mock-token-"):
             email = token.replace("mock-token-", "", 1).strip().lower()
-            if email in ["syedzaidipk@gmail.com", "najampk@gmail.com", "aneelanajam1@gmail.com", "sarah@smp.edu"]:
+            if email in ["syedzaidipk@gmail.com", "najampk@gmail.com", "aneelanajam1@gmail.com", "syednajamzaidi@icloud.com", "sarah@smp.edu"]:
                 name_map = {
                     "syedzaidipk@gmail.com": "Syed Zaidi (Admin)",
                     "najampk@gmail.com": "Syed Zaidi (Admin)",
+                    "syednajamzaidi@icloud.com": "Syed Zaidi (Admin)",
                     "aneelanajam1@gmail.com": "Aneela Najam (Owner)",
                     "sarah@smp.edu": "Sarah Chen (Admin)"
                 }

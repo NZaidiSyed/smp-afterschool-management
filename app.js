@@ -163,23 +163,54 @@ async function initAuth() {
     renderAuthState();
     return false;
   }
-  if (qs("#keepSignedIn")) qs("#keepSignedIn").checked = window.localStorage.getItem("smp_keep_signed_in") === "1";
-  supabaseClient = createSupabaseClient(window.localStorage.getItem("smp_keep_signed_in") === "1");
+  if (qs("#keepSignedIn")) qs("#keepSignedIn").checked = window.localStorage.getItem("smp_keep_signed_in") !== "0";
+  supabaseClient = createSupabaseClient();
+  setupAuthListener();
   const { data } = await supabaseClient.auth.getSession();
-  authSession = data.session;
+  authSession = data?.session || null;
+  if (authSession?.access_token) {
+    document.cookie = `access_token=${authSession.access_token}; path=/; max-age=86400; SameSite=Lax`;
+  }
   renderAuthState();
   return Boolean(authSession);
 }
 
-function createSupabaseClient(keepSignedIn) {
-  supabasePersistenceMode = keepSignedIn ? "local" : "session";
+function createSupabaseClient() {
+  supabasePersistenceMode = "local";
   return window.supabase.createClient(appConfig.supabase_url, appConfig.supabase_anon_key, {
     auth: {
-      persistSession: keepSignedIn,
-      storage: keepSignedIn ? window.localStorage : window.sessionStorage,
+      persistSession: true,
+      storage: window.localStorage,
       autoRefreshToken: true,
       detectSessionInUrl: true,
+      flowType: "pkce",
     },
+  });
+}
+
+function setupAuthListener() {
+  if (!supabaseClient || supabaseClient._authListenerAttached) return;
+  supabaseClient._authListenerAttached = true;
+  supabaseClient.auth.onAuthStateChange(async (event, session) => {
+    console.log("[Auth] State changed:", event, session ? session.user?.email : "none");
+    const hadToken = Boolean(authSession?.access_token);
+    authSession = session;
+    renderAuthState();
+    if (session?.access_token) {
+      document.cookie = `access_token=${session.access_token}; path=/; max-age=86400; SameSite=Lax`;
+      if (window.location.search.includes("code=") || window.location.hash.includes("access_token=")) {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+      if (!hadToken || !state.students || state.students.length === 0) {
+        try {
+          await load();
+        } catch (e) {
+          console.error("Load failed after auth state change:", e);
+        }
+      }
+    } else {
+      document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    }
   });
 }
 
@@ -262,19 +293,18 @@ function setAuthMode(mode) {
 function updateAuthPersistenceChoice() {
   const keepSignedIn = Boolean(qs("#keepSignedIn")?.checked);
   window.localStorage.setItem("smp_keep_signed_in", keepSignedIn ? "1" : "0");
-  const desiredMode = keepSignedIn ? "local" : "session";
-  if (!authSession && supabasePersistenceMode !== desiredMode && window.supabase && appConfig.supabase_url && appConfig.supabase_anon_key) {
-    supabaseClient = createSupabaseClient(keepSignedIn);
-  }
 }
 
 async function signInWithGoogle() {
   if (!supabaseClient) return;
-  updateAuthPersistenceChoice();
-  await supabaseClient.auth.signInWithOAuth({
+  if (qs("#authMessage")) qs("#authMessage").textContent = "Connecting to Google...";
+  const { error } = await supabaseClient.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo: window.location.origin },
   });
+  if (error && qs("#authMessage")) {
+    qs("#authMessage").textContent = error.message;
+  }
 }
 
 async function signOut() {
@@ -282,6 +312,7 @@ async function signOut() {
   window.sessionStorage.removeItem("smp_mock_session");
   if (supabaseClient) await supabaseClient.auth.signOut();
   window.sessionStorage.clear();
+  document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
   authSession = null;
   
   if (window.caches) {
@@ -4492,18 +4523,6 @@ window.addEventListener("message", (event) => {
 (async function start() {
   const ready = await initAuth();
   if (ready) await load();
-  if (supabaseClient) {
-    supabaseClient.auth.onAuthStateChange(async (_event, session) => {
-      authSession = session;
-      renderAuthState();
-      if (session) {
-        document.cookie = `access_token=${session.access_token}; path=/; max-age=3600; SameSite=Lax`;
-        await load();
-      } else {
-        document.cookie = "access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-      }
-    });
-  }
 })().catch((error) => toast(error.message));
 
 // Register Service Worker for PWA
