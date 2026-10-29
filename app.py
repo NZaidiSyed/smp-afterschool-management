@@ -4734,31 +4734,23 @@ class Handler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if self.handle_staffbase_get(parsed):
             return
-        if parsed.path == "/manifest.json":
-            self.send_response(200)
-            self.send_header("Content-Type", "application/manifest+json")
-            self.send_header("Cache-Control", "no-store")
+        if parsed.path in {"/manifest.json", "/sw.js"}:
             try:
-                with open(ROOT / "manifest.json", "rb") as f:
-                    content = f.read()
-                self.send_header("Content-Length", str(len(content)))
-                self.end_headers()
-                self.wfile.write(content)
-            except Exception:
+                content = (ROOT / parsed.path.lstrip("/")).read_bytes()
+            except FileNotFoundError:
                 self.send_error(404, "File not found")
-            return
-        if parsed.path == "/sw.js":
+                return
+            except OSError:
+                self.send_error(500, "Unable to read application asset")
+                return
             self.send_response(200)
-            self.send_header("Content-Type", "application/javascript")
-            self.send_header("Cache-Control", "no-store")
-            try:
-                with open(ROOT / "sw.js", "rb") as f:
-                    content = f.read()
-                self.send_header("Content-Length", str(len(content)))
-                self.end_headers()
-                self.wfile.write(content)
-            except Exception:
-                self.send_error(404, "File not found")
+            self.send_header(
+                "Content-Type",
+                "application/manifest+json" if parsed.path == "/manifest.json" else "application/javascript",
+            )
+            self.send_header("Content-Length", str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
             return
         if parsed.path == "/api/config":
             self.send_json(

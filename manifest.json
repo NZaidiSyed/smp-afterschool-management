@@ -1,0 +1,10 @@
+{
+  "id": "/",
+  "name": "SMP - After School Management Program",
+  "short_name": "SMP",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff"
+}

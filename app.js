@@ -4163,11 +4163,11 @@ qs("#chooseAdd").addEventListener("click", showAddStudentForm);
 qs("#chooseModify").addEventListener("click", showModifySearch);
 qs("#modifySearch").addEventListener("input", renderModifyResults);
 
-qs("#closeAllocationModal").addEventListener("click", closeAllocationModal);
-qs("#cancelAllocationBtn").addEventListener("click", closeAllocationModal);
-qs("#rejectAllocationBtn").addEventListener("click", rejectAllocation);
-qs("#allocationForm").addEventListener("submit", confirmAllocation);
-qs("#addStudentAllocationBtn").addEventListener("click", addStudentToAllocationRow);
+qs("#closeAllocationModal")?.addEventListener("click", closeAllocationModal);
+qs("#cancelAllocationBtn")?.addEventListener("click", closeAllocationModal);
+qs("#rejectAllocationBtn")?.addEventListener("click", rejectAllocation);
+qs("#allocationForm")?.addEventListener("submit", confirmAllocation);
+qs("#addStudentAllocationBtn")?.addEventListener("click", addStudentToAllocationRow);
 
 qs("#dashboardMonth").addEventListener("change", async (event) => {
   state.settings.current_month = event.target.value;
