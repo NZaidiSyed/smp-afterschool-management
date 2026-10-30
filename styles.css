@@ -2357,3 +2357,8 @@ button.danger,
 #attendanceCorrection{border:1px solid #cbd5e1;border-radius:14px;padding:24px;max-width:540px;width:calc(100% - 32px);max-height:90vh;overflow:auto}#attendanceCorrection::backdrop{background:#0f172a99}
 .attendance-actions{display:flex;gap:12px}#attendanceCorrectionError{color:#b91c1c}#attendance:fullscreen{overflow:auto;background:#f8fafc;padding:24px}
 @media(max-width:760px){.attendance-grid{grid-template-columns:1fr}.attendance-settings{grid-template-columns:1fr}}
+
+.attendance-camera{border-top:1px solid #cbd5e1;margin-top:20px;padding-top:12px}.attendance-camera .attendance-actions{flex-wrap:wrap}
+#attendanceCameraPreview{position:relative;max-width:560px;background:#0f172a;border-radius:10px;overflow:hidden}#attendanceCameraPreview[hidden]{display:none}
+#attendanceCameraVideo{display:block;width:100%;max-height:320px;object-fit:contain}.attendance-camera-guide{position:absolute;inset:30% 5%;border:2px solid #2dd4bf;border-radius:6px;pointer-events:none}
+#attendanceCameraStatus{font-size:.9rem;min-height:2.5em}

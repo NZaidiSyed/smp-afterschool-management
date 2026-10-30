@@ -1,6 +1,6 @@
 # Student Attendance — local UAT
 
-This attendance build has NOT been pushed to GitHub or deployed to Render. The existing production site is unchanged.
+Attendance source is on the UAT branch. Camera + handheld scanner deployment to production has been authorised; check the GitHub commit and Render deployment status for the active version. The UAT launcher below always uses isolated synthetic data.
 
 ## Run on your computer
 
@@ -29,7 +29,7 @@ The launcher creates a virtual environment, SQLite database and backups under yo
 - Use Review to complete a missed checkout with actual centre-local times and a reason. Check audit history. Excused lessons must not generate makeup entitlement.
 - Change the date/status filters and export CSV. The export includes all rows for the displayed date (not just the status filter), with UTC timestamps.
 - Use Student Barcodes to replace a lost tag with a reason. The old code must stop working; a normal reprint must never replace it.
-- Test a USB/Bluetooth scanner in keyboard mode with an Enter suffix. Check Code 128 print readability on the actual pouch labels. Camera scanning is deferred.
+- Test a USB/Bluetooth scanner in keyboard mode with an Enter suffix. Check Code 128 print readability on the actual pouch labels. For a phone/tablet/webcam, select Start camera, allow camera access and hold the entire tag in the frame. Camera mode records one tag then stops; select Start camera for the next tag. HTTPS (or same-computer localhost) is required. Frames are decoded locally using the self-hosted ZXing library; only the decoded code goes to the attendance API.
 - Disconnect the network during a scan. A pending request must be retried with its existing ID; do not enter another barcode until resolved. Pending confirmation survives a page reload in that browser tab. Scans cannot be recorded offline; full offline queuing is deferred.
 - Test tablet width/full screen, manual student lookup, audible feedback and text alerts. The scanner field does not steal focus from review/settings forms.
 
@@ -52,11 +52,12 @@ python -m unittest -v test_attendance test_asset_responses
 node --check attendance-ui.js
 node --check app.js
 node scripts/test_service_worker.cjs
+node scripts/test_camera_scanner.cjs
 ```
 
 Use the virtual environment created by the launcher for Python checks. Barcode rendering uses pinned `python-barcode==0.16.1`; no third-party script CDN is needed for barcode generation. `tzdata` provides Windows timezone support.
 
-Before production approval: finish human UAT with real scanner/label hardware, test the additive tables and transactional workflow on a disposable Postgres database, verify actual Supabase logins and staff permissions, back up the production database, and review deployment/rollback steps. PostgreSQL paths are implemented but have not been validated against production or a live Postgres server in this environment. No production credentials are needed for local UAT.
+Before production approval: finish human UAT with real scanner/label hardware, test the additive tables and transactional workflow on a disposable Postgres database, verify actual Supabase logins and staff permissions, back up the production database, and review deployment/rollback steps. The domain suite and existing-schema integration have been verified on a disposable PostgreSQL 16 instance. Production database access and actual Supabase logins have not been tested from this environment. No production credentials are needed for local UAT.
 
 ## Current validation evidence
 
@@ -68,3 +69,13 @@ Before production approval: finish human UAT with real scanner/label hardware, t
 - The launcher was exercised in a fresh virtual environment and repeated without resetting existing data.
 
 The synthetic regular fixture follows today's supported roster weekday. On Sunday/Monday, a clearly labelled synthetic lesson is supplied because the existing roster only supports Tuesday–Saturday. To start completely fresh UAT without deleting previous results, set SMP_UAT_HOME to a different dedicated UAT folder.
+
+## Camera and production rollout validation
+
+- Real ZXing Code 128 decoding was tested in Chromium with an actual generated student barcode presented through a synthetic camera-video device. It saved one attendance arrival and released the stream. A keyboard-scanner Enter submission exercised the same API.
+- Camera tracks are released on Stop, successful decode, tab/module changes, document hiding and page exit. Permission denial and camera disconnection have recovery messages; USB/Bluetooth scanning remains available.
+- Eight camera-controller checks cover single-shot behaviour, pending-scan blocking, HTTPS requirements, denied permission, cancellation while permission is pending, invalid tags, missing-frame retries/disconnection and stale callbacks.
+- PostgreSQL checks cover all attendance rules, repeatable schema creation, simultaneous retry handling, RLS on new tables and denial of direct anon/authenticated table access. A Supabase-style schema integration also exercised existing student enrolment and immediate barcode assignment. No production credentials or student data were used.
+- Deployment adds attendance tables and barcodes; it does not rewrite existing student schedules, fee/payment rows, or original IDs. Production still uses its configured roster and schedules; the synthetic fixtures only run via the explicitly local UAT launcher.
+- Rollback: revert the attendance deployment commit and redeploy the previous application version. Retain the additive attendance tables so collected events/barcodes are preserved; do not drop or truncate production tables.
+- Confirm Render reports a successful deployment, then test one tag with the actual USB/Bluetooth scanner and one with the intended phone/browser camera. Physical scanner/phone compatibility still needs that final user check.

@@ -9,7 +9,7 @@
   <title>Education Centre Tracking</title>
   <script>
     // Automatic Cache Clear on Every New Upload / Version
-    const CURRENT_DEPLOY_VERSION = "20261029-attendance-uat1";
+    const CURRENT_DEPLOY_VERSION = "20261029-attendance-camera1";
     const previousVersion = localStorage.getItem("smp_deploy_version");
     if (previousVersion !== CURRENT_DEPLOY_VERSION) {
       console.log("[Cache] New deploy version detected:", CURRENT_DEPLOY_VERSION, "Clearing cache...");
@@ -26,7 +26,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261029-attendance-uat1">
+  <link rel="stylesheet" href="styles.css?v=20261029-attendance-camera1">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -148,8 +148,15 @@
       <div class="attendance-grid">
         <section class="surface attendance-scan">
           <div class="section-title"><h3>Scan station</h3><button type="button" id="attendanceFullscreen" class="ghost">Full screen</button></div>
-          <p>Scan a pouch tag and press Enter. Scan again at departure. Accidental repeats are ignored.</p>
+          <p>USB/Bluetooth scanner: click the barcode field, scan a pouch tag, and let the scanner send Enter. Scan again at departure. Accidental repeats are ignored.</p>
           <form id="attendanceScanForm"><label for="attendanceCode">Student barcode</label><input id="attendanceCode" autocomplete="off" spellcheck="false" placeholder="Scan or enter a barcode" maxlength="64" required><button id="attendanceScanButton" type="submit">Record scan</button></form>
+          <div class="attendance-camera">
+            <h4>Phone, tablet or webcam</h4>
+            <p>Allow camera access, then hold the full barcode inside the frame in good light. The camera stops after one tag; start it again for the next student.</p>
+            <div class="attendance-actions"><button type="button" id="attendanceCameraStart" class="ghost">Start camera</button><button type="button" id="attendanceCameraStop" class="ghost" disabled>Stop camera</button></div>
+            <p id="attendanceCameraStatus" role="status" aria-live="polite">Camera is off. No camera permission is needed for a handheld scanner.</p>
+            <div id="attendanceCameraPreview" hidden><video id="attendanceCameraVideo" muted autoplay playsinline aria-label="Student barcode camera preview"></video><div class="attendance-camera-guide" aria-hidden="true"></div></div>
+          </div>
           <div id="attendanceBanner" class="attendance-banner" role="status" aria-live="polite">Ready to scan</div>
           <button type="button" id="attendanceRetry" class="ghost" hidden>Retry pending scan</button>
           <details><summary>Find a student without a tag</summary><label for="attendanceStudent">Student</label><select id="attendanceStudent"></select><button type="button" id="attendanceManual" class="ghost">Use selected student's barcode</button></details>
@@ -856,7 +863,9 @@
 
   <div id="toast" role="status"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=20261029-attendance-uat1"></script>
-  <script src="attendance-ui.js?v=uat-attendance-1"></script>
+  <script src="app.js?v=20261029-attendance-camera1"></script>
+  <script src="vendor/zxing-library-0.21.3.min.js"></script>
+  <script src="camera-scanner.js?v=20261029-camera1"></script>
+  <script src="attendance-ui.js?v=20261029-camera1"></script>
 </body>
 </html>

@@ -27,6 +27,6 @@ http://127.0.0.1:8765/
 - Database: Supabase Postgres or another managed PostgreSQL service.
 - Domain: `app.afterschools.org` is recommended for the application.
 
-## Student attendance — local UAT
+## Student attendance and barcode scanning
 
-The attendance module is under local UAT. Run `python run_attendance_uat.py` for an isolated synthetic database and printable student tags. See [the UAT guide](docs/STUDENT_ATTENDANCE_UAT.md) for the checklist and production validation requirements.
+Student Attendance supports USB/Bluetooth keyboard scanners and phone/tablet/webcam scanning over HTTPS. Barcodes are assigned once at enrolment. Run `python run_attendance_uat.py` for an isolated synthetic database and printable student tags. See [the UAT guide](docs/STUDENT_ATTENDANCE_UAT.md) for the checklist and production validation requirements.

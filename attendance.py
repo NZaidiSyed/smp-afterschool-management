@@ -71,6 +71,17 @@ def ensure_schema(conn, pg=False):
     ]
     for sql in statements:
         conn.execute(sql)
+    if pg:
+        # Attendance is accessed through the authenticated Python API, never
+        # directly through Supabase's browser-facing public schema.
+        tables = ('attendance_config', 'attendance_barcodes', 'attendance_days',
+                  'attendance_records', 'attendance_scan_requests', 'attendance_audit')
+        roles = {row['rolname'] for row in conn.execute("SELECT rolname FROM pg_roles WHERE rolname IN ('anon','authenticated')").fetchall()}
+        for table in tables:
+            conn.execute(f'ALTER TABLE {table} ENABLE ROW LEVEL SECURITY')
+            conn.execute(f'REVOKE ALL ON TABLE {table} FROM PUBLIC')
+            for role in sorted(roles):
+                conn.execute(f'REVOKE ALL ON TABLE {table} FROM {role}')
 
 
 class Attendance:

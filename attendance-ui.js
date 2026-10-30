@@ -1,4 +1,4 @@
-/* Attendance UAT interface. Authentication is shared with the main application. */
+/* Attendance interface. Authentication is shared with the main application. */
 (() => {
   const el = id => document.getElementById(id);
   const safe = value => escapeHtml(String(value ?? ''));
@@ -24,7 +24,27 @@
     busy=value; el('attendanceScanButton').disabled=value;
     el('attendanceCode').disabled=value;
     el('attendanceRetry').hidden=!pending || value;
+    el('attendanceCameraStart').disabled=value || Boolean(pending) || camera.active;
   }
+  const camera = new window.AttendanceCameraScanner({
+    video:el('attendanceCameraVideo'),
+    canScan:()=>!busy&&!pending&&!document.hidden&&el('attendance').classList.contains('active')&&!el('attendanceCorrection').open,
+    onCode:code=>{el('attendanceCode').value=code;sendScan({barcode_id:code,request_id:crypto.randomUUID(),kiosk_device_id:'camera-scan-station'});},
+    onState:state=>{
+      const running=state!=='stopped';
+      el('attendanceCameraPreview').hidden=!running;
+      el('attendanceCameraStart').disabled=running||busy||Boolean(pending);
+      el('attendanceCameraStop').disabled=!running;
+      el('attendanceCameraStatus').textContent=state==='requesting'?'Waiting for camera permission…':state==='scanning'?'Camera active. Hold the entire barcode inside the frame.':'Camera is off. Select Start camera for the next tag.';
+    },
+    onError:message=>{el('attendanceCameraStatus').textContent=message;}
+  });
+  el('attendanceCameraStart').addEventListener('click',()=>camera.start());
+  el('attendanceCameraStop').addEventListener('click',()=>camera.stop());
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)camera.stop();});
+  window.addEventListener('pagehide',()=>camera.stop());
+  // Stop if login, module selection, or another tab replaces the scan station.
+  new MutationObserver(()=>{if(document.hidden||!el('attendance').classList.contains('active')||el('attendance').classList.contains('area-hidden')||el('authPanel')&&!el('authPanel').classList.contains('collapsed'))camera.stop();}).observe(document.body,{attributes:true,attributeFilter:['class','data-admin-area'],subtree:true});
   async function refresh() {
     if (!active() || busy || el('attendanceCorrection').open) return;
     const run=++generation;
@@ -73,6 +93,7 @@
   }
   async function sendScan(payload) {
     if(busy)return;
+    if(camera.active)camera.stop();
     pending=payload;rememberPending();setBusy(true);banner('Recording scan…');
     try {
       const headers={'Content-Type':'application/json'};
@@ -85,7 +106,7 @@
         setBusy(false);
         if(snapshot?.permissions.correct && confirm(`${data.student_name}: ${data.message}\nRecord an extra visit?`)) {
           const reason=prompt('Reason for the extra visit:');
-          if(reason?.trim())return sendScan({...payload,request_id:crypto.randomUUID(),extra_visit:true,reason});
+          if(reason?.trim())return await sendScan({...payload,request_id:crypto.randomUUID(),extra_visit:true,reason});
         }
         banner(data.message,'unscheduled');return;
       }
@@ -136,7 +157,7 @@
   el('attendanceTagSearch').addEventListener('input',renderTags);
   el('attendanceFullscreen').addEventListener('click',async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await el('attendance').requestFullscreen();}catch(error){toast(error.message);}});
   el('attendanceTable').addEventListener('click',event=>{
-    const id=event.target.closest('[data-correct]')?.dataset.correct;if(!id)return;
+    const id=event.target.closest('[data-correct]')?.dataset.correct;if(!id)return;camera.stop();
     const row=snapshot.records.find(r=>r.id===id);const form=el('attendanceCorrectionForm');form.reset();form.elements.record_id.value=id;form.elements.status.value=row.status==='in_center'?'completed':row.status==='expected'?'absent':row.status;
     form.elements.check_in.value=localInput(row.check_in);form.elements.check_out.value=localInput(row.check_out);el('attendanceCorrectionStudent').textContent=`${row.student_name} · ${row.day} · ${snapshot.timezone}`;el('attendanceCorrectionError').textContent='';el('attendanceCorrection').showModal();
   });
@@ -167,6 +188,6 @@
   document.querySelectorAll('[data-tab="attendance"],[data-tab="student-barcodes"]').forEach(tab=>tab.addEventListener('click',()=>{refresh();if(tab.dataset.tab==='attendance')el('attendanceCode').focus();}));
   window.addEventListener('online',refresh);document.addEventListener('visibilitychange',()=>{if(active())refresh();});
   document.addEventListener('smp:loaded',()=>{if(active())refresh();});
-  if(pending){banner('An earlier scan needs confirmation. Retry it before scanning another tag.','unscheduled');el('attendanceRetry').hidden=false;}
+  if(pending){banner('An earlier scan needs confirmation. Retry it before scanning another tag.','unscheduled');el('attendanceRetry').hidden=false;el('attendanceCameraStart').disabled=true;}
   setInterval(()=>{if(active())refresh();},15000);
 })();

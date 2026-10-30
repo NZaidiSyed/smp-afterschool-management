@@ -1,10 +1,12 @@
-const CACHE_NAME = "kumon-tracking-cache-v8-attendance";
+const CACHE_NAME = "kumon-tracking-cache-v9-camera";
 const ASSETS = [
   "/",
   "/index.html",
   "/staffbase.html",
   "/app.js",
   "/attendance-ui.js",
+  "/camera-scanner.js",
+  "/vendor/zxing-library-0.21.3.min.js",
   "/styles.css",
   "/manifest.json"
 ];
