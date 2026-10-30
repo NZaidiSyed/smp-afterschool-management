@@ -33,4 +33,4 @@ Student Attendance supports USB/Bluetooth keyboard scanners and phone/tablet/web
 
 ## Schedule Builder — local UAT
 
-The separate staff scheduling pilot covers week copying, recurring availability, colleague/manager-approved swaps, and an in-app notification inbox. On Windows double-click **Start Staff Scheduling UAT.bat**, or run `python run_staff_scheduling_uat.py`. See [the staff scheduling UAT guide](docs/STAFF_SCHEDULING_UAT.md). Production scheduling is unchanged; the new API is disabled by default.
+The database-backed Schedule Builder covers week copying, recurring availability, colleague/manager-approved swaps, and an in-app notification inbox. On Windows double-click **Start Staff Scheduling UAT.bat**, or run `python run_staff_scheduling_uat.py`. See [the staff scheduling UAT guide](docs/STAFF_SCHEDULING_UAT.md). The builder is enabled by default in Staff Administration. `SMP_SCHEDULING_ENABLED=0` disables the new API as an emergency rollback; revert the release code for the previous interface. Existing database schedules import as reviewable drafts without deleting original records.

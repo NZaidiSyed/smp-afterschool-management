@@ -1,8 +1,11 @@
-const CACHE_NAME = "kumon-tracking-cache-v9-camera";
+const CACHE_NAME = "kumon-tracking-cache-v10-scheduling";
 const ASSETS = [
   "/",
   "/index.html",
   "/staffbase.html",
+  "/staff-scheduler.html",
+  "/staff-scheduler.css",
+  "/staff-scheduler.js",
   "/app.js",
   "/attendance-ui.js",
   "/camera-scanner.js",

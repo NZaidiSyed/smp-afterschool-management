@@ -1986,9 +1986,9 @@ function autoPopulateEL() {
 }
 
 function pgSchedule() {
-  if (new URLSearchParams(location.search).has('scheduler_uat')) {
-    $('topbar-actions').innerHTML = '';
-    $('content-area').innerHTML = '<iframe title="Schedule Builder UAT" src="staff-scheduler.html" style="width:100%;height:calc(100vh - 125px);border:0;border-radius:12px"></iframe>';
+  if (currentScheduleView !== 'teachers' || !isManager()) {
+    $('topbar-actions').innerHTML = isManager() ? '<button class="btn" onclick="setScheduleView(\'teachers\')">Teacher Daily Schedule</button>' : '';
+    $('content-area').innerHTML = '<iframe title="Schedule Builder" src="staff-scheduler.html" style="width:100%;height:calc(100vh - 125px);border:0;border-radius:12px"></iframe>';
     return;
   }
   if (isManager()) {
@@ -2786,6 +2786,10 @@ function approveAllTimesheets() {
 // PAGE: SHIFT SWAP BOARD
 // ═══════════════════════════════════════════════════════════════════════════
 function pgSwapBoard() {
+  $('topbar-actions').innerHTML='';
+  $('content-area').innerHTML='<iframe title="Shift swaps" src="staff-scheduler.html?tab=swaps" style="width:100%;height:calc(100vh - 125px);border:0;border-radius:12px"></iframe>';
+  return;
+
   const mySwaps = SWAPS.filter(s => s.uid === CU.id);
   const openSwaps = SWAPS.filter(s => s.status === 'open' && s.uid !== CU.id);
   const claimedByMe = SWAPS.filter(s => s.claimedBy === CU.id);

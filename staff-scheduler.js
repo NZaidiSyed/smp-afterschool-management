@@ -9,8 +9,16 @@
   const staffName=id=>data?.staff.find(s=>s.id===id)?.name||'Archived staff';
   const summary=s=>`${s.day} · ${s.start}–${s.end} · ${s.kind}`;
   const setMessage=(text,error=false)=>{$('message').textContent=text;$('message').className=error?'error':'success';};
+  let switchedAccount=false;
+  function sessionToken(){
+    if(switchedAccount)return localStorage.getItem('sb_jwt')||'';
+    // Reuse the authenticated centre session when embedded in Staff Administration.
+    try { const token=new URLSearchParams(parent.location.search).get('access_token');if(token)return token; } catch {}
+    const staffToken=localStorage.getItem('sb_jwt');if(staffToken)return staffToken;
+    try {return JSON.parse(sessionStorage.getItem('smp_mock_session')||localStorage.getItem('smp_mock_session')||'null')?.access_token||'';}catch{return '';}
+  }
   async function api(path,payload){
-    const headers={'Content-Type':'application/json'},token=localStorage.getItem('sb_jwt');if(token)headers.Authorization='Bearer '+token;
+    const headers={'Content-Type':'application/json'},token=sessionToken();if(token)headers.Authorization='Bearer '+token;
     const response=await fetch('/api/scheduling'+path,{method:payload?'POST':'GET',headers,body:payload?JSON.stringify(payload):undefined,signal:AbortSignal.timeout(20000)});
     const result=await response.json();if(!response.ok)throw Object.assign(new Error(result.error||'Request failed'),{status:response.status});return result;
   }
@@ -25,6 +33,7 @@
   }
   function issues(checks){return checks.conflicts.length||checks.warnings.length?'<div class="issues"><strong>'+checks.conflicts.length+' conflicts · '+checks.warnings.length+' warnings</strong><ul>'+checks.conflicts.map(c=>'<li>'+safe(c)+'</li>').join('')+checks.warnings.map(c=>'<li>'+safe(c)+'</li>').join('')+'</ul></div>':'<p class="muted">No availability or overlap conflicts detected.</p>';}
   function render(){
+    $('uatNote').hidden=!data.uat;$('loginOpen').hidden=window.parent!==window;$('workspaceLabel').textContent='STAFF ADMINISTRATION'+(data.uat?' · LOCAL UAT':'');
     document.body.dataset.schedulerRole=data.actor.manager?'manager':'staff';
     $('actor').textContent=data.actor.name+' · '+(data.actor.manager?'Manager':'Staff');
     $('weekStatus').innerHTML=`<span class="badge ${data.has_unpublished_changes||dirty?'warning':''}">${data.actor.manager?(dirty?'Unsaved local edits':data.has_unpublished_changes?'Draft changes pending publication':'Saved'):'Published schedule'}</span><span>Draft revision ${data.actor.manager?data.revision:'—'}</span><span>Published revision ${data.published_revision||'none'}</span><span>${rows.length} shifts · ${(rows.reduce((a,s)=>a+(time(s.end)-time(s.start)-s.break_minutes)/60,0)).toFixed(1)} paid hours</span>`;
@@ -89,6 +98,7 @@
     const button=event.target.closest('button');if(!button||!data.actor.manager)return;
     const shift=button.dataset.edit?rows.find(r=>r.id===button.dataset.edit):{staff_id:button.dataset.staff,day:button.dataset.day,start:'15:00',end:'20:00',break_minutes:0,kind:'Teaching'};
     const form=$('shiftForm');form.reset();form.elements.staff_id.innerHTML=data.staff.map(s=>`<option value="${safe(s.id)}">${safe(s.name)}</option>`).join('');
+    if(shift.kind&&![...form.elements.kind.options].some(o=>o.value===shift.kind))form.elements.kind.add(new Option(shift.kind,shift.kind));
     for(const key of ['id','staff_id','day','start','end','break_minutes','kind','location','notes'])form.elements[key].value=shift[key]??'';
     $('deleteShift').hidden=!shift.id;$('shiftTitle').textContent=shift.id?'Edit shift':'Add shift';$('shiftDialog').showModal();
   };
@@ -120,7 +130,7 @@
   $('swapForm').onsubmit=event=>{event.preventDefault();operation(async()=>{await api('/swaps',{week_start:week,source_id:$('swapSource').value,target_staff_id:$('swapTarget').value,target_shift_id:$('swapExchange').value,reason:$('swapReason').value});await load();setMessage('Request sent to the colleague’s in-app inbox. Manager approval is still required.');},'swapDialog');};
   $('swapList').onclick=event=>{const button=event.target.closest('[data-swap-action]');if(!button)return;const request=data.swaps.find(r=>r.id===button.dataset.id),action=button.dataset.swapAction;const reason=['approve','reject'].includes(action)?prompt('Decision reason (required). Approval rechecks overlaps, leave and availability:'):'';if(reason===null)return;operation(async()=>{await api('/swaps/decide',{id:request.id,revision:request.revision,action,reason});await load();setMessage('Request updated; affected staff have in-app updates.');});};
   $('inboxList').onclick=event=>{const button=event.target.closest('[data-notification]');if(!button)return;operation(async()=>{await api('/inbox',{id:button.dataset.notification,action:button.dataset.action});await load();setMessage('Notification updated.');});};$('inboxRefresh').onclick=()=>operation(load);
-  $('loginOpen').onclick=()=>$('loginDialog').showModal();$('loginForm').onsubmit=async event=>{event.preventDefault();await operation(async()=>{if(dirty&&!confirm('Discard unsaved edits and switch account?'))return;const response=await fetch('/api/staffbase/auth/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(event.target)))});const result=await response.json();if(!response.ok||!result.token)throw Error(result.error||'Sign-in failed');localStorage.setItem('sb_jwt',result.token);await load();setMessage('Signed in to the staff scheduling workspace.');},'loginDialog');};
+  $('loginOpen').onclick=()=>$('loginDialog').showModal();$('loginForm').onsubmit=async event=>{event.preventDefault();await operation(async()=>{if(dirty&&!confirm('Discard unsaved edits and switch account?'))return;const response=await fetch('/api/staffbase/auth/password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.fromEntries(new FormData(event.target)))});const result=await response.json();if(!response.ok||!result.token)throw Error(result.error||'Sign-in failed');localStorage.setItem('sb_jwt',result.token);switchedAccount=true;await load();setMessage('Signed in to the staff scheduling workspace.');},'loginDialog');};
   window.addEventListener('beforeunload',event=>{if(dirty||availabilityDirty){event.preventDefault();event.returnValue='';}});
   setInterval(async()=>{
     if(busy||document.hidden||!data)return;
@@ -134,5 +144,10 @@
       }
     }catch(_){}
   },30000);
+  const initialTab=new URLSearchParams(location.search).get('tab');
+  if(['availability','swaps','inbox'].includes(initialTab)){
+    tab=initialTab;document.querySelectorAll('.section,.tabs button').forEach(n=>n.classList.remove('active'));
+    $(tab).classList.add('active');document.querySelector(`[data-tab="${tab}"]`).classList.add('active');
+  }
   operation(load);
 })();

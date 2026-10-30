@@ -77,10 +77,11 @@ def ensure_schema(conn, pg=False):
 
 
 class Scheduler:
-    def __init__(self, conn, scope, staff, actor, staff_id=None, manager=False, pg=False, leave=None, now=None):
+    def __init__(self, conn, scope, staff, actor, staff_id=None, manager=False, pg=False, leave=None, now=None, legacy_loader=None):
         self.conn,self.scope,self.pg=conn,scope,pg
         self.actor,self.staff_id,self.manager=actor,str(staff_id) if staff_id is not None else None,manager
         self.staff={str(s['id']):s for s in staff if s.get('active',True)}
+        self.legacy_loader=legacy_loader
         self.leave=leave or []
         self.now=(now or datetime.now(timezone.utc)).isoformat()
         self.q('INSERT INTO scheduler_locks VALUES (?) ON CONFLICT(scope) DO NOTHING',(scope,))
@@ -99,7 +100,15 @@ class Scheduler:
     def week(self, value):
         value=monday(value)
         self.q('INSERT INTO scheduler_weeks(scope,week_start) VALUES (?,?) ON CONFLICT(scope,week_start) DO NOTHING',(self.scope,value))
-        return dict(self.q('SELECT * FROM scheduler_weeks WHERE scope=? AND week_start=?',(self.scope,value)).fetchone())
+        row=dict(self.q('SELECT * FROM scheduler_weeks WHERE scope=? AND week_start=?',(self.scope,value)).fetchone())
+        if not row['revision'] and self.legacy_loader:
+            imported=self.legacy_loader(value)
+            if imported:
+                shifts=self.normalise(value, imported)
+                self.q('UPDATE scheduler_weeks SET draft_json=?,revision=1 WHERE scope=? AND week_start=?',(compact(shifts),self.scope,value))
+                self.audit('import_legacy_draft',{'week':value,'shifts':len(shifts),'original_rows_preserved':True})
+                row['draft_json']=compact(shifts);row['revision']=1
+        return row
 
     def match_revision(self, row, revision):
         if revision is None or int(revision)!=row['revision']:
@@ -234,7 +243,7 @@ class Scheduler:
             if values is None:
                 continue
             if not isinstance(values,list) or len(values)>1:
-                raise SchedulingError('This UAT supports one availability window per day')
+                raise SchedulingError('Provide at most one availability window per day')
             last=-1
             for window in sorted(values,key=lambda w:minutes(w['start'])):
                 start,end=minutes(window['start']),minutes(window['end'])

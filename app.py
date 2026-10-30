@@ -1689,6 +1689,67 @@ def format_time_str(val):
     except Exception:
         return val
 
+def scheduling_enabled():
+    return os.environ.get("SMP_SCHEDULING_ENABLED", "1") == "1"
+
+
+def scheduler_scope(conn):
+    return f"{current_org_id(conn) or 'local'}:{current_branch_id(conn)}"
+
+
+def scheduler_legacy_draft(conn, week):
+    """Read old rows for this branch; never rewrite or automatically publish them."""
+    branch = current_branch_id(conn)
+    if PG_MODE:
+        records = conn.execute("SELECT s.* FROM public.staff_schedules s JOIN public.staff_members m ON m.id=s.staff_id WHERE s.week_start=%s AND m.branch_id=%s AND m.organization_id=%s AND m.active=true", (week, branch, current_org_id(conn))).fetchall()
+    else:
+        records = conn.execute("SELECT s.* FROM staff_schedules s JOIN staff_members m ON m.id=s.staff_id WHERE s.week_start=? AND m.branch_id=? AND m.active=1", (week, branch)).fetchall()
+    from uuid import uuid5, NAMESPACE_URL
+    days = {name[:3].lower(): i for i, name in enumerate(('Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'))}
+    shifts = []
+    for record in records:
+        r = dict(record)
+        if str(r.get('shift_type', '')).lower() in ('off','leave','holiday') or not r.get('start_time') or not r.get('end_time'):
+            continue
+        day = days.get(str(r['weekday'])[:3].lower())
+        if day is None:
+            raise SchedulingError('An existing schedule has an invalid weekday; review the original record before importing.')
+        shifts.append({'id': str(uuid5(NAMESPACE_URL, f"smp-legacy:{scheduler_scope(conn)}:{r['id']}")), 'staff_id': str(r['staff_id']),
+                       'day': (date.fromisoformat(week)+timedelta(days=day)).isoformat(), 'start': str(r['start_time'])[:5],
+                       'end': str(r['end_time'])[:5], 'break_minutes': 0, 'kind': r.get('shift_type') or 'Work',
+                       'location': r.get('location') or '', 'notes': r.get('notes') or ''})
+    return shifts
+
+
+def scheduler_publication(conn, week):
+    if not scheduling_enabled():
+        return None
+    sql = "SELECT published_json,published_revision FROM scheduler_weeks WHERE scope=? AND week_start=?"
+    return conn.execute(sql.replace('?', '%s') if PG_MODE else sql, (scheduler_scope(conn), week)).fetchone()
+
+
+def scheduler_published_rows(conn, week, legacy, staff_id=None):
+    """Overlay published weeks for legacy staff consumers, retaining untouched history."""
+    if not scheduling_enabled():
+        return legacy
+    row = scheduler_publication(conn, week)
+    if not row or not row['published_revision']:
+        return legacy
+    if PG_MODE:
+        members = conn.execute("SELECT id::text AS id FROM public.staff_members WHERE branch_id=%s AND organization_id=%s", (current_branch_id(conn), current_org_id(conn))).fetchall()
+    else:
+        members = conn.execute("SELECT id FROM staff_members WHERE branch_id=?", (current_branch_id(conn),)).fetchall()
+    ids = {str(m['id']) for m in members}
+    result = [r for r in legacy if str(r['staff_id']) not in ids]
+    for shift in json.loads(row['published_json']):
+        if staff_id is not None and str(shift['staff_id']) != str(staff_id):
+            continue
+        result.append({'id': shift['id'], 'staff_id': shift['staff_id'], 'weekday': date.fromisoformat(shift['day']).strftime('%a'),
+                       'shift_type': shift['kind'], 'start_time': shift['start'], 'end_time': shift['end'],
+                       'location': shift['location'], 'notes': shift['notes'], 'published': True, 'acknowledged': False})
+    return result
+
+
 def get_monday_of_current_week():
     from datetime import datetime, timedelta
     now = datetime.now()
@@ -1769,34 +1830,35 @@ def staff_data_snapshot(conn, staff_id=None):
             if role_row:
                 rd = rowdict(role_row)
                 role_val = str(rd.get("role") or rd.get("role_title") or "").lower().strip()
-                if role_val in ["manager", "admin", "administrator", "owner", "principal_owner", "principal"]:
+                if role_val in ["manager", "admin", "administrator", "owner", "principal_owner", "principal", "office_manager", "office manager"]:
                     is_manager = True
     
     if PG_MODE:
-        members = conn.execute("SELECT id::text as id, staff_name, email, role_title, subject, active FROM public.staff_members").fetchall()
+        members = conn.execute("SELECT id::text as id, staff_name, email, role_title, role, subject, active FROM public.staff_members").fetchall()
         schedules = conn.execute("SELECT * FROM public.staff_schedules WHERE week_start=%s", (week_start,)).fetchall()
         punches = conn.execute("SELECT * FROM public.staff_shift_punches").fetchall()
         requests = conn.execute("SELECT * FROM public.time_off_requests").fetchall()
         swaps = conn.execute("SELECT * FROM public.shift_swap_requests").fetchall()
         announcements = conn.execute("SELECT * FROM public.announcements").fetchall()
     else:
-        members = conn.execute("SELECT id, staff_name, email, role_title, subject, active FROM staff_members").fetchall()
+        members = conn.execute("SELECT id, staff_name, email, role_title, role, subject, active FROM staff_members").fetchall()
         schedules = conn.execute("SELECT * FROM staff_schedules WHERE week_start=?", (week_start,)).fetchall()
         punches = conn.execute("SELECT * FROM staff_shift_punches").fetchall()
         requests = conn.execute("SELECT * FROM time_off_requests").fetchall()
         swaps = conn.execute("SELECT * FROM shift_swap_requests").fetchall()
         announcements = conn.execute("SELECT * FROM announcements").fetchall()
 
+    schedules = scheduler_published_rows(conn, week_start, schedules)
     users = []
     for m in members:
         d = rowdict(m)
-        role = d.get("role_title") or "staff"
+        role = d.get("role") or d.get("role_title") or "staff"
         db_active_bool = d.get("active") not in [False, "false", "False", 0, "0", None]
         users.append({
             "id": d["id"],
             "name": d.get("staff_name") or "",
             "email": d.get("email") or "",
-            "role": "principal_owner" if role.lower() in ["manager", "admin", "administrator", "owner", "principal_owner"] else "staff",
+            "role": "office_manager" if role.lower() in ["office_manager", "office manager"] else "principal_owner" if role.lower() in ["manager", "admin", "administrator", "owner", "principal_owner", "principal"] else "staff",
             "dept": d.get("subject") or "Administration",
             "pos": role,
             "av": "".join([part[0] for part in str(d.get("staff_name")).split(" ") if part]).upper()[:2],
@@ -1804,7 +1866,8 @@ def staff_data_snapshot(conn, staff_id=None):
         })
 
     schedule = None
-    if schedules:
+    publication = scheduler_publication(conn, week_start)
+    if schedules or (publication and publication['published_revision']):
         shifts = {}
         for s in schedules:
             d = rowdict(s)
@@ -1813,6 +1876,7 @@ def staff_data_snapshot(conn, staff_id=None):
                 continue
             if sid not in shifts:
                 shifts[sid] = {}
+            previous = shifts[sid].get(d['weekday'])
             shifts[sid][d["weekday"]] = {
                 "type": d["shift_type"],
                 "start": d["start_time"],
@@ -1821,6 +1885,12 @@ def staff_data_snapshot(conn, staff_id=None):
                 "notes": "",
                 "ack": bool(d.get("acknowledged") or d.get("ack"))
             }
+            if previous:
+                # The old dashboard has one slot per day; the builder/mobile API retain every shift.
+                entry = shifts[sid][d['weekday']]
+                entry['start'] = min(previous['start'], entry['start'])
+                entry['end'] = max(previous['end'], entry['end'])
+                entry['notes'] = 'Multiple shifts today — open Schedule Builder for exact times and breaks.'
         schedule = {
             "published": True,
             "publishedAt": format_week_label(week_start),
@@ -4469,6 +4539,7 @@ class Handler(SimpleHTTPRequestHandler):
                     rows = conn.execute("SELECT * FROM public.staff_schedules WHERE staff_id=%s AND week_start=%s", (self.staff_id, week_start)).fetchall()
                 else:
                     rows = conn.execute("SELECT * FROM staff_schedules WHERE staff_id=? AND week_start=?", (int(self.staff_id), week_start)).fetchall()
+                rows = scheduler_published_rows(conn, week_start, rows, self.staff_id)
                 items = []
                 for r in rows:
                     d = rowdict(r)
@@ -4516,6 +4587,9 @@ class Handler(SimpleHTTPRequestHandler):
 
         # ── GET all shift swaps ──
         if parsed.path == "/api/swaps":
+            if scheduling_enabled():
+                self.send_json({"error": "Request shift changes in Schedule Builder."}, 409)
+                return True
             if not self.require_staffbase_auth():
                 return True
             with db() as conn:
@@ -4683,6 +4757,7 @@ class Handler(SimpleHTTPRequestHandler):
                     staff = conn.execute("SELECT id, staff_name, avatar_initials, avatar_color FROM staff_members WHERE active=1 ORDER BY staff_name").fetchall()
                     shifts = conn.execute("SELECT * FROM staff_schedules WHERE week_start=?", (week_start,)).fetchall()
                 
+                shifts = scheduler_published_rows(conn, week_start, shifts)
                 result = []
                 for s in staff:
                     sd = rowdict(s)
@@ -4899,7 +4974,7 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def handle_scheduling(self, parsed, write):
-        if os.environ.get("SMP_SCHEDULING_UAT") != "1":
+        if not scheduling_enabled():
             self.send_json({"ok": False, "error": "Updated scheduling is not enabled on this server"}, 404)
             return
         try:
@@ -4952,10 +5027,12 @@ class Handler(SimpleHTTPRequestHandler):
                 if not PG_MODE:
                     conn.execute("BEGIN IMMEDIATE")
                 store = Scheduler(conn, f"{org or 'local'}:{branch}", staff, actor, staff_id=actor_id,
-                                  manager=manager, pg=PG_MODE, leave=[{k: str(r[k]) for k in ('staff_id','start_date','end_date')} for r in leave])
+                                  manager=manager, pg=PG_MODE, leave=[{k: str(r[k]) for k in ('staff_id','start_date','end_date')} for r in leave],
+                                  legacy_loader=lambda week: scheduler_legacy_draft(conn, week))
                 if not write and parsed.path == "/api/scheduling":
                     week = parse_qs(parsed.query).get("week_start", [None])[0]
                     result = store.snapshot(week)
+                    result["uat"] = os.environ.get("SMP_SCHEDULING_UAT") == "1"
                 elif write:
                     actions = {"/api/scheduling/draft": store.save, "/api/scheduling/publish": store.publish,
                                "/api/scheduling/copy-preview": lambda data: store.copy(data, preview=True),
@@ -5218,6 +5295,9 @@ class Handler(SimpleHTTPRequestHandler):
 
         # ── POST schedule write-back (desktop) ──
         if parsed.path == "/api/staffbase/schedule":
+            if scheduling_enabled():
+                self.send_json({"error": "Open Schedule Builder to save and publish schedule changes."}, 409)
+                return True
             payload = self.read_json()
             # If payload has schedule, unpack it
             schedule = payload.get("schedule") if payload.get("schedule") else payload
@@ -5352,6 +5432,9 @@ class Handler(SimpleHTTPRequestHandler):
 
         # ── POST swaps sync (desktop) ──
         if parsed.path == "/api/staffbase/swaps":
+            if scheduling_enabled():
+                self.send_json({"error": "Manage shift swaps in Schedule Builder."}, 409)
+                return True
             payload = self.read_json()
             swap_list = payload.get("swaps") if isinstance(payload, dict) and "swaps" in payload else payload
             if not isinstance(swap_list, list):
@@ -5828,6 +5911,9 @@ class Handler(SimpleHTTPRequestHandler):
         # ── POST Mobile: acknowledge shift ──
         ack_match = re.match(r"^/api/schedule/([^/]+)/ack$", parsed.path)
         if ack_match:
+            if scheduling_enabled():
+                self.send_json({"error": "Acknowledge the published revision in Schedule Builder notifications."}, 409)
+                return True
             if not self.require_staffbase_auth():
                 return True
             param_id = ack_match.group(1)
@@ -5915,6 +6001,9 @@ class Handler(SimpleHTTPRequestHandler):
 
         # ── POST Mobile: post a shift swap request ──
         if parsed.path == "/api/swaps":
+            if scheduling_enabled():
+                self.send_json({"error": "Request shift changes in Schedule Builder."}, 409)
+                return True
             if not self.require_staffbase_auth():
                 return True
             payload = self.read_json()
@@ -5965,6 +6054,9 @@ class Handler(SimpleHTTPRequestHandler):
         # ── POST Mobile: claim shift swap ──
         claim_match = re.match(r"^/api/swaps/([^/]+)/claim$", parsed.path)
         if claim_match:
+            if scheduling_enabled():
+                self.send_json({"error": "Accept shift changes in Schedule Builder."}, 409)
+                return True
             if not self.require_staffbase_auth():
                 return True
             swap_id = claim_match.group(1)
@@ -6068,6 +6160,9 @@ class Handler(SimpleHTTPRequestHandler):
 
         # ── POST Manager: copy schedule week ──
         if parsed.path == "/api/manager/schedule/week":
+            if scheduling_enabled():
+                self.send_json({"error": "Use Copy a week in Schedule Builder."}, 409)
+                return True
             if not self.require_staffbase_manager():
                 return True
             week_start = get_monday_of_current_week()
@@ -6118,6 +6213,7 @@ class Handler(SimpleHTTPRequestHandler):
                     staff = conn.execute("SELECT id, staff_name, avatar_initials, avatar_color FROM staff_members WHERE active=1 ORDER BY staff_name").fetchall()
                     shifts = conn.execute("SELECT * FROM staff_schedules WHERE week_start=?", (week_start,)).fetchall()
                 
+                shifts = scheduler_published_rows(conn, week_start, shifts)
                 result = []
                 for s in staff:
                     sd = rowdict(s)
@@ -6957,6 +7053,9 @@ class Handler(SimpleHTTPRequestHandler):
         # ── PUT manager update schedule shift ──
         m_sched_match = re.match(r"^/api/manager/schedule/([^/]+)/([^/]+)$", parsed.path)
         if m_sched_match:
+            if scheduling_enabled():
+                self.send_json({"error": "Edit shifts in Schedule Builder."}, 409)
+                return
             if not self.require_staffbase_manager():
                 return
             target_staff_id = m_sched_match.group(1)
@@ -7507,7 +7606,7 @@ if __name__ == "__main__":
         ensure_meta_defaults()
     with db() as conn:
         ensure_attendance_schema(conn, PG_MODE)
-        if os.environ.get("SMP_SCHEDULING_UAT") == "1":
+        if scheduling_enabled():
             ensure_scheduler_schema(conn, PG_MODE)
         conn.commit()
     import threading

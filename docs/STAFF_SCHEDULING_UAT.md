@@ -1,6 +1,6 @@
 # Schedule Builder — four-workflow UAT
 
-This is a separate UAT implementation. Production `main`, Render, existing staff schedules, student records, attendance and payments are unchanged. The pilot reads the existing staff roster and approved leave, and stores its own drafts, published revisions, availability, swaps, notifications and audit history in additive `scheduler_*` tables.
+This guide describes isolated local testing of the Schedule Builder. The production release uses the real roster and approved leave, with drafts, publications, availability, swaps, notifications and audit history in additive `scheduler_*` tables. Local launcher data stays separate from production.
 
 ## Start on Windows
 
@@ -77,9 +77,10 @@ A source schedule for the current week is seeded with Alex and Jamie teaching Tu
 ## Persistence and production boundary
 
 - UAT uses synthetic local data. No live database or Homebase account is connected.
-- The updated API is disabled unless `SMP_SCHEDULING_UAT=1`; the launcher supplies that flag only to the local child process. Merely serving the page on the existing production environment does not enable it.
-- Existing `staff_schedules`, historical browser caches and published Homebase schedules are not automatically migrated, overwritten or synchronised by this pilot. The pilot's published schedule is available to staff through the new builder only; legacy clock-in/timesheet/mobile scheduling endpoints continue using their existing source. Migration and routing those consumers to the new publication store must be completed and tested before replacing production scheduling.
-- Before promotion: finish human UAT, agree how existing published weeks will be imported, integrate legacy schedule consumers, verify real manager/staff authentication and branch selection, configure any desired email/SMS provider, and test rollout/rollback with a database backup. No production deployment is authorised by testing this local build.
+- The released API is enabled by default; `SMP_SCHEDULING_ENABLED=0` disables it. `SMP_SCHEDULING_UAT=1` now labels isolated test workspaces only.
+- When an existing database week is first opened, valid working shifts are copied into a reviewable draft once. Original `staff_schedules` records remain untouched. Managers review and publish the imported draft; browser-only schedules and Homebase data require manual entry/export.
+- Published revisions feed the staff dashboard and mobile staff/manager schedule reads. Multiple shifts are returned individually by mobile APIs and shown exactly in the new builder; the older dashboard summarizes the day's first start and last end. Legacy schedule edit/acknowledgement endpoints direct users to the new builder to avoid competing sources.
+- The local test launcher does not deploy or copy synthetic accounts into production. Use existing centre/staff accounts in production. See [release notes](STAFF_SCHEDULING_RELEASE.md) for rollout and rollback.
 
 ## Verification
 

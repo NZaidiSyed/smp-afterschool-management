@@ -207,15 +207,27 @@ class SchedulingTests(unittest.TestCase):
         with self.assertRaisesRegex(SchedulingError,'overlapping'):
             self.store.decide_swap({'id':request,'revision':2,'action':'approve','reason':'Attempt'})
 
+    def test_legacy_draft_import_is_once_only_and_never_auto_published(self):
+        calls=[]
+        self.store.legacy_loader=lambda week: calls.append(week) or [self.shift()]
+        row=self.store.week(WEEK)
+        self.assertEqual(row['revision'],1)
+        self.assertEqual(row['published_revision'],0)
+        self.assertEqual(self.as_user('a',False).snapshot(WEEK)['shifts'],[])
+        self.store.save({'week_start':WEEK,'revision':1,'shifts':[]})
+        self.assertEqual(self.store.week(WEEK)['draft_json'],'[]')
+        self.assertEqual(calls,[WEEK])
+
+
 
 class SchedulingRouteTests(unittest.TestCase):
-    def test_feature_is_disabled_by_default(self):
+    def test_feature_can_be_disabled_explicitly(self):
         import os
         import app
         from urllib.parse import urlparse
         from unittest.mock import patch
         handler=app.Handler.__new__(app.Handler)
-        with patch.dict(os.environ,{'SMP_SCHEDULING_UAT':'0'}),patch.object(handler,'send_json') as send,patch.object(app,'db') as database:
+        with patch.dict(os.environ,{'SMP_SCHEDULING_ENABLED':'0'}),patch.object(handler,'send_json') as send,patch.object(app,'db') as database:
             handler.handle_scheduling(urlparse('/api/scheduling'),False)
             self.assertEqual(send.call_args.args[1],404)
             database.assert_not_called()
@@ -226,7 +238,7 @@ class SchedulingRouteTests(unittest.TestCase):
         from urllib.parse import urlparse
         from unittest.mock import patch
         handler=app.Handler.__new__(app.Handler);handler.headers={'Authorization':'Bearer invalid-token'}
-        with patch.dict(os.environ,{'SMP_SCHEDULING_UAT':'1'}),patch.object(app,'SUPABASE_REQUIRE_AUTH',False),patch.object(handler,'send_json') as send,patch.object(app,'db') as database:
+        with patch.dict(os.environ,{'SMP_SCHEDULING_ENABLED':'1'}),patch.object(app,'SUPABASE_REQUIRE_AUTH',False),patch.object(handler,'send_json') as send,patch.object(app,'db') as database:
             handler.handle_scheduling(urlparse('/api/scheduling'),False)
             self.assertEqual(send.call_args.args[1],401)
             database.assert_not_called()
