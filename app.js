@@ -409,9 +409,15 @@ async function load() {
   state = await api("/api/bootstrap");
   
   const role = String(currentUserRole() || "").toLowerCase();
-  if (role === "staff") {
+  if (role === "staff" && !new URLSearchParams(window.location.search).has("attendance")) {
     window.location.href = "/staffbase.html";
     return;
+  }
+  if (new URLSearchParams(window.location.search).has("attendance")) {
+    activeAdminArea = "student";
+    document.querySelectorAll(".tab, .panel").forEach(node => node.classList.remove("active"));
+    document.querySelector('[data-tab="attendance"]')?.classList.add("active");
+    qs("#attendance")?.classList.add("active");
   }
   
   state.expenses = state.expenses || [];
@@ -487,6 +493,11 @@ function applyRoleTabVisibility() {
     const hasPlAccess = ["admin", "office manager", "office_manager", "owner"].includes(role);
     plTab.style.display = hasPlAccess ? "inline-flex" : "none";
   }
+  if (isStaff) {
+    document.querySelectorAll('#studentTabs .tab').forEach(tab => {
+      tab.style.display = ["attendance", "student-barcodes"].includes(tab.dataset.tab) ? "inline-flex" : "none";
+    });
+  }
 
   // Redirect if currently on a hidden tab
   const activeTab = document.querySelector('.tab.active');
@@ -531,6 +542,7 @@ function renderAll() {
   renderReconciliationRules();
   renderReconciliation();
   renderStaffAdministration();
+  document.dispatchEvent(new Event("smp:loaded"));
 }
 
 function hasStaffAccess() {

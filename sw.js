@@ -1,9 +1,10 @@
-const CACHE_NAME = "kumon-tracking-cache-v7";
+const CACHE_NAME = "kumon-tracking-cache-v8-attendance";
 const ASSETS = [
   "/",
   "/index.html",
   "/staffbase.html",
   "/app.js",
+  "/attendance-ui.js",
   "/styles.css",
   "/manifest.json"
 ];
@@ -35,27 +36,33 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Network-First for HTML and JS scripts, fallback to cache for offline support
+// Cache only this application's static resources. Never return HTML for a failed script.
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
-  if (event.request.url.includes("/api/")) return;
+  const request = event.request;
+  const url = new URL(request.url);
+  if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
 
-  event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const responseToCache = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseToCache);
-          });
+  event.respondWith((async () => {
+    try {
+      const response = await fetch(request);
+      if (response.status === 200) {
+        try {
+          const cache = await caches.open(CACHE_NAME);
+          await cache.put(request, response.clone());
+        } catch (error) {
+          // Storage limits must not turn a successful network response into a failure.
+          console.warn("[Service Worker] Could not cache asset", error);
         }
-        return networkResponse;
-      })
-      .catch(() => {
-        return caches.match(event.request).then((cachedResponse) => {
-          if (cachedResponse) return cachedResponse;
-          return caches.match("/");
-        });
-      })
-  );
+      }
+      return response;
+    } catch (networkError) {
+      const cached = await caches.match(request);
+      if (cached) return cached;
+      if (request.mode === "navigate") {
+        const shell = await caches.match("/");
+        if (shell) return shell;
+      }
+      throw networkError;
+    }
+  })());
 });

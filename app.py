@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlparse, urlunparse, parse_qs
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
+from attendance import Attendance, ensure_schema as ensure_attendance_schema
 
 try:
     import psycopg
@@ -3990,6 +3991,7 @@ def insert_student_record(conn, student, number, actor_email="system"):
             after={**student, "number": number},
             actor_email=actor_email,
         )
+        attendance_store(conn, actor_email).assign_barcode(student_id)
         return student_id
     cur = conn.execute(
         """
@@ -4028,7 +4030,31 @@ def insert_student_record(conn, student, number, actor_email="system"):
         after={**student, "number": number},
         actor_email=actor_email,
     )
+    attendance_store(conn, actor_email).assign_barcode(cur.lastrowid)
     return cur.lastrowid
+
+
+def attendance_store(conn, actor="system"):
+    branch = current_branch_id(conn)
+    if branch is None:
+        raise ValueError("Set up a centre branch before using attendance")
+    scope = f"{current_org_id(conn) or 'local'}:{branch}"
+    return Attendance(conn, scope, get_students(conn), PG_MODE, actor)
+
+
+def attendance_maintenance(stop):
+    """Reconcile missed lessons/checkouts even when no dashboard is open."""
+    while not stop.is_set():
+        try:
+            with db() as conn:
+                if not PG_MODE:
+                    conn.execute("BEGIN IMMEDIATE")
+                attendance_store(conn).reconcile()
+                conn.commit()
+        except Exception:
+            import traceback
+            traceback.print_exc()
+        stop.wait(60)
 
 
 def next_student_number(conn):
@@ -4732,6 +4758,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/attendance"):
+            self.handle_attendance(parsed, False)
+            return
         if self.handle_staffbase_get(parsed):
             return
         if parsed.path in {"/manifest.json", "/sw.js"}:
@@ -4864,6 +4893,70 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_csv("smp_fee_tracker.csv", rows, headers)
             return
         return super().do_GET()
+
+    def handle_attendance(self, parsed, write):
+        if not self.require_auth():
+            return
+        role = normalize_role((self.auth_access or {}).get("role"))
+        if role not in ROLE_OPTIONS:
+            self.send_json({"ok": False, "error": "Attendance access is restricted to centre staff"}, 403)
+            return
+        privileged = parsed.path in {"/api/attendance/correct", "/api/attendance/settings", "/api/attendance/replace-barcode"}
+        if privileged and not self.require_permission("manage_students"):
+            return
+        if parsed.path == "/api/attendance/settings" and not self.require_permission("manage_settings"):
+            return
+        try:
+            if write and int(self.headers.get("Content-Length", "0")) > 16384:
+                raise ValueError("Attendance request is too large")
+            payload = self.read_json() if write else {}
+            if not isinstance(payload, dict):
+                raise ValueError("Attendance request must be a JSON object")
+            if write and payload.get("extra_visit") and not self.require_permission("manage_students"):
+                return
+            with db() as conn:
+                if not PG_MODE:
+                    conn.execute("BEGIN IMMEDIATE")
+                store = attendance_store(conn, self.actor_email())
+                if not write and parsed.path == "/api/attendance":
+                    requested_day = parse_qs(parsed.query).get("date", [None])[0]
+                    result = store.snapshot(requested_day)
+                    result["permissions"] = {"correct": "manage_students" in ROLE_PERMISSIONS.get(role, set()),
+                                             "settings": "manage_settings" in ROLE_PERMISSIONS.get(role, set())}
+                elif not write and parsed.path == "/api/attendance/barcode.svg":
+                    from barcode import Code128
+                    from barcode.writer import SVGWriter
+                    student_id = parse_qs(parsed.query).get("student_id", [""])[0]
+                    if student_id not in store.by_id:
+                        raise ValueError("Student not found in this branch")
+                    code = store.assign_barcode(student_id)
+                    content = Code128(code, writer=SVGWriter()).render({"module_width": 0.25, "module_height": 12, "quiet_zone": 6, "font_size": 9})
+                    conn.commit()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "image/svg+xml")
+                    self.send_header("Content-Length", str(len(content)))
+                    self.end_headers()
+                    self.wfile.write(content)
+                    return
+                elif write:
+                    actions = {"/api/attendance/scan": store.scan, "/api/attendance/correct": store.correct,
+                               "/api/attendance/settings": store.settings, "/api/attendance/replace-barcode": store.replace_barcode}
+                    action = actions.get(parsed.path)
+                    if action is None:
+                        self.send_json({"ok": False, "error": "Attendance route not found"}, 404)
+                        return
+                    result = action(payload)
+                else:
+                    self.send_json({"ok": False, "error": "Attendance route not found"}, 404)
+                    return
+                conn.commit()
+            self.send_json(result)
+        except (ValueError, TypeError) as exc:
+            self.send_json({"ok": False, "error": str(exc)}, 400)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            self.send_json({"ok": False, "error": "Attendance could not be saved. Refresh and retry with the same scan request."}, 500)
 
     def handle_staffbase_post(self, parsed):
         # Helper to map a staff member row to desktop format
@@ -6016,6 +6109,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/attendance"):
+            self.handle_attendance(parsed, True)
+            return
         if self.handle_staffbase_post(parsed):
             return
         if parsed.path.startswith("/api/") and not self.require_auth():
@@ -7319,8 +7415,18 @@ if __name__ == "__main__":
         with db() as conn:
             ensure_staff_tables(conn)
         ensure_meta_defaults()
+    with db() as conn:
+        ensure_attendance_schema(conn, PG_MODE)
+        conn.commit()
+    import threading
+    attendance_stop = threading.Event()
+    threading.Thread(target=attendance_maintenance, args=(attendance_stop,), daemon=True).start()
     port = int(os.environ.get("PORT", "8765"))
     if "--port" in sys.argv:
         port = int(sys.argv[sys.argv.index("--port") + 1])
-    print(f"SMP tracking site running at http://0.0.0.0:{port}")
-    ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
+    host = sys.argv[sys.argv.index("--host") + 1] if "--host" in sys.argv else "0.0.0.0"
+    print(f"SMP tracking site running at http://{host}:{port}")
+    try:
+        ThreadingHTTPServer((host, port), Handler).serve_forever()
+    finally:
+        attendance_stop.set()

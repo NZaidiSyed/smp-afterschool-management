@@ -9,7 +9,7 @@
   <title>Education Centre Tracking</title>
   <script>
     // Automatic Cache Clear on Every New Upload / Version
-    const CURRENT_DEPLOY_VERSION = "20261029-v7";
+    const CURRENT_DEPLOY_VERSION = "20261029-attendance-uat1";
     const previousVersion = localStorage.getItem("smp_deploy_version");
     if (previousVersion !== CURRENT_DEPLOY_VERSION) {
       console.log("[Cache] New deploy version detected:", CURRENT_DEPLOY_VERSION, "Clearing cache...");
@@ -26,7 +26,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261029-v7">
+  <link rel="stylesheet" href="styles.css?v=20261029-attendance-uat1">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -117,6 +117,8 @@
       <div class="tab-group-buttons">
         <button class="tab active" data-tab="dashboard">Dashboard</button>
         <button class="tab" data-tab="presence">Student Presence</button>
+        <button class="tab" data-tab="attendance">Student Attendance</button>
+        <button class="tab" data-tab="student-barcodes">Student Barcodes</button>
         <button class="tab" data-tab="roster">Student Roster</button>
         <button class="tab" data-tab="reporting">Reports</button>
       </div>
@@ -140,6 +142,31 @@
   </nav>
 
   <main>
+    <section id="attendance" class="panel">
+      <div class="section-title page-title"><div><h2>Student Attendance</h2><span>Actual arrivals and departures · schedules remain in Student Presence</span></div><button type="button" id="attendanceRefresh">Refresh</button></div>
+      <div id="attendanceConnection" role="status" class="attendance-connection">Open this tab to load attendance.</div>
+      <div class="attendance-grid">
+        <section class="surface attendance-scan">
+          <div class="section-title"><h3>Scan station</h3><button type="button" id="attendanceFullscreen" class="ghost">Full screen</button></div>
+          <p>Scan a pouch tag and press Enter. Scan again at departure. Accidental repeats are ignored.</p>
+          <form id="attendanceScanForm"><label for="attendanceCode">Student barcode</label><input id="attendanceCode" autocomplete="off" spellcheck="false" placeholder="Scan or enter a barcode" maxlength="64" required><button id="attendanceScanButton" type="submit">Record scan</button></form>
+          <div id="attendanceBanner" class="attendance-banner" role="status" aria-live="polite">Ready to scan</div>
+          <button type="button" id="attendanceRetry" class="ghost" hidden>Retry pending scan</button>
+          <details><summary>Find a student without a tag</summary><label for="attendanceStudent">Student</label><select id="attendanceStudent"></select><button type="button" id="attendanceManual" class="ghost">Use selected student's barcode</button></details>
+        </section>
+        <section class="surface"><h3>Daily overview</h3><label for="attendanceDate">Attendance date</label><input type="date" id="attendanceDate"><p id="attendanceZone"></p><div id="attendanceMetrics" class="metrics"></div><button type="button" id="attendanceExport" class="ghost">Export displayed attendance CSV</button><p>“In centre” is a recorded arrival, not a verified headcount. Incomplete sessions require staff review.</p></section>
+      </div>
+      <section class="surface"><div class="section-title"><h3>Daily attendance</h3><label>Filter <select id="attendanceFilter"><option value="">All statuses</option><option value="expected">Expected</option><option value="in_center">In centre</option><option value="completed">Completed</option><option value="absent">Absent</option><option value="incomplete">Incomplete</option><option value="excused">Excused</option><option value="cancelled">Cancelled</option></select></label></div><div class="table-scroll"><table id="attendanceTable"></table></div></section>
+      <section class="surface"><h3>Unfulfilled absences</h3><p>Only unexcused missed lessons are eligible. A makeup reserves one absence at arrival and fulfils it on completed departure.</p><div id="attendanceAbsences"></div></section>
+      <details id="attendanceSettingsPanel" class="surface"><summary>Attendance settings</summary><form id="attendanceSettingsForm" class="attendance-settings"><label>Centre timezone<input name="timezone" required placeholder="America/Edmonton"></label><label>Ignore repeat scans for (seconds)<input name="debounce_seconds" type="number" min="2" max="120" required></label><label>Flag missing checkout after (hours)<input name="max_hours" type="number" min="1" max="12" required></label><label>Absence grace after lesson end (minutes)<input name="grace_minutes" type="number" min="0" max="120" required></label><label>Centre closure dates (one YYYY-MM-DD date per line)<textarea name="holidays" rows="4"></textarea></label><p>Lessons are captured from the current schedule from the tracking start date. Enter closures before the day starts. Historical schedule changes are not inferred. Reopening a cancelled lesson requires staff review.</p><button type="submit">Save attendance settings</button></form></details>
+      <details class="surface"><summary>Recent attendance audit history</summary><div id="attendanceAudit"></div></details>
+    </section>
+    <section id="student-barcodes" class="panel">
+      <div class="section-title page-title"><div><h2>Student Barcodes</h2><span>Assigned once at enrolment · reprinting keeps the same barcode</span></div><button type="button" id="attendancePrintSelected">Print selected tags</button></div>
+      <section class="surface"><label for="attendanceTagSearch">Find a student</label><input id="attendanceTagSearch" type="search" placeholder="Student name or barcode"><p>Code 128 tags work with USB and Bluetooth scanners configured to send Enter after each scan. Test print quality with your scanner before bulk printing.</p><div class="table-scroll"><table id="attendanceTags"></table></div></section>
+    </section>
+    <dialog id="attendanceCorrection"><form id="attendanceCorrectionForm"><h3>Correct attendance</h3><p id="attendanceCorrectionStudent"></p><input name="record_id" type="hidden"><label>Status<select name="status"><option value="completed">Completed — enter actual arrival/departure</option><option value="incomplete">Incomplete — departure unknown</option><option value="excused">Excused absence — no makeup entitlement</option><option value="absent">Unexcused absence — eligible for makeup</option><option value="cancelled">Cancelled lesson/visit</option></select></label><label>Arrival (centre local time)<input name="check_in" type="datetime-local"></label><label>Departure (centre local time)<input name="check_out" type="datetime-local"></label><label>Reason (required)<textarea name="reason" required maxlength="1000"></textarea></label><p id="attendanceCorrectionError" role="alert"></p><div class="attendance-actions"><button type="submit">Save correction</button><button type="button" id="attendanceCorrectionCancel" class="ghost">Cancel</button></div></form></dialog>
+
     <section id="dashboard" class="panel active">
       <div class="section-title page-title">
         <div>
@@ -829,6 +856,7 @@
 
   <div id="toast" role="status"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=20261029-v7"></script>
+  <script src="app.js?v=20261029-attendance-uat1"></script>
+  <script src="attendance-ui.js?v=uat-attendance-1"></script>
 </body>
 </html>

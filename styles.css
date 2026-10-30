@@ -2340,3 +2340,20 @@ button.danger,
   font-size: 0.95rem;
   font-weight: 500;
 }
+
+/* Student attendance: separate operational tabs, scan feedback and printable-tag controls. */
+.attendance-grid{display:grid;grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:20px;margin:16px 0}
+.attendance-grid>*{min-width:0}.attendance-grid .metrics{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
+#attendance .table-scroll,#student-barcodes .table-scroll{overflow-x:auto}
+.attendance-scan form,.attendance-settings,#attendanceCorrectionForm{display:grid;gap:12px}
+.attendance-settings{grid-template-columns:repeat(auto-fit,minmax(230px,1fr));padding-top:18px}
+.attendance-settings label,#attendanceCorrectionForm label{display:grid;gap:6px}
+.attendance-banner{border:2px solid currentColor;padding:18px;border-radius:10px;margin:18px 0;font-size:1.1rem;min-height:72px;background:#f1f5f9;color:#1e293b}
+.attendance-regular{background:#e8f5e9;color:#205b24}.attendance-makeup{background:#fff3e0;color:#a54100}.attendance-unscheduled{background:#fff3cd;color:#8b241c}
+.attendance-badge{display:inline-block;padding:4px 9px;border-radius:20px;font-weight:600;white-space:nowrap}
+.attendance-connection{padding:10px;border-radius:8px;background:#edf6f0;color:#205b24}.attendance-offline{background:#fff3cd;color:#8b241c}
+#attendance .surface,#student-barcodes .surface{margin-bottom:18px;padding:20px}#attendance details summary{cursor:pointer;font-weight:600;padding:8px 0}
+#attendanceTable small{display:block;max-width:240px}#attendanceAudit{max-height:300px;overflow:auto}#attendanceAbsences{max-height:280px;overflow:auto}
+#attendanceCorrection{border:1px solid #cbd5e1;border-radius:14px;padding:24px;max-width:540px;width:calc(100% - 32px);max-height:90vh;overflow:auto}#attendanceCorrection::backdrop{background:#0f172a99}
+.attendance-actions{display:flex;gap:12px}#attendanceCorrectionError{color:#b91c1c}#attendance:fullscreen{overflow:auto;background:#f8fafc;padding:24px}
+@media(max-width:760px){.attendance-grid{grid-template-columns:1fr}.attendance-settings{grid-template-columns:1fr}}
