@@ -9,7 +9,7 @@
   <title>Education Centre Tracking</title>
   <script>
     // Automatic Cache Clear on Every New Upload / Version
-    const CURRENT_DEPLOY_VERSION = "20261029-attendance-camera1";
+    const CURRENT_DEPLOY_VERSION = "20261030-workspace1";
     const previousVersion = localStorage.getItem("smp_deploy_version");
     if (previousVersion !== CURRENT_DEPLOY_VERSION) {
       console.log("[Cache] New deploy version detected:", CURRENT_DEPLOY_VERSION, "Clearing cache...");
@@ -26,7 +26,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261029-attendance-camera1">
+  <link rel="stylesheet" href="styles.css?v=20261030-workspace1">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -112,8 +112,12 @@
   </section>
 
   <nav id="studentTabs" class="grouped-tabs-nav collapsed" aria-label="Student administration tabs">
-    <div class="tab-group">
-      <div class="tab-group-header">📋 Operations</div>
+    <div class="workspace-switcher" role="tablist" aria-label="Administration sections">
+      <button type="button" id="heading-operations" class="workspace-tab selected" data-workspace="operations" role="tab" aria-selected="true" aria-controls="options-operations"><span class="workspace-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><span><strong>Operations</strong><small>Students & daily activity</small></span><span class="workspace-indicator" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M7 17 17 7M7 7h10v10"/></svg></span></button>
+      <button type="button" id="heading-finance" class="workspace-tab" data-workspace="finance" role="tab" aria-selected="false" aria-controls="options-finance" tabindex="-1"><span class="workspace-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M3 3v18h18M7 15l5-5 4 3 5-7"/></svg></span><span><strong>Finance</strong><small>Fees & financial reporting</small></span><span class="workspace-indicator" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M7 17 17 7M7 7h10v10"/></svg></span></button>
+      <button type="button" id="heading-admin" class="workspace-tab" data-workspace="admin" role="tab" aria-selected="false" aria-controls="options-admin" tabindex="-1"><span class="workspace-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M4 6h4m6 0h6M4 12h10m6 0h0M4 18h2m6 0h8"/><circle cx="11" cy="6" r="3"/><circle cx="17" cy="12" r="3"/><circle cx="9" cy="18" r="3"/></svg></span><span><strong>Admin</strong><small>Centre tools & configuration</small></span><span class="workspace-indicator" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M7 17 17 7M7 7h10v10"/></svg></span></button>
+    </div>
+    <div class="tab-group" id="options-operations" role="tabpanel" aria-labelledby="heading-operations">
       <div class="tab-group-buttons">
         <button class="tab active" data-tab="dashboard">Dashboard</button>
         <button class="tab" data-tab="presence">Student Presence</button>
@@ -123,16 +127,14 @@
         <button class="tab" data-tab="reporting">Reports</button>
       </div>
     </div>
-    <div class="tab-group">
-      <div class="tab-group-header">💰 Finance</div>
+    <div class="tab-group" id="options-finance" role="tabpanel" aria-labelledby="heading-finance" hidden>
       <div class="tab-group-buttons">
         <button class="tab" data-tab="fee">Fee Tracker</button>
         <button class="tab" data-tab="reconciliation">Reconciliation</button>
         <button class="tab" data-tab="pl">Profit & Loss (P&L)</button>
       </div>
     </div>
-    <div class="tab-group">
-      <div class="tab-group-header">⚙️ Admin</div>
+    <div class="tab-group" id="options-admin" role="tabpanel" aria-labelledby="heading-admin" hidden>
       <div class="tab-group-buttons">
         <button class="tab" data-tab="batch">Batch Enrolment</button>
         <button class="tab" data-tab="settings">Settings</button>
@@ -863,7 +865,8 @@
 
   <div id="toast" role="status"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="app.js?v=20261029-attendance-camera1"></script>
+  <script src="student-navigation.js?v=20261030-workspace1"></script>
+  <script src="app.js?v=20261030-workspace1"></script>
   <script src="vendor/zxing-library-0.21.3.min.js"></script>
   <script src="camera-scanner.js?v=20261029-camera1"></script>
   <script src="attendance-ui.js?v=20261029-camera1"></script>

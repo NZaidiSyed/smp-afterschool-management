@@ -1,4 +1,4 @@
-const CACHE_NAME = "kumon-tracking-cache-v10-scheduling";
+const CACHE_NAME = "kumon-tracking-cache-v11-workspaces";
 const ASSETS = [
   "/",
   "/index.html",
@@ -7,6 +7,7 @@ const ASSETS = [
   "/staff-scheduler.css",
   "/staff-scheduler.js",
   "/app.js",
+  "/student-navigation.js",
   "/attendance-ui.js",
   "/camera-scanner.js",
   "/vendor/zxing-library-0.21.3.min.js",
