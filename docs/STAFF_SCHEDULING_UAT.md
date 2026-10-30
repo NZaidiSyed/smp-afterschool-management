@@ -99,3 +99,9 @@ Validation includes draft privacy, selected-week persistence, optimistic locking
 Current results: 32 scheduling checks passed on SQLite and 32 on PostgreSQL, including two simultaneous editors. The 33 existing attendance/asset checks and 15 camera/service-worker checks also passed. Multi-account Chromium UAT passed for copying, publication, availability editing, notification acknowledgement, colleague acceptance, manager approval, stale-save rejection and desktop/mobile rendering. The explicit Staff Administration iframe integration was also verified.
 
 Optional browser regression (requires Playwright and Chromium, and a running fresh synthetic UAT server): `node scripts/test_staff_scheduler_browser.cjs`. It is restricted to localhost and creates test schedules/requests. Set `SMP_SCHEDULER_TEST_URL` to the local test port and `CHROMIUM_PATH` if needed. The regular UAT launcher does not require these developer tools.
+
+## Updated planning interface
+
+The weekly workspace includes a date range, highlighted current day, staff initials, paid hours, and shift cards. Search by staff name, filter staff with or without shifts, and sort by first name, last name, or total hours. Reset filters restores the full authorized roster. Filters change only the display: saving, copying and publishing still use the complete week. Print uses a landscape layout for the currently filtered team.
+
+Download and extract a fresh copy of the UAT branch to get this update, close the old server window, and run `Start Staff Scheduling UAT.bat` again. Existing test data is kept in the separate UAT directory. Refresh the browser if the old layout remains visible.

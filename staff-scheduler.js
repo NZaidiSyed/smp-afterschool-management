@@ -29,12 +29,7 @@
     $('actor').textContent=data.actor.name+' · '+(data.actor.manager?'Manager':'Staff');
     $('weekStatus').innerHTML=`<span class="badge ${data.has_unpublished_changes||dirty?'warning':''}">${data.actor.manager?(dirty?'Unsaved local edits':data.has_unpublished_changes?'Draft changes pending publication':'Saved'):'Published schedule'}</span><span>Draft revision ${data.actor.manager?data.revision:'—'}</span><span>Published revision ${data.published_revision||'none'}</span><span>${rows.length} shifts · ${(rows.reduce((a,s)=>a+(time(s.end)-time(s.start)-s.break_minutes)/60,0)).toFixed(1)} paid hours</span>`;
     $('issues').innerHTML=data.actor.manager?issues(data.checks):'';
-    const staff=data.actor.manager?data.staff:data.staff.filter(s=>s.id===data.actor.staff_id);
-    $('scheduleGrid').innerHTML='<thead><tr><th>Staff / paid hours</th>'+weekdays.map((d,i)=>`<th>${d.slice(0,3)}<br>${offset(week,i)}</th>`).join('')+'</tr></thead><tbody>'+staff.map(person=>{
-      const mine=rows.filter(s=>s.staff_id===person.id),hours=mine.reduce((a,s)=>a+(time(s.end)-time(s.start)-s.break_minutes)/60,0);
-      return `<tr><td>${safe(person.name)}<p class="muted">${hours.toFixed(1)} hours</p></td>`+weekdays.map((_,i)=>{const day=offset(week,i);return '<td>'+mine.filter(s=>s.day===day).map(s=>`<button type="button" class="shift-card" data-edit="${safe(s.id)}"><strong>${safe(s.start)}–${safe(s.end)}</strong>${safe(s.kind)}<small>${safe(s.location)}${s.break_minutes?' · '+s.break_minutes+'m break':''}</small></button>`).join('')+(data.actor.manager?`<button type="button" class="add-shift" data-staff="${safe(person.id)}" data-day="${day}">+ Add shift</button>`:'')+'</td>';}).join('')+'</tr>';
-    }).join('')+'</tbody>';
-    $('mobileMyShifts').innerHTML=rows.length?rows.map(s=>`<article class="request-card"><strong>${safe(s.day)} · ${safe(s.start)}–${safe(s.end)}</strong><p>${safe(s.kind)} · ${safe(s.location)}</p><small>${safe(s.notes)}</small></article>`).join(''):'<p class="empty">No published shifts for you this week.</p>';
+    renderGrid();
     $('receiptsPanel').hidden=$('auditPanel').hidden=!data.actor.manager;
     $('receipts').innerHTML=data.receipts.length?'<ul>'+data.receipts.map(r=>`<li>${safe(staffName(r.staff_id))}: ${r.acknowledged_at?'Acknowledged':r.read_at?'Read — acknowledgement pending':'Available in inbox — unread'}</li>`).join('')+'</ul>':'<p class="muted">No publication notifications for this week.</p>';
     $('audit').innerHTML='<ul>'+data.audit.map(a=>`<li>${safe(a.created_at)} · ${safe(a.actor)} · ${safe(a.action.replaceAll('_',' '))}</li>`).join('')+'</ul>';
@@ -42,6 +37,20 @@
     $('availabilityStaff').innerHTML=(data.actor.manager?data.staff:data.staff.filter(s=>s.id===data.actor.staff_id)).map(s=>`<option value="${safe(s.id)}">${safe(s.name)}</option>`).join('');
     if(selected&&[...$('availabilityStaff').options].some(s=>s.value===selected))$('availabilityStaff').value=selected;
     renderAvailability();renderSwaps();renderInbox();setControls();
+  }
+  function renderGrid(){
+    const accessible=data.actor.manager?data.staff:data.staff.filter(s=>s.id===data.actor.staff_id);
+    const hoursFor=id=>rows.filter(s=>s.staff_id===id).reduce((sum,s)=>sum+(time(s.end)-time(s.start)-s.break_minutes)/60,0);
+    const query=$('staffSearch').value.trim().toLocaleLowerCase(),filter=$('staffFilter').value,sort=$('staffSort').value;
+    const staff=accessible.filter(p=>p.name.toLocaleLowerCase().includes(query)&&(filter==='all'||(filter==='scheduled'?rows.some(s=>s.staff_id===p.id):!rows.some(s=>s.staff_id===p.id)))).sort((a,b)=>sort==='hours'?hoursFor(b.id)-hoursFor(a.id)||a.name.localeCompare(b.name): (sort==='last'?a.name.trim().split(/\s+/).at(-1):a.name).localeCompare(sort==='last'?b.name.trim().split(/\s+/).at(-1):b.name));
+    $('weekRange').textContent=date(week).toLocaleDateString(undefined,{month:'short',day:'numeric'})+' – '+date(offset(week,6)).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
+    $('teamCount').textContent=`Team members (${staff.length}/${accessible.length})`;
+    $('clearFilters').disabled=!query&&filter==='all'&&sort==='first';
+    $('scheduleGrid').innerHTML='<thead><tr><th>Staff / paid hours</th>'+weekdays.map((d,i)=>`<th scope="col" class="${offset(week,i)===today?'today-column':''}"><span>${d.slice(0,3)}</span><strong class="day-number">${date(offset(week,i)).getDate()}</strong></th>`).join('')+'</tr></thead><tbody>'+staff.map(person=>{
+      const mine=rows.filter(s=>s.staff_id===person.id),hours=mine.reduce((a,s)=>a+(time(s.end)-time(s.start)-s.break_minutes)/60,0);
+      return `<tr><td><div class="staff-identity"><span class="avatar" aria-hidden="true">${safe(person.name.split(/\s+/).map(n=>n[0]).slice(0,2).join(''))}</span><div>${safe(person.name)}<p class="muted">${hours.toFixed(1)} paid hours</p></div></div></td>`+weekdays.map((_,i)=>{const day=offset(week,i);return '<td class="'+(day===today?'today-column':'')+'">'+mine.filter(s=>s.day===day).map(s=>`<button type="button" class="shift-card" data-edit="${safe(s.id)}"><strong>${safe(s.start)}–${safe(s.end)}</strong>${safe(s.kind)}<small>${safe(s.location)}${s.break_minutes?' · '+s.break_minutes+'m break':''}</small></button>`).join('')+(data.actor.manager?`<button type="button" class="add-shift" data-staff="${safe(person.id)}" data-day="${day}">+ Add shift</button>`:'')+'</td>';}).join('')+'</tr>';
+    }).join('')+(!staff.length?'<tr><td colspan="8" class="empty">No team members match these filters. Reset filters to see the team.</td></tr>':'')+'</tbody>';
+    $('mobileMyShifts').innerHTML=rows.length?rows.map(s=>`<article class="request-card"><strong>${safe(s.day)} · ${safe(s.start)}–${safe(s.end)}</strong><p>${safe(s.kind)} · ${safe(s.location)}</p><small>${safe(s.notes)}</small></article>`).join(''):'<p class="empty">No published shifts for you this week.</p>';
   }
   function time(v){const [h,m]=v.split(':').map(Number);return h*60+m;}
   function renderAvailability(){
@@ -69,6 +78,10 @@
     $('inboxList').innerHTML=data.inbox.length?data.inbox.map(n=>`<article class="notification ${n.read_at?'':'unread'}"><header><strong>${safe(n.title)}</strong><span class="muted">${safe(new Date(n.created_at).toLocaleString())}</span></header><p>${safe(n.body)}</p><span class="badge">${n.acknowledged_at?'Acknowledged':n.read_at?'Read':'Unread'}</span><div class="inline-actions">${!n.read_at?`<button data-notification="${safe(n.id)}" data-action="read" class="secondary">Mark read</button>`:''}${n.schedule_revision&&!n.acknowledged_at?`<button data-notification="${safe(n.id)}" data-action="acknowledge">Acknowledge revision ${n.schedule_revision}</button>`:''}</div></article>`).join(''):'<p class="empty">Your inbox is empty. Publication and swap updates appear here.</p>';
   }
   async function changeWeek(value){if(date(value).getDay()!==1){$('weekStart').value=week;setMessage('Choose a Monday for the week start.',true);return;}if(dirty&&!confirm('Discard unsaved local edits?')){$('weekStart').value=week;return;}$('weekStart').value=week=value;await operation(load);}
+  $('staffSearch').oninput=()=>{if(data)renderGrid();};
+  $('staffFilter').onchange=$('staffSort').onchange=()=>{if(data)renderGrid();};
+  $('clearFilters').onclick=()=>{$('staffSearch').value='';$('staffFilter').value='all';$('staffSort').value='first';renderGrid();};
+  $('printSchedule').onclick=()=>window.print();
   $('prevWeek').onclick=()=>changeWeek(offset(week,-7));$('nextWeek').onclick=()=>changeWeek(offset(week,7));$('thisWeek').onclick=()=>changeWeek(currentMonday());$('weekStart').onchange=()=>changeWeek($('weekStart').value);
   document.querySelectorAll('[data-tab]').forEach(button=>button.onclick=()=>{if(dirty){setMessage('Save your draft before switching sections.',true);return;}if(availabilityDirty&&!confirm('Discard unsaved availability changes?'))return;availabilityDirty=false;tab=button.dataset.tab;document.querySelectorAll('.section,.tabs button').forEach(n=>n.classList.remove('active'));button.classList.add('active');$(tab).classList.add('active');operation(load);});
   document.querySelectorAll('[data-close]').forEach(button=>button.onclick=()=>$(button.dataset.close).close());
