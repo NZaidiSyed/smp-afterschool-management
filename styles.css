@@ -242,9 +242,9 @@ h2 { font-size: 20px; }
 .grouped-tabs-nav{display:block;padding:0 clamp(18px,4vw,48px) 24px}
 .grouped-tabs-nav.collapsed{display:none!important}
 .workspace-switcher{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:14px}
-.workspace-tab{--workspace-color:#087d80;display:flex;align-items:center;gap:14px;min-height:88px;padding:18px 20px;border:1px solid #dce5eb;border-radius:15px;background:#ffffffd9;color:#526375;text-align:left;cursor:pointer;box-shadow:0 3px 12px #18354304;transition:background .18s,box-shadow .18s,border-color .18s,transform .18s;font:inherit;position:relative;overflow:hidden}
+.workspace-tab{--workspace-color:#087d80;display:flex;align-items:center;gap:14px;min-height:94px;padding:18px 20px;border:1px solid #dce5eb;border-radius:15px;background:#ffffffd9;color:#526375;text-align:left;cursor:pointer;box-shadow:0 3px 12px #18354304;transition:background .18s,box-shadow .18s,border-color .18s,transform .18s;font:inherit;position:relative;overflow:hidden}
 .workspace-tab[data-workspace="finance"]{--workspace-color:#5065c2}.workspace-tab[data-workspace="admin"]{--workspace-color:#8a51ad}
-.workspace-tab strong{display:block;font-size:17px;letter-spacing:-.3px;color:#263e4c}.workspace-tab small{display:block;font-size:12px;margin-top:5px;color:#74828e;font-weight:400}
+.workspace-tab strong{display:block;font-size:22px;font-weight:750;line-height:1.2;letter-spacing:-.45px;color:#263e4c}.workspace-tab small{display:block;font-size:12px;margin-top:5px;color:#74828e;font-weight:400}
 .workspace-icon{display:grid;place-items:center;flex:0 0 42px;height:42px;border-radius:12px;background:#f0f4f7;font-size:24px;color:var(--workspace-color);font-weight:650}
 .workspace-icon svg{width:23px;height:23px}.workspace-indicator svg{width:18px;height:18px}
 .workspace-indicator{margin-left:auto;color:var(--workspace-color);font-size:21px;opacity:0;transition:opacity .18s,transform .18s;transform:translate(-4px,4px)}
@@ -260,7 +260,7 @@ h2 { font-size: 20px; }
 #options-admin .tab-group-buttons .tab.active{background:#f5edf9;border-color:#e4d1ed;color:#8045a2}
 .workspace-tab:focus-visible,#studentTabs .tab:focus-visible{outline:3px solid #90cdcf;outline-offset:3px}
 @keyframes workspace-reveal{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
-@media(max-width:700px){.workspace-switcher{gap:7px}.workspace-tab{padding:12px 9px;gap:7px;min-height:74px;flex-direction:column;justify-content:center;text-align:center;border-radius:11px}.workspace-icon{flex:none;width:29px;height:29px;font-size:19px;border-radius:8px}.workspace-tab strong{font-size:13px}.workspace-tab small,.workspace-indicator{display:none}.workspace-tab.selected:after{left:12px;right:12px}#studentTabs .tab-group{padding:9px}.tab-group-buttons{gap:5px}#studentTabs .tab-group-buttons .tab{padding:10px 12px;font-size:12px;flex:1 1 auto}}
+@media(max-width:700px){.workspace-switcher{gap:7px}.workspace-tab{padding:12px 9px;gap:7px;min-height:80px;flex-direction:column;justify-content:center;text-align:center;border-radius:11px}.workspace-icon{flex:none;width:29px;height:29px;font-size:19px;border-radius:8px}.workspace-tab strong{font-size:16px;letter-spacing:-.25px}.workspace-tab small,.workspace-indicator{display:none}.workspace-tab.selected:after{left:12px;right:12px}#studentTabs .tab-group{padding:9px}.tab-group-buttons{gap:5px}#studentTabs .tab-group-buttons .tab{padding:10px 12px;font-size:12px;flex:1 1 auto}}
 @media(prefers-reduced-motion:reduce){.workspace-tab,.workspace-indicator,#studentTabs .tab{transition:none!important}.workspace-tab:hover{transform:none}#studentTabs .tab-group{animation:none}}
 
 .admin-area-switch {

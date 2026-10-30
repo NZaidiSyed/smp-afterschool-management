@@ -2,7 +2,7 @@
 
 Operations, Finance and Admin remain visible as three workspace headings. Only the selected workspace's tools are shown. Each workspace remembers its last selected page for the current page session. Existing permissions control which pages and headings are available. Setup redirects and direct attendance navigation keep the correct heading selected.
 
-The interface uses teal, indigo and purple accents, consistent SVG icons, a brief reveal transition, visible keyboard focus, arrow/Home/End navigation and a compact mobile layout. Reduced-motion preferences disable the animation.
+Primary headings use bold 22px lettering on desktop and 16px on mobile, above smaller 13px/12px option labels. The interface uses teal, indigo and purple accents, consistent SVG icons, a brief reveal transition, visible keyboard focus, arrow/Home/End navigation and a compact mobile layout. Reduced-motion preferences disable the animation.
 
 ![Desktop navigation](images/student-navigation-desktop.png)
 

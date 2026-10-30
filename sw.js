@@ -1,4 +1,4 @@
-const CACHE_NAME = "kumon-tracking-cache-v11-workspaces";
+const CACHE_NAME = "kumon-tracking-cache-v12-workspace-type";
 const ASSETS = [
   "/",
   "/index.html",
