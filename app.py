@@ -16,6 +16,7 @@ from urllib.parse import quote, unquote, urlparse, urlunparse, parse_qs
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 from attendance import Attendance, ensure_schema as ensure_attendance_schema
+from staff_scheduling import Scheduler, SchedulingError, ensure_schema as ensure_scheduler_schema
 
 try:
     import psycopg
@@ -4758,6 +4759,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/scheduling"):
+            self.handle_scheduling(parsed, False)
+            return
         if parsed.path.startswith("/api/attendance"):
             self.handle_attendance(parsed, False)
             return
@@ -4893,6 +4897,89 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_csv("smp_fee_tracker.csv", rows, headers)
             return
         return super().do_GET()
+
+    def handle_scheduling(self, parsed, write):
+        if os.environ.get("SMP_SCHEDULING_UAT") != "1":
+            self.send_json({"ok": False, "error": "Updated scheduling is not enabled on this server"}, 404)
+            return
+        try:
+            token = self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+            staff_actor = None
+            if token:
+                try:
+                    staff_actor = verify_jwt(token).get("staffId")
+                except Exception:
+                    pass
+            if token and not staff_actor and not SUPABASE_REQUIRE_AUTH:
+                self.send_json({"ok": False, "error": "Invalid staff session. Sign in again."}, 401)
+                return
+            if not staff_actor and not self.require_auth():
+                return
+            if write and int(self.headers.get("Content-Length", "0")) > 100000:
+                raise SchedulingError("Scheduling request is too large")
+            payload = self.read_json() if write else {}
+            if not isinstance(payload, dict) or len(json.dumps(payload)) > 100000:
+                raise SchedulingError("Provide a JSON object smaller than 100 KB")
+            with db() as conn:
+                branch = current_branch_id(conn)
+                org = current_org_id(conn)
+                if branch is None:
+                    raise SchedulingError("Set up the centre branch first")
+                if PG_MODE:
+                    members = conn.execute("SELECT id::text AS id, staff_name, role, role_title, email, active FROM public.staff_members WHERE branch_id=%s AND organization_id=%s", (branch, org)).fetchall()
+                    leave = conn.execute("SELECT staff_id::text AS staff_id,start_date,end_date FROM public.time_off_requests WHERE organization_id=%s AND status='approved'", (org,)).fetchall()
+                else:
+                    members = conn.execute("SELECT id,staff_name,role,role_title,email,active FROM staff_members WHERE branch_id=?", (branch,)).fetchall()
+                    leave = conn.execute("SELECT staff_id,start_date,end_date FROM time_off_requests WHERE status='approved'").fetchall()
+                staff = [{"id": str(r["id"]), "name": r["staff_name"], "role": r["role"] or r["role_title"], "email": r["email"], "active": bool(r["active"])} for r in members]
+                selected = next((r for r in staff if r["id"] == str(staff_actor) and r["active"]), None) if staff_actor else None
+                if staff_actor and selected is None:
+                    self.send_json({"ok": False, "error": "Staff account is inactive or outside this branch"}, 403)
+                    return
+                manager_roles = {"owner", "admin", "administrator", "principal_owner", "principal", "office manager", "office_manager", "manager"}
+                if selected:
+                    manager = str(selected["role"]).lower() in manager_roles
+                    actor = selected["email"] or selected["name"]
+                    actor_id = selected["id"]
+                else:
+                    manager = "manage_staff" in ROLE_PERMISSIONS.get(normalize_role((self.auth_access or {}).get("role")), set())
+                    actor = self.actor_email()
+                    matching = next((r for r in staff if str(r["email"] or "").lower() == actor.lower() and r["active"]), None)
+                    actor_id = matching["id"] if matching else None
+                    if not manager and actor_id is None:
+                        self.send_json({"ok": False, "error": "A linked staff account is required"}, 403)
+                        return
+                if not PG_MODE:
+                    conn.execute("BEGIN IMMEDIATE")
+                store = Scheduler(conn, f"{org or 'local'}:{branch}", staff, actor, staff_id=actor_id,
+                                  manager=manager, pg=PG_MODE, leave=[{k: str(r[k]) for k in ('staff_id','start_date','end_date')} for r in leave])
+                if not write and parsed.path == "/api/scheduling":
+                    week = parse_qs(parsed.query).get("week_start", [None])[0]
+                    result = store.snapshot(week)
+                elif write:
+                    actions = {"/api/scheduling/draft": store.save, "/api/scheduling/publish": store.publish,
+                               "/api/scheduling/copy-preview": lambda data: store.copy(data, preview=True),
+                               "/api/scheduling/copy": store.copy, "/api/scheduling/availability": store.availability,
+                               "/api/scheduling/swaps": store.request_swap, "/api/scheduling/swaps/decide": store.decide_swap,
+                               "/api/scheduling/inbox": store.inbox_action}
+                    action = actions.get(parsed.path)
+                    if action is None:
+                        self.send_json({"ok": False, "error": "Scheduling route not found"}, 404)
+                        return
+                    result = action(payload)
+                else:
+                    self.send_json({"ok": False, "error": "Scheduling route not found"}, 404)
+                    return
+                conn.commit()
+            self.send_json(result)
+        except SchedulingError as exc:
+            self.send_json({"ok": False, "error": str(exc)}, exc.status)
+        except (ValueError, TypeError, KeyError) as exc:
+            self.send_json({"ok": False, "error": str(exc)}, 400)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            self.send_json({"ok": False, "error": "Schedule could not be saved. Refresh and retry."}, 500)
 
     def handle_attendance(self, parsed, write):
         if not self.require_auth():
@@ -6109,6 +6196,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/api/scheduling"):
+            self.handle_scheduling(parsed, True)
+            return
         if parsed.path.startswith("/api/attendance"):
             self.handle_attendance(parsed, True)
             return
@@ -7417,6 +7507,8 @@ if __name__ == "__main__":
         ensure_meta_defaults()
     with db() as conn:
         ensure_attendance_schema(conn, PG_MODE)
+        if os.environ.get("SMP_SCHEDULING_UAT") == "1":
+            ensure_scheduler_schema(conn, PG_MODE)
         conn.commit()
     import threading
     attendance_stop = threading.Event()
