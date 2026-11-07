@@ -175,8 +175,10 @@ class AttendanceTests(unittest.TestCase):
         self.assertEqual(store.snapshot()['today'], '2026-10-29')
 
     def test_nonexistent_and_ambiguous_dst_corrections_rejected(self):
-        for value in ['2026-03-08T02:30', '2026-11-01T01:30']:
-            with self.assertRaises(ValueError):
+        # Historical transitions remain valid fixtures when IANA changes future
+        # rules (Edmonton no longer repeats the hour in November 2026).
+        for value in ['2025-03-09T02:30', '2025-11-02T01:30']:
+            with self.subTest(value=value), self.assertRaises(ValueError):
                 parse_centre_time(value, ZoneInfo('America/Edmonton'))
 
     def test_future_history_does_not_create_lessons(self):

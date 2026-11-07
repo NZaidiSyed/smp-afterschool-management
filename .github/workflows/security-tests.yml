@@ -44,6 +44,8 @@ jobs:
       SMP_TEST_POSTGRES_DSN: postgresql://postgres:synthetic-ci-only@127.0.0.1:5432/smp_ci_test
       SMP_DATA_DIR: /tmp/smp-ci-test-uat/data
       SMP_BACKUP_DIR: /tmp/smp-ci-test-uat/backups
+      # Exercise the declared tzdata dependency, independent of runner OS data.
+      PYTHONTZPATH: ''
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
