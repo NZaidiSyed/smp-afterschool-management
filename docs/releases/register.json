@@ -24,15 +24,15 @@
     {
       "id": "SMP-20261107-002",
       "title": "Branch security, isolated testing and governed production promotion",
-      "candidate_sha": "9a9b271d3f05ae8f33192a95f770d64950e4779e",
+      "candidate_sha": "cd16e8b2e2c89a7a6ebc6e7175171023c6404962",
       "scope": "Staged authentication/branch hardening, CA-YYC-KMN-0001 code-only migration, isolated test workflow, reusable management-credential policy, master documentation and explicit UAT/change-history controls. Production data/configuration remain untouched.",
       "state": "blocked",
       "rollback_plan": "Do not promote until gates pass. Before an authorized production rollout retain the prior live source and verified production backup, preserve the branch ID, stop conflicting writes for the migration, and use a reviewed recovery plan that preserves newer writes.",
       "checks": {
         "automated_tests": {
-          "status": "failed",
-          "candidate_sha": "9a9b271d3f05ae8f33192a95f770d64950e4779e",
-          "evidence": "Local annotated runner passes all 172 tests against PostgreSQL 16. Hosted run 42425086050 still fails Python regressions despite the selected tool version; next run adds visible failure tracebacks. Do not treat local success as hosted success."
+          "status": "pending",
+          "candidate_sha": "cd16e8b2e2c89a7a6ebc6e7175171023c6404962",
+          "evidence": "All 172 local Python tests pass without skips using PostgreSQL 16 backup tools and packaged tzdata 2026.6, matching corrected CI settings. System-timezone historical DST test also passes. Log SHA256 2cc1a3e2827e1eeab20b1d3d2b631f542c840d290f9c730a79beeb9f6e95df31. Awaiting corrected hosted workflow."
         },
         "browser": {
           "status": "pending",
@@ -99,6 +99,14 @@
           "summary": "Documentation validation passed remotely but Python regressions still failed. Added escaped GitHub failure annotations while preserving failing exit status to diagnose the remaining runner difference. Local 172-test run passes; hosted failure remains unresolved. No production changes or local documentation restoration.",
           "recorded_at": "2026-11-07T23:27:09.993710Z",
           "candidate_sha": "9a9b271d3f05ae8f33192a95f770d64950e4779e"
+        },
+        {
+          "state": "blocked",
+          "actor": "Codex",
+          "reference": "GitHub run 42425306958 failure annotations and local latest-tzdata reproduction",
+          "summary": "Hosted annotations identified two failures in the inherited DST test: current Edmonton timezone data no longer repeats the hour on 2026-11-01. Reproduced with tzdata 2026.6; replaced future-rule assumptions with genuine 2025 gap/fold fixtures, preserving both ValueError assertions. CI explicitly uses the declared tzdata package. All 172 local tests now pass with CI-equivalent data and PostgreSQL 16. Awaiting hosted verification; production/UAT gates remain blocked.",
+          "recorded_at": "2026-11-07T23:29:58.533447Z",
+          "candidate_sha": "cd16e8b2e2c89a7a6ebc6e7175171023c6404962"
         }
       ]
     }
