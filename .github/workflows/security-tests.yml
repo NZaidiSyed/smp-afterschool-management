@@ -69,6 +69,7 @@ jobs:
                   raise SystemExit(f'{tool} must match the PostgreSQL 16 test service, got {version}')
           PY
       - run: python -m pip install -r requirements.txt
-      - run: python -m unittest discover -v
+      - name: Run Python regressions
+        run: python scripts/run_ci_tests.py
       - run: node scripts/test_service_worker.cjs
       - run: node scripts/test_camera_scanner.cjs
