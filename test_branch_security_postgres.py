@@ -81,8 +81,9 @@ class BranchPostgresTests(unittest.TestCase):
                                      'sslrootcert':'PGSSLROOTCERT','sslcert':'PGSSLCERT','sslkey':'PGSSLKEY'}.items():
                 if option in connection_options:
                     restore_env[variable] = connection_options[option]
-            subprocess.run(['pg_restore','--no-password','--exit-on-error','--dbname',restored_name,report['backup']],
-                           env=restore_env,capture_output=True,check=True)
+            restored_result=subprocess.run(['pg_restore','--no-password','--exit-on-error','--dbname',restored_name,report['backup']],
+                                           env=restore_env,capture_output=True,text=True)
+            self.assertEqual(restored_result.returncode,0,restored_result.stderr)
             with psycopg.connect(restored_dsn,row_factory=dict_row) as restored:
                 self.assertEqual(restored.execute('SELECT code FROM branches').fetchone()['code'],'CSC0001')
                 self.assertEqual(inventory(restored,True),inventory(self.conn,True))
