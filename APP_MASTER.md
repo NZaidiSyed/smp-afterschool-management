@@ -181,14 +181,14 @@ Rollback: Restore the previously reviewed navigation source after explicit produ
 
 ### SMP-20261107-002 — Branch security, isolated testing and governed production promotion
 
-State: **blocked** · Candidate: `d6129ea251578bf26a3e044ecc217bb25629b105`
+State: **blocked** · Candidate: `65c23647c462f45ac779945be7feef7575178187`
 
 Staged authentication/branch hardening, CA-YYC-KMN-0001 code-only migration, isolated test workflow, reusable management-credential policy, master documentation and explicit UAT/change-history controls. Production data/configuration remain untouched.
 
 Rollback: Do not promote until gates pass. Before an authorized production rollout retain the prior live source and verified production backup, preserve the branch ID, stop conflicting writes for the migration, and use a reviewed recovery plan that preserves newer writes.
 
-- Check `automated_tests`: **passed** — python scripts/check_test_environment.py --browser --port 8798 with isolated PostgreSQL 17: 172 Python tests passed, no skips; 15 JavaScript scenarios passed. Local evidence log SHA256 fd7fa97d962b14b3a64d53df12f0052cd0d42d063f9579adc27922b96a8c95da. CI status has not been verified.
-- Check `browser`: **passed** — Local Chromium scheduling workflow and migrated branch/bootstrap checks passed using new synthetic fixture. Hosted sign-in/UAT remains unrun.
+- Check `automated_tests`: **passed** — 172 Python tests passed without skips against PostgreSQL 16 using pg_dump/pg_restore 16.15; 15 JavaScript scenarios passed. Workflow version check accepts 16 and rejects 17. Log SHA256 7a1f4bc356dcfb4aa24ca9a45f8a205d3d772486d03ca02e1a0e7b8465baec74. Hosted rerun is not yet verified.
+- Check `browser`: **pending** — Earlier local Chromium scheduling checks passed at d6129ea251578bf26a3e044ecc217bb25629b105. This candidate changes CI/test diagnostics only; browser checks were not rerun for the new candidate.
 - Check `hosted_uat`: **pending** — Hosted TEST service/Supabase project and explicit user UAT approval are not available.
 - Check `target_identity`: **pending** — Live Render service/database/branch identities and deployed production revision have not been verified.
 - Check `data_protection`: **pending** — Local SQLite and PostgreSQL migration/restore rehearsals passed. Current production backup, ownership inventory and restore evidence are still required.
@@ -198,4 +198,5 @@ Rollback: Do not promote until gates pass. Before an authorized production rollo
 - 2026-11-07T22:47:42.585685Z · **planned** · Codex: User requested branch isolation, airport-based codes, separate testing, reused authorized management credentials and a master record with explicit UAT approval before production. Reference: Current conversation: security/test environment and master-document requests. Source: `6f0c18473ffa13b110b39db2a40dd25d9b6ba9f2`.
 - 2026-11-07T22:47:42.585685Z · **blocked** · Codex: Local baseline passed; production promotion is blocked pending hosted UAT, live security/data verification and provider controls. This request is not production UAT approval. Reference: Local test evidence from staged security baseline and current credential metadata review. Source: `6f0c18473ffa13b110b39db2a40dd25d9b6ba9f2`.
 - 2026-11-07T22:51:12.475732Z · **blocked** · Codex: Prepared master/rules, synchronized release history and CI guards. Exact frozen candidate passed 172 Python tests without skips, 15 JavaScript scenarios and browser scheduling checks. Production approval, hosted UAT and provider protection are still absent; production remains unchanged. Reference: Current user request for reusable credentials, master documentation and explicit UAT promotion; local validation log SHA256 fd7fa97d962b14b3a64d53df12f0052cd0d42d063f9579adc27922b96a8c95da. Source: `d6129ea251578bf26a3e044ecc217bb25629b105`.
+- 2026-11-07T23:24:08.446309Z · **blocked** · Codex: Investigated earlier staging Python-test failure. Reproduced a restore failure using newer backup tools against PostgreSQL 16: transaction_timeout is unsupported. Pinned CI backup tools to major 16, added an early version check and surfaced restore stderr. All 172 local Python tests and 15 JavaScript checks pass with matching tools. Awaiting hosted rerun; UAT and production gates remain blocked. User-requested local documentation removals are preserved. Reference: GitHub Actions run 42419876363; local PostgreSQL 16 reproduction and validation log SHA256 7a1f4bc356dcfb4aa24ca9a45f8a205d3d772486d03ca02e1a0e7b8465baec74. Source: `65c23647c462f45ac779945be7feef7575178187`.
 <!-- RELEASE_HISTORY:END -->
