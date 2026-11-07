@@ -181,20 +181,21 @@ Rollback: Restore the previously reviewed navigation source after explicit produ
 
 ### SMP-20261107-002 — Branch security, isolated testing and governed production promotion
 
-State: **blocked** · Candidate: `6f0c18473ffa13b110b39db2a40dd25d9b6ba9f2`
+State: **blocked** · Candidate: `d6129ea251578bf26a3e044ecc217bb25629b105`
 
 Staged authentication/branch hardening, CA-YYC-KMN-0001 code-only migration, isolated test workflow, reusable management-credential policy, master documentation and explicit UAT/change-history controls. Production data/configuration remain untouched.
 
 Rollback: Do not promote until gates pass. Before an authorized production rollout retain the prior live source and verified production backup, preserve the branch ID, stop conflicting writes for the migration, and use a reviewed recovery plan that preserves newer writes.
 
-- Check `automated_tests`: **passed** — Local staged baseline: 159 Python tests with PostgreSQL 17, no skips; 15 JavaScript scenarios; scripts/check_test_environment.py completed successfully. No GitHub CI status was verified.
-- Check `browser`: **passed** — Local Chromium scheduling workflow passed; synthetic branch rename survived API/bootstrap startup.
+- Check `automated_tests`: **passed** — python scripts/check_test_environment.py --browser --port 8798 with isolated PostgreSQL 17: 172 Python tests passed, no skips; 15 JavaScript scenarios passed. Local evidence log SHA256 fd7fa97d962b14b3a64d53df12f0052cd0d42d063f9579adc27922b96a8c95da. CI status has not been verified.
+- Check `browser`: **passed** — Local Chromium scheduling workflow and migrated branch/bootstrap checks passed using new synthetic fixture. Hosted sign-in/UAT remains unrun.
 - Check `hosted_uat`: **pending** — Hosted TEST service/Supabase project and explicit user UAT approval are not available.
 - Check `target_identity`: **pending** — Live Render service/database/branch identities and deployed production revision have not been verified.
 - Check `data_protection`: **pending** — Local SQLite and PostgreSQL migration/restore rehearsals passed. Current production backup, ownership inventory and restore evidence are still required.
 - Check `security_review`: **blocked** — Real hosted login/MFA, legacy endpoint/session review and database-role/RLS/private-storage verification remain open.
-- Check `release_controls`: **blocked** — Repository policy/guard are being added. Protected main, independent production reviewers and controlled Render deployment remain unconfigured/unverified.
+- Check `release_controls`: **blocked** — 13 local policy regressions and real-register validation passed; check-production correctly rejects this unapproved release. Protected main, independent owner reviewers and controlled Render promotion remain unconfigured/unverified.
 
 - 2026-11-07T22:47:42.585685Z · **planned** · Codex: User requested branch isolation, airport-based codes, separate testing, reused authorized management credentials and a master record with explicit UAT approval before production. Reference: Current conversation: security/test environment and master-document requests. Source: `6f0c18473ffa13b110b39db2a40dd25d9b6ba9f2`.
 - 2026-11-07T22:47:42.585685Z · **blocked** · Codex: Local baseline passed; production promotion is blocked pending hosted UAT, live security/data verification and provider controls. This request is not production UAT approval. Reference: Local test evidence from staged security baseline and current credential metadata review. Source: `6f0c18473ffa13b110b39db2a40dd25d9b6ba9f2`.
+- 2026-11-07T22:51:12.475732Z · **blocked** · Codex: Prepared master/rules, synchronized release history and CI guards. Exact frozen candidate passed 172 Python tests without skips, 15 JavaScript scenarios and browser scheduling checks. Production approval, hosted UAT and provider protection are still absent; production remains unchanged. Reference: Current user request for reusable credentials, master documentation and explicit UAT promotion; local validation log SHA256 fd7fa97d962b14b3a64d53df12f0052cd0d42d063f9579adc27922b96a8c95da. Source: `d6129ea251578bf26a3e044ecc217bb25629b105`.
 <!-- RELEASE_HISTORY:END -->

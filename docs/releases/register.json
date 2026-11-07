@@ -24,20 +24,20 @@
     {
       "id": "SMP-20261107-002",
       "title": "Branch security, isolated testing and governed production promotion",
-      "candidate_sha": "6f0c18473ffa13b110b39db2a40dd25d9b6ba9f2",
+      "candidate_sha": "d6129ea251578bf26a3e044ecc217bb25629b105",
       "scope": "Staged authentication/branch hardening, CA-YYC-KMN-0001 code-only migration, isolated test workflow, reusable management-credential policy, master documentation and explicit UAT/change-history controls. Production data/configuration remain untouched.",
       "state": "blocked",
       "rollback_plan": "Do not promote until gates pass. Before an authorized production rollout retain the prior live source and verified production backup, preserve the branch ID, stop conflicting writes for the migration, and use a reviewed recovery plan that preserves newer writes.",
       "checks": {
         "automated_tests": {
           "status": "passed",
-          "candidate_sha": "6f0c18473ffa13b110b39db2a40dd25d9b6ba9f2",
-          "evidence": "Local staged baseline: 159 Python tests with PostgreSQL 17, no skips; 15 JavaScript scenarios; scripts/check_test_environment.py completed successfully. No GitHub CI status was verified."
+          "candidate_sha": "d6129ea251578bf26a3e044ecc217bb25629b105",
+          "evidence": "python scripts/check_test_environment.py --browser --port 8798 with isolated PostgreSQL 17: 172 Python tests passed, no skips; 15 JavaScript scenarios passed. Local evidence log SHA256 fd7fa97d962b14b3a64d53df12f0052cd0d42d063f9579adc27922b96a8c95da. CI status has not been verified."
         },
         "browser": {
           "status": "passed",
-          "candidate_sha": "6f0c18473ffa13b110b39db2a40dd25d9b6ba9f2",
-          "evidence": "Local Chromium scheduling workflow passed; synthetic branch rename survived API/bootstrap startup."
+          "candidate_sha": "d6129ea251578bf26a3e044ecc217bb25629b105",
+          "evidence": "Local Chromium scheduling workflow and migrated branch/bootstrap checks passed using new synthetic fixture. Hosted sign-in/UAT remains unrun."
         },
         "hosted_uat": {
           "status": "pending",
@@ -57,7 +57,7 @@
         },
         "release_controls": {
           "status": "blocked",
-          "evidence": "Repository policy/guard are being added. Protected main, independent production reviewers and controlled Render deployment remain unconfigured/unverified."
+          "evidence": "13 local policy regressions and real-register validation passed; check-production correctly rejects this unapproved release. Protected main, independent owner reviewers and controlled Render promotion remain unconfigured/unverified."
         }
       },
       "events": [
@@ -76,6 +76,14 @@
           "reference": "Local test evidence from staged security baseline and current credential metadata review",
           "summary": "Local baseline passed; production promotion is blocked pending hosted UAT, live security/data verification and provider controls. This request is not production UAT approval.",
           "recorded_at": "2026-11-07T22:47:42.585685Z"
+        },
+        {
+          "state": "blocked",
+          "actor": "Codex",
+          "reference": "Current user request for reusable credentials, master documentation and explicit UAT promotion; local validation log SHA256 fd7fa97d962b14b3a64d53df12f0052cd0d42d063f9579adc27922b96a8c95da",
+          "summary": "Prepared master/rules, synchronized release history and CI guards. Exact frozen candidate passed 172 Python tests without skips, 15 JavaScript scenarios and browser scheduling checks. Production approval, hosted UAT and provider protection are still absent; production remains unchanged.",
+          "recorded_at": "2026-11-07T22:51:12.475732Z",
+          "candidate_sha": "d6129ea251578bf26a3e044ecc217bb25629b105"
         }
       ]
     }
