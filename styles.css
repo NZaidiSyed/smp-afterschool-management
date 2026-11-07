@@ -2315,3 +2315,6 @@ button.danger,
 #attendanceCameraPreview{position:relative;max-width:560px;background:#0f172a;border-radius:10px;overflow:hidden}#attendanceCameraPreview[hidden]{display:none}
 #attendanceCameraVideo{display:block;width:100%;max-height:320px;object-fit:contain}.attendance-camera-guide{position:absolute;inset:30% 5%;border:2px solid #2dd4bf;border-radius:6px;pointer-events:none}
 #attendanceCameraStatus{font-size:.9rem;min-height:2.5em}
+
+.environment-banner{padding:12px 20px;background:#fff1b8;border-bottom:2px solid #d69b0c;color:#573800;text-align:center;font-size:14px;font-weight:800;letter-spacing:.04em}
+.environment-banner[hidden]{display:none}

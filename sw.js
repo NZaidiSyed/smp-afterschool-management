@@ -1,4 +1,4 @@
-const CACHE_NAME = "kumon-tracking-cache-v12-workspace-type";
+const CACHE_NAME = "kumon-tracking-cache-v13-security";
 const ASSETS = [
   "/",
   "/index.html",
@@ -46,7 +46,7 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
-  if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
+  if (request.method !== "GET" || url.origin !== self.location.origin || url.pathname.startsWith("/api/") || [...url.searchParams.keys()].some(key => key !== "v")) return;
 
   event.respondWith((async () => {
     try {

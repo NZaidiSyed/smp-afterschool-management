@@ -141,23 +141,16 @@ async function initAuth() {
   } catch (_error) {
     throw new Error("Server configuration could not be loaded. Please restart the SMP server.");
   }
+  const environmentBanner = qs("#environmentBanner");
+  if (environmentBanner) environmentBanner.hidden = !appConfig.test_mode && !["test", "staging"].includes(appConfig.environment);
   if (!appConfig.auth_required) {
     renderAuthState();
     return true;
   }
   
-  // Check for saved mock session first
-  const savedMock = window.localStorage.getItem("smp_mock_session") || window.sessionStorage.getItem("smp_mock_session");
-  if (savedMock) {
-    try {
-      authSession = JSON.parse(savedMock);
-      renderAuthState();
-      return true;
-    } catch (e) {
-      window.localStorage.removeItem("smp_mock_session");
-      window.sessionStorage.removeItem("smp_mock_session");
-    }
-  }
+  // Discard obsolete test sessions; production identities come from Supabase.
+  window.localStorage.removeItem("smp_mock_session");
+  window.sessionStorage.removeItem("smp_mock_session");
   if (!window.supabase || !appConfig.supabase_url || !appConfig.supabase_anon_key) {
     qs("#authMessage").textContent = "Authentication is not ready. Check Render environment variables.";
     renderAuthState();
@@ -169,7 +162,7 @@ async function initAuth() {
   const { data } = await supabaseClient.auth.getSession();
   authSession = data?.session || null;
   if (authSession?.access_token) {
-    document.cookie = `access_token=${authSession.access_token}; path=/; max-age=86400; SameSite=Lax`;
+    document.cookie = `access_token=${authSession.access_token}; path=/; max-age=86400; SameSite=Strict${location.protocol === "https:" ? "; Secure" : ""}`;
   }
   renderAuthState();
   return Boolean(authSession);
@@ -197,7 +190,7 @@ function setupAuthListener() {
     authSession = session;
     renderAuthState();
     if (session?.access_token) {
-      document.cookie = `access_token=${session.access_token}; path=/; max-age=86400; SameSite=Lax`;
+      document.cookie = `access_token=${session.access_token}; path=/; max-age=86400; SameSite=Strict${location.protocol === "https:" ? "; Secure" : ""}`;
       if (window.location.search.includes("code=") || window.location.hash.includes("access_token=")) {
         window.history.replaceState({}, document.title, window.location.pathname);
       }
@@ -350,58 +343,20 @@ async function signInWithPassword() {
     qs("#authMessage").textContent = "Please enter both email and password.";
     return;
   }
-  
+  if (!supabaseClient) {
+    qs("#authMessage").textContent = "Secure authentication is not configured.";
+    return;
+  }
   qs("#authMessage").textContent = "Signing in...";
-  
   try {
-    const res = await fetch("/api/staffbase/auth/password", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      authSession = {
-        access_token: "mock-token-" + email,
-        user: {
-          email: email,
-          user_metadata: {
-            full_name: data.user.name,
-            name: data.user.name
-          }
-        }
-      };
-      
-      const keepSignedIn = Boolean(qs("#keepSignedIn")?.checked);
-      const storage = keepSignedIn ? window.localStorage : window.sessionStorage;
-      storage.setItem("smp_mock_session", JSON.stringify(authSession));
-      
-      qs("#authMessage").textContent = "";
-      
-      if (window.caches) {
-        try {
-          const keys = await caches.keys();
-          await Promise.all(keys.map(key => caches.delete(key)));
-        } catch (e) {
-          console.error("Cache purge failed:", e);
-        }
-      }
-      if (navigator.serviceWorker) {
-        try {
-          const registrations = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(registrations.map(r => r.unregister()));
-        } catch (e) {
-          console.error("Service worker unregistration failed:", e);
-        }
-      }
-      
-      window.location.reload();
-    } else {
-      qs("#authMessage").textContent = data.error || "Login failed. Incorrect credentials.";
-    }
-  } catch (err) {
-    qs("#authMessage").textContent = "Connection error. Please try again.";
-    console.error(err);
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error || !data?.session) throw new Error("Sign-in failed. Check your credentials.");
+    authSession = data.session;
+    qs("#authMessage").textContent = "";
+    renderAuthState();
+    await load();
+  } catch (error) {
+    qs("#authMessage").textContent = error.message || "Sign-in failed.";
   }
 }
 
@@ -2395,9 +2350,6 @@ function renderStaffAdministration() {
     src += `&operating_start=${encodeURIComponent(state.settings?.operating_start || "15:00")}`;
     src += `&operating_end=${encodeURIComponent(state.settings?.operating_end || "20:00")}`;
 
-    if (authSession && authSession.access_token) {
-      src += `&access_token=${encodeURIComponent(authSession.access_token)}`;
-    }
     if (frame.getAttribute("src") !== src) {
       frame.setAttribute("src", src);
       // Push settings once the iframe finishes loading so staffbase picks up

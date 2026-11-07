@@ -1,3 +1,4 @@
 psycopg[binary]>=3.2,<4
 python-barcode==0.16.1
 tzdata>=2025.2,<2027
+bcrypt==5.0.0

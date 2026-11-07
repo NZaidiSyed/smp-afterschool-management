@@ -13,9 +13,8 @@
   function sessionToken(){
     if(switchedAccount)return localStorage.getItem('sb_jwt')||'';
     // Reuse the authenticated centre session when embedded in Staff Administration.
-    try { const token=new URLSearchParams(parent.location.search).get('access_token');if(token)return token; } catch {}
     const staffToken=localStorage.getItem('sb_jwt');if(staffToken)return staffToken;
-    try {return JSON.parse(sessionStorage.getItem('smp_mock_session')||localStorage.getItem('smp_mock_session')||'null')?.access_token||'';}catch{return '';}
+    return ''; // Embedded pages use the same-origin authenticated session cookie.
   }
   async function api(path,payload){
     const headers={'Content-Type':'application/json'},token=sessionToken();if(token)headers.Authorization='Bearer '+token;

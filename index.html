@@ -26,10 +26,11 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261107-colorful-navigation">
+  <link rel="stylesheet" href="styles.css?v=20261107-security-staging">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <div id="environmentBanner" class="environment-banner" role="status" hidden>TEST ENVIRONMENT · Synthetic data only</div>
   <header class="topbar">
     <div>
       <p class="eyebrow">SMP - After School Management Program</p>
@@ -828,7 +829,7 @@
               <input name="branch_name" id="setupBranchName" required placeholder="e.g. Cityscape Square">
             </label>
             <label>Branch Code <span class="required" style="color: red;">*</span>
-              <input name="branch_code" id="setupBranchCode" required placeholder="e.g. CCS001">
+              <input name="branch_code" id="setupBranchCode" required pattern="[A-Z]{2}-[A-Z]{3}-KMN-[0-9]{4}" placeholder="e.g. CA-YYC-KMN-0001">
             </label>
             
             <div class="actions full" id="setupFormActions" style="margin-top: 20px;">
@@ -866,7 +867,7 @@
   <div id="toast" role="status"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="student-navigation.js?v=20261030-workspace1"></script>
-  <script src="app.js?v=20261030-workspace1"></script>
+  <script src="app.js?v=20261107-security-staging"></script>
   <script src="vendor/zxing-library-0.21.3.min.js"></script>
   <script src="camera-scanner.js?v=20261029-camera1"></script>
   <script src="attendance-ui.js?v=20261029-camera1"></script>

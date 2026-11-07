@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlparse, urlunparse, parse_qs
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
+from branch_security import LoginLimiter, isolated_branch, validate_branch_code, validate_production_config
 from attendance import Attendance, ensure_schema as ensure_attendance_schema
 from staff_scheduling import Scheduler, SchedulingError, ensure_schema as ensure_scheduler_schema
 
@@ -72,6 +73,8 @@ def normalized_database_url():
 
 DATABASE_URL = normalized_database_url()
 PG_MODE = bool(DATABASE_URL)
+SMP_BRANCH_CODE = os.environ.get("SMP_BRANCH_CODE", "").strip()
+PRODUCTION = PG_MODE or SUPABASE_REQUIRE_AUTH or os.environ.get("SMP_ENV") == "production" or os.environ.get("RENDER") == "true"
 DEFAULT_SETTINGS = {
     "institution_name": "SMP - After School Management Program",
     "institution_phone": "",
@@ -788,7 +791,13 @@ def db():
     if PG_MODE:
         if psycopg is None:
             raise RuntimeError("psycopg is required when DATABASE_URL/SUPABASE_DB_URL is configured")
-        return psycopg.connect(DATABASE_URL, row_factory=dict_row)
+        conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+        try:
+            isolated_branch(conn, True, SMP_BRANCH_CODE or None, SMP_ORGANIZATION_ID or None)
+        except Exception:
+            conn.close()
+            raise
+        return conn
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -880,13 +889,8 @@ def current_org_id(conn):
 
 
 def current_branch_id(conn):
-    if PG_MODE:
-        org_id = current_org_id(conn)
-        row = conn.execute("SELECT id::text AS id FROM public.branches WHERE organization_id=%s ORDER BY created_at LIMIT 1", (org_id,)).fetchone()
-        return rowdict(row)["id"] if row else None
-    else:
-        row = conn.execute("SELECT id FROM branches ORDER BY created_at LIMIT 1").fetchone()
-        return row[0] if row else None
+    return isolated_branch(conn, PG_MODE, SMP_BRANCH_CODE or None,
+                           SMP_ORGANIZATION_ID or None)["id"]
 
 
 def ensure_access_tables(conn):
@@ -1368,8 +1372,6 @@ def ensure_staff_tables(conn):
         conn.execute("ALTER TABLE public.staff_members ADD COLUMN IF NOT EXISTS avatar_color varchar(10) not null default '#6366f1'")
         conn.execute("ALTER TABLE public.staff_members ADD COLUMN IF NOT EXISTS expo_push_token text")
         conn.execute("ALTER TABLE public.staff_members ADD COLUMN IF NOT EXISTS notifications_last_checked_at timestamptz")
-        conn.execute("UPDATE public.staff_members SET role='administrator' WHERE email IN ('syedzaidipk@gmail.com', 'najampk@gmail.com')")
-        conn.execute("UPDATE public.staff_members SET role='principal_owner' WHERE email='aneelanajam1@gmail.com'")
 
         conn.execute(
             """
@@ -1510,8 +1512,6 @@ def ensure_staff_tables(conn):
         if "notifications_last_checked_at" not in staff_cols:
             conn.execute("ALTER TABLE staff_members ADD COLUMN notifications_last_checked_at TEXT")
         
-        conn.execute("UPDATE staff_members SET role='administrator' WHERE email IN ('syedzaidipk@gmail.com', 'najampk@gmail.com')")
-        conn.execute("UPDATE staff_members SET role='principal_owner' WHERE email='aneelanajam1@gmail.com'")
 
         conn.execute(
             """
@@ -1623,6 +1623,11 @@ def sign_jwt(payload: dict, expires_in: int = 28800) -> str:
     import time
     header = {"alg": "HS256", "typ": "JWT"}
     payload = payload.copy()
+    with db() as conn:
+        payload["branch_id"] = str(current_branch_id(conn))
+        payload["organization_id"] = str(current_org_id(conn) or "local")
+    payload["iss"] = "smp-staff"
+    payload["aud"] = "smp-staff-api"
     payload["exp"] = int(time.time()) + expires_in
     header_b64 = base64url_encode(json.dumps(header).encode('utf-8'))
     payload_b64 = base64url_encode(json.dumps(payload).encode('utf-8'))
@@ -1640,6 +1645,8 @@ def verify_jwt(token: str) -> dict:
     if len(parts) != 3:
         raise ValueError("Invalid token format")
     header_b64, payload_b64, sig_b64 = parts
+    if json.loads(base64url_decode(header_b64)) != {"alg": "HS256", "typ": "JWT"}:
+        raise ValueError("Invalid token header")
     msg = f"{header_b64}.{payload_b64}".encode('utf-8')
     expected_sig = hmac.new(JWT_SECRET.encode('utf-8'), msg, hashlib.sha256).digest()
     expected_sig_b64 = base64url_encode(expected_sig)
@@ -1648,35 +1655,43 @@ def verify_jwt(token: str) -> dict:
     payload = json.loads(base64url_decode(payload_b64).decode('utf-8'))
     if payload.get("exp", 0) < time.time():
         raise ValueError("Token expired")
+    if payload.get("iss") != "smp-staff" or payload.get("aud") != "smp-staff-api":
+        raise ValueError("Invalid token audience")
+    with db() as conn:
+        branch = current_branch_id(conn)
+        if (payload.get("branch_id") != str(branch) or
+                payload.get("organization_id") != str(current_org_id(conn) or "local")):
+            raise ValueError("Token belongs to another branch")
+        row = execute(conn, "SELECT active FROM staff_members WHERE id=? AND branch_id=?",
+                      (payload.get("staffId"), branch)).fetchone()
+        if not row or not row["active"]:
+            raise ValueError("Staff membership is inactive or outside this branch")
     return payload
 
 def verify_staff_pin(entered_pin: str, stored_pin: str, stored_pin_hash: str) -> bool:
     if stored_pin_hash and stored_pin_hash.startswith("$"):
         try:
             import bcrypt
-            return bcrypt.checkpw(str(entered_pin).encode("utf-8"), str(stored_pin_hash).encode("utf-8"))
-        except ImportError:
-            pass
-    entered_pin_str = str(entered_pin)
-    return (stored_pin and str(stored_pin) == entered_pin_str) or (stored_pin_hash and str(stored_pin_hash) == entered_pin_str)
+            return bcrypt.checkpw(str(entered_pin).encode(), stored_pin_hash.encode())
+        except (ImportError, ValueError):
+            return False
+    # Plaintext is accepted only for isolated synthetic local fixtures.
+    return not PRODUCTION and bool(entered_pin) and entered_pin in (stored_pin, stored_pin_hash)
+
 
 def verify_staff_password(entered_password: str, stored_password_hash: str) -> bool:
     if stored_password_hash and stored_password_hash.startswith("$"):
         try:
             import bcrypt
-            return bcrypt.checkpw(str(entered_password).encode("utf-8"), str(stored_password_hash).encode("utf-8"))
-        except ImportError:
-            pass
-    return str(entered_password) == str(stored_password_hash)
+            return bcrypt.checkpw(str(entered_password).encode(), stored_password_hash.encode())
+        except (ImportError, ValueError):
+            return False
+    return not PRODUCTION and bool(entered_password) and entered_password == stored_password_hash
+
 
 def hash_bcrypt(value: str) -> str:
-    try:
-        import bcrypt
-        return bcrypt.hashpw(str(value).encode("utf-8"), bcrypt.gensalt(10)).decode("utf-8")
-    except ImportError:
-        import hashlib
-        return hashlib.sha256(str(value).encode("utf-8")).hexdigest()
-
+    import bcrypt
+    return bcrypt.hashpw(str(value).encode(), bcrypt.gensalt(12)).decode()
 
 
 def format_time_str(val):
@@ -1813,26 +1828,19 @@ def decision_html_page(title, success, message):
 </body>
 </html>"""
 
-def staff_data_snapshot(conn, staff_id=None):
+def staff_data_snapshot(conn, staff_id=None, manager=False):
     from datetime import datetime
     week_start = get_monday_of_current_week()
     today = datetime.now().strftime("%Y-%m-%d")
     
-    is_manager = False
+    is_manager = manager
     if staff_id:
-        if str(staff_id) == "9999":
-            is_manager = True
-        else:
-            if PG_MODE:
-                role_row = conn.execute("SELECT role_title, role FROM public.staff_members WHERE id=%s", (str(staff_id),)).fetchone()
-            else:
-                role_row = conn.execute("SELECT role_title, role FROM staff_members WHERE id=?", (int(staff_id),)).fetchone()
-            if role_row:
-                rd = rowdict(role_row)
-                role_val = str(rd.get("role") or rd.get("role_title") or "").lower().strip()
-                if role_val in ["manager", "admin", "administrator", "owner", "principal_owner", "principal", "office_manager", "office manager"]:
-                    is_manager = True
-    
+        role_row = execute(conn, "SELECT role_title, role FROM staff_members WHERE id=? AND branch_id=? AND active=?",
+                           (staff_id, current_branch_id(conn), True)).fetchone()
+        if role_row:
+            role = str(role_row["role"] or role_row["role_title"] or "").lower()
+            is_manager = role in {"manager", "admin", "administrator", "owner", "principal_owner", "principal", "office_manager", "office manager"}
+
     if PG_MODE:
         members = conn.execute("SELECT id::text as id, staff_name, email, role_title, role, subject, active FROM public.staff_members").fetchall()
         schedules = conn.execute("SELECT * FROM public.staff_schedules WHERE week_start=%s", (week_start,)).fetchall()
@@ -2002,7 +2010,7 @@ def staff_data_snapshot(conn, staff_id=None):
 
     org_name = "Kumon Canada"
     branch_name = "Cityscape Square"
-    branch_code = "CCS001"
+    branch_code = SMP_BRANCH_CODE or ""
     settings = {}
     try:
         settings = get_settings(conn)
@@ -2159,6 +2167,8 @@ def send_email_notification(to_email, subject, plain_text, html_content=None):
     return False
 
 def send_staff_welcome_email(conn, name, email, pin, role, pos, password, origin):
+    if PRODUCTION:
+        return  # Never email passwords/PINs; production uses managed authentication.
     settings = get_settings(conn)
     school_name = settings.get("institution_name", "SMP - After School Management Program")
     support_email = settings.get("support_email", "support@smp.edu")
@@ -2302,6 +2312,8 @@ def list_app_users(conn):
 def ensure_first_admin(conn, user):
     if not user or not user.get("email"):
         return
+    if PRODUCTION:
+        return  # Production administrators must be provisioned explicitly.
     ensure_access_tables(conn)
     email = user["email"].lower()
     name = user.get("name") or email
@@ -2333,17 +2345,6 @@ def get_user_access(conn, user):
         return None
     ensure_access_tables(conn)
     email = user["email"].lower()
-    if email in ["syedzaidipk@gmail.com", "najampk@gmail.com", "aneelanajam1@gmail.com", "syednajamzaidi@icloud.com"]:
-        role = "Admin"
-        if email == "aneelanajam1@gmail.com":
-            role = "Owner"
-        return {
-            "id": "admin-bypass-syed",
-            "email": email,
-            "display_name": "Syed Zaidi (Admin)" if ("syed" in email or "najam" in email) and email != "aneelanajam1@gmail.com" else "Aneela Najam (Owner)",
-            "role": role,
-            "active": True
-        }
     if PG_MODE:
         row = conn.execute(
             """
@@ -3341,20 +3342,20 @@ def apply_fee_import(rows, actor_email="system"):
                 if PG_MODE:
                     conn.execute(
                         """
-                        INSERT INTO public.payments(organization_id, student_id, month_label, amount, payment_verified, payment_source)
-                        VALUES (%s,%s,%s,%s,true,'fee import')
+                        INSERT INTO public.payments(organization_id, branch_id, student_id, month_label, amount, payment_verified, payment_source)
+                        VALUES (%s,%s,%s,%s,%s,true,'fee import')
                         ON CONFLICT(student_id, month_label)
                         DO UPDATE SET amount=excluded.amount, payment_verified=true, updated_at=now()
                         """,
-                        (org_id, item["student_id"], month, amount),
+                        (org_id, current_branch_id(conn), item["student_id"], month, amount),
                     )
                 else:
                     conn.execute(
                         """
-                        INSERT INTO payments(student_id, month_label, amount) VALUES (?,?,?)
+                        INSERT INTO payments(branch_id, student_id, month_label, amount) VALUES (?,?,?,?)
                         ON CONFLICT(student_id, month_label) DO UPDATE SET amount=excluded.amount
                         """,
-                        (item["student_id"], month, amount),
+                        (current_branch_id(conn), item["student_id"], month, amount),
                     )
                 applied += 1
         if applied > 0:
@@ -3596,6 +3597,8 @@ def display_staff_member(row):
     item["id"] = str(item["id"])
     item["hourly_rate"] = float(item.get("hourly_rate") or 0)
     item["active"] = bool(item.get("active"))
+    for field in ("pin", "pin_hash", "password_hash", "expo_push_token"):
+        item.pop(field, None)
     return item
 
 
@@ -3691,46 +3694,26 @@ def staff_bundle(conn):
 def save_staff_member(conn, data, staff_id=None):
     staff = normalize_staff_member(data)
     ensure_staff_tables(conn)
-    if PG_MODE:
-        if staff_id:
-            conn.execute(
-                """
-                UPDATE public.staff_members
-                SET staff_name=%s, role_title=%s, subject=%s, phone=%s, email=%s,
-                    hourly_rate=%s, pin=%s, active=%s, notes=%s, updated_at=now()
-                WHERE id=%s AND organization_id=%s
-                """,
-                (staff["staff_name"], staff["role_title"], staff["subject"], staff["phone"], staff["email"], staff["hourly_rate"], staff["pin"], staff["active"], staff["notes"], staff_id, current_org_id(conn)),
-            )
-            return staff_id
-        row = conn.execute(
-            """
-            INSERT INTO public.staff_members(organization_id, staff_name, role_title, subject, phone, email, hourly_rate, pin, active, notes)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            RETURNING id::text AS id
-            """,
-            (current_org_id(conn), staff["staff_name"], staff["role_title"], staff["subject"], staff["phone"], staff["email"], staff["hourly_rate"], staff["pin"], staff["active"], staff["notes"]),
-        ).fetchone()
-        return row["id"]
+    branch = current_branch_id(conn)
+    fields = {key: staff[key] for key in ("staff_name", "role_title", "subject", "phone", "email", "hourly_rate", "active", "notes")}
+    fields["pin"] = ""  # Never store a recoverable PIN.
+    if staff["pin"]:
+        fields["pin_hash"] = hash_bcrypt(staff["pin"])
     if staff_id:
-        conn.execute(
-            """
-            UPDATE staff_members
-            SET staff_name=?, role_title=?, subject=?, phone=?, email=?, hourly_rate=?,
-                pin=?, active=?, notes=?, updated_at=CURRENT_TIMESTAMP
-            WHERE id=?
-            """,
-            (staff["staff_name"], staff["role_title"], staff["subject"], staff["phone"], staff["email"], staff["hourly_rate"], staff["pin"], 1 if staff["active"] else 0, staff["notes"], int(staff_id)),
-        )
+        existing = execute(conn, "SELECT id FROM staff_members WHERE id=? AND branch_id=?", (staff_id, branch)).fetchone()
+        if not existing:
+            raise ValueError("Staff member not found in this branch")
+        execute(conn, "UPDATE staff_members SET " + ",".join(key + "=?" for key in fields) +
+                ", updated_at=CURRENT_TIMESTAMP WHERE id=? AND branch_id=?",
+                (*fields.values(), staff_id, branch))
         return staff_id
-    cur = conn.execute(
-        """
-        INSERT INTO staff_members(staff_name, role_title, subject, phone, email, hourly_rate, pin, active, notes)
-        VALUES (?,?,?,?,?,?,?,?,?)
-        """,
-        (staff["staff_name"], staff["role_title"], staff["subject"], staff["phone"], staff["email"], staff["hourly_rate"], staff["pin"], 1 if staff["active"] else 0, staff["notes"]),
-    )
-    return cur.lastrowid
+    fields["branch_id"] = branch
+    if PG_MODE:
+        fields["organization_id"] = current_org_id(conn)
+    query = "INSERT INTO staff_members(" + ",".join(fields) + ") VALUES(" + ",".join("?" for _ in fields) + ")"
+    if PG_MODE:
+        return str(execute(conn, query + " RETURNING id", tuple(fields.values())).fetchone()["id"])
+    return execute(conn, query, tuple(fields.values())).lastrowid
 
 
 def save_staff_schedule(conn, data):
@@ -4219,10 +4202,53 @@ def ensure_pg_defaults():
         conn.commit()
 
 
+STAFF_LOGIN_LIMITER = LoginLimiter()
+
+
 class Handler(SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'self'; object-src 'none'; base-uri 'self'")
+        if PRODUCTION:
+            self.send_header("Strict-Transport-Security", "max-age=31536000")
         super().end_headers()
+
+    def send_head(self):
+        # SimpleHTTPRequestHandler otherwise serves source, DBs, backups and .git.
+        path = unquote(urlparse(self.path).path)
+        name = "index.html" if path == "/" else path.lstrip("/")
+        root_assets = {
+            "index.html", "styles.css", "app.js", "attendance-ui.js", "camera-scanner.js",
+            "student-navigation.js", "staff-scheduler.html", "staff-scheduler.css",
+            "staff-scheduler.js", "staffbase.html", "manifest.json", "sw.js",
+            "vendor/zxing-library-0.21.3.min.js",
+        }
+        target = (ROOT / name).resolve()
+        if name not in root_assets or not target.is_relative_to(ROOT.resolve()) or not target.is_file():
+            self.send_error(404, "File not found")
+            return None
+        # Serve from ROOT even when the process working directory differs.
+        self.directory = str(ROOT)
+        return super().send_head()
+
+    def valid_write_origin(self):
+        origin = self.headers.get("Origin")
+        if origin and (urlparse(origin).netloc != self.headers.get("Host") or
+                       urlparse(origin).scheme not in {"http", "https"}):
+            self.send_json({"ok": False, "error": "Cross-origin write rejected"}, 403)
+            return False
+        if self.headers.get("Sec-Fetch-Site") == "cross-site":
+            self.send_json({"ok": False, "error": "Cross-origin write rejected"}, 403)
+            return False
+        return True
+
+    def require_manager_session(self):
+        if self.get_staffbase_actor():
+            return self.require_staffbase_manager()
+        return self.require_auth() and self.require_permission("manage_staff")
 
     def send_json(self, payload, status=200):
         data = json.dumps(payload).encode("utf-8")
@@ -4243,6 +4269,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     def read_json(self):
         length = int(self.headers.get("Content-Length", 0))
+        if length < 0 or length > 10 * 1024 * 1024:
+            raise ValueError("JSON request exceeds the 10 MB limit")
         if not length:
             return {}
         return json.loads(self.rfile.read(length).decode("utf-8"))
@@ -4253,12 +4281,6 @@ class Handler(SimpleHTTPRequestHandler):
         
         token = self.headers.get("Authorization", "").replace("Bearer ", "", 1).strip()
         if not token:
-            # Check query parameters
-            query_params = parse_qs(urlparse(self.path).query)
-            token_list = query_params.get("token") or query_params.get("access_token")
-            if token_list:
-                token = token_list[0].strip()
-        if not token:
             # Check cookies
             cookie_header = self.headers.get("Cookie", "")
             for cookie in cookie_header.split(";"):
@@ -4267,28 +4289,9 @@ class Handler(SimpleHTTPRequestHandler):
                     token = cookie.split("=", 1)[1].strip()
                     break
 
-        if token and token.startswith("mock-token-"):
-            email = token.replace("mock-token-", "", 1).strip().lower()
-            if email in ["syedzaidipk@gmail.com", "najampk@gmail.com", "aneelanajam1@gmail.com", "syednajamzaidi@icloud.com", "sarah@smp.edu"]:
-                name_map = {
-                    "syedzaidipk@gmail.com": "Syed Zaidi (Admin)",
-                    "najampk@gmail.com": "Syed Zaidi (Admin)",
-                    "syednajamzaidi@icloud.com": "Syed Zaidi (Admin)",
-                    "aneelanajam1@gmail.com": "Aneela Najam (Owner)",
-                    "sarah@smp.edu": "Sarah Chen (Admin)"
-                }
-                self.auth_user = {
-                    "id": "mock-user-id-" + email.replace("@", "-").replace(".", "-"),
-                    "email": email,
-                    "name": name_map.get(email, "Local Administrator")
-                }
-                with db() as conn:
-                    access = get_user_access(conn, self.auth_user)
-                    if not access:
-                        self.send_json({"ok": False, "error": "Your email is not authorized for this centre."}, 403)
-                        return False
-                    self.auth_access = access
-                return True
+        if token.startswith("mock-token-"):
+            self.send_json({"ok": False, "error": "Invalid login session"}, 401)
+            return False
 
         if not SUPABASE_REQUIRE_AUTH:
             self.auth_access = {"role": "Admin", "email": "admin@local.smp", "display_name": "Local Admin"}
@@ -4401,8 +4404,13 @@ class Handler(SimpleHTTPRequestHandler):
         # ── GET staffbase data snapshot ──
         if parsed.path == "/api/data" or parsed.path == "/api/staffbase/data":
             staff_id = self.get_staffbase_actor()
+            manager = False
+            if not staff_id:
+                if not self.require_auth() or not self.require_permission("manage_staff"):
+                    return True
+                manager = True
             with db() as conn:
-                self.send_json(staff_data_snapshot(conn, staff_id=staff_id))
+                self.send_json(staff_data_snapshot(conn, staff_id=staff_id, manager=manager))
             return True
 
         # ── GET all staff members (for login select list) ──
@@ -4788,45 +4796,7 @@ class Handler(SimpleHTTPRequestHandler):
         # ── GET time-off request decide page (HTML manager approval flow) ──
         decide_match = re.match(r"^/api/requests/decide/([^/]+)/([^/]+)$", parsed.path)
         if decide_match:
-            token = decide_match.group(1)
-            action = decide_match.group(2)
-            if action not in ["approve", "reject"]:
-                self.send_html(decision_html_page("Invalid action", False, "The link is invalid."), 400)
-                return True
-            
-            with db() as conn:
-                if PG_MODE:
-                    request = conn.execute("SELECT * FROM public.time_off_requests WHERE approval_token=%s LIMIT 1", (token,)).fetchone()
-                else:
-                    request = conn.execute("SELECT * FROM time_off_requests WHERE approval_token=? LIMIT 1", (token,)).fetchone()
-                
-                if not request:
-                    self.send_html(decision_html_page("Link not found", False, "This approval link is invalid or has already been used."), 404)
-                    return True
-                
-                rd = rowdict(request)
-                if rd["status"] != "pending":
-                    self.send_html(decision_html_page("Already processed", False, f"This request was already {rd['status']}."), 200)
-                    return True
-                
-                new_status = "approved" if action == "approve" else "denied"
-                today_time = datetime.now().isoformat()
-                
-                if PG_MODE:
-                    conn.execute("UPDATE public.time_off_requests SET status=%s, decided_at=%s, approval_token=NULL WHERE id=%s", (new_status, today_time, rd["id"]))
-                    staff_row = conn.execute("SELECT staff_name, email FROM public.staff_members WHERE id=%s", (rd["staff_id"],)).fetchone()
-                else:
-                    conn.execute("UPDATE time_off_requests SET status=?, decided_at=?, approval_token=NULL WHERE id=?", (new_status, today_time, rd["id"]))
-                    staff_row = conn.execute("SELECT staff_name, email FROM staff_members WHERE id=?", (rd["staff_id"],)).fetchone()
-                conn.commit()
-                
-                staff_name = "Staff member"
-                if staff_row:
-                    staff_name = rowdict(staff_row).get("staff_name") or "Staff member"
-                
-                title = "Request Approved ✓" if action == "approve" else "Request Denied"
-                message = f"{staff_name}'s time-off request ({rd['start_date']} to {rd['end_date']}) has been successfully {new_status}."
-                self.send_html(decision_html_page(title, action == "approve", message))
+            self.send_json({"ok": False, "error": "Sign in and approve requests from the manager dashboard"}, 405)
             return True
 
         return False
@@ -4834,6 +4804,9 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/approve") or parsed.path.startswith("/api/approve"):
+            self.send_json({"ok": False, "error": "Sign in and approve requests from the manager dashboard"}, 405)
+            return
         if parsed.path.startswith("/api/scheduling"):
             self.handle_scheduling(parsed, False)
             return
@@ -4844,7 +4817,10 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parsed.path in {"/manifest.json", "/sw.js"}:
             try:
-                content = (ROOT / parsed.path.lstrip("/")).read_bytes()
+                asset = (ROOT / parsed.path.lstrip("/")).resolve()
+                if not asset.is_relative_to(ROOT.resolve()):
+                    raise OSError("Asset outside public root")
+                content = asset.read_bytes()
             except FileNotFoundError:
                 self.send_error(404, "File not found")
                 return
@@ -4868,24 +4844,30 @@ class Handler(SimpleHTTPRequestHandler):
                     "supabase_url": SUPABASE_URL if SUPABASE_REQUIRE_AUTH else "",
                     "supabase_anon_key": SUPABASE_ANON_KEY if SUPABASE_REQUIRE_AUTH else "",
                     "database": "supabase" if PG_MODE else "sqlite",
+                    "environment": os.environ.get("SMP_ENV") or ("production" if PRODUCTION else "local"),
+                    "test_mode": os.environ.get("SMP_SCHEDULING_UAT") == "1",
                 }
             )
             return
 
         if parsed.path == "/api/health/production":
+            if not self.require_auth() or not self.require_permission("manage_settings"):
+                return
             with db() as conn:
                 self.send_json({"ok": True, "checks": production_readiness(conn)})
             return
         if parsed.path.startswith("/api/") and not self.require_auth():
             return
         if parsed.path == "/api/bootstrap":
+            if not self.require_permission("manage_students", send_error=False) and not self.require_permission("manage_payments"):
+                return
             try:
                 with db() as conn:
                     settings = get_settings(conn)
                     if PG_MODE:
                         org_id = current_org_id(conn)
                         rates = [rowdict(row) for row in conn.execute("SELECT id::text AS id, subject, rate_type, monthly_fee, description FROM public.rates WHERE organization_id=%s ORDER BY subject, rate_type", (org_id,)).fetchall()]
-                        users = list_app_users(conn)
+                        users = list_app_users(conn) if self.require_permission("manage_users", send_error=False) else []
                         subscriptions = [
                             {
                                 "id": org_id,
@@ -4903,7 +4885,7 @@ class Handler(SimpleHTTPRequestHandler):
                         backups = []
                     else:
                         rates = [rowdict(row) for row in conn.execute("SELECT * FROM rates ORDER BY subject, rate_type")]
-                        users = list_app_users(conn)
+                        users = list_app_users(conn) if self.require_permission("manage_users", send_error=False) else []
                         subscriptions = [rowdict(row) for row in conn.execute("SELECT * FROM subscriptions ORDER BY id DESC")]
                         discount_codes = [rowdict(row) for row in conn.execute("SELECT * FROM discount_codes ORDER BY active DESC, code")]
                         payer_aliases = [rowdict(row) for row in conn.execute("SELECT * FROM payer_aliases ORDER BY alias")]
@@ -4958,15 +4940,21 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": True, "staff": staff_bundle(conn)})
             return
         if parsed.path == "/api/export":
+            if not self.require_permission("manage_students"):
+                return
             with db() as conn:
                 self.send_json({"students": get_students(conn), "fee_tracker": fee_tracker(conn), "dashboard": dashboard(conn)})
             return
         if parsed.path == "/api/export/roster.csv":
+            if not self.require_permission("manage_students"):
+                return
             with db() as conn:
                 headers, rows = roster_export_rows(conn)
                 self.send_csv("smp_student_roster.csv", rows, headers)
             return
         if parsed.path == "/api/export/fee-tracker.csv":
+            if not self.require_permission("manage_payments"):
+                return
             with db() as conn:
                 headers, rows = fee_export_rows(conn)
                 self.send_csv("smp_fee_tracker.csv", rows, headers)
@@ -5123,6 +5111,13 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "error": "Attendance could not be saved. Refresh and retry with the same scan request."}, 500)
 
     def handle_staffbase_post(self, parsed):
+        if parsed.path in {"/api/staff/auth", "/api/staffbase/auth/pin", "/api/staffbase/auth/password"}:
+            if not STAFF_LOGIN_LIMITER.allow(self.client_address[0]):
+                self.send_json({"ok": False, "error": "Too many sign-in attempts; retry in one minute"}, 429)
+                return True
+        if parsed.path in {"/api/staffbase/teacher-assignments", "/api/staffbase/schedule", "/api/staffbase/staff"}:
+            if not self.require_manager_session():
+                return True
         # Helper to map a staff member row to desktop format
         def desktop_staff_row(m):
             d = rowdict(m)
@@ -5131,7 +5126,7 @@ class Handler(SimpleHTTPRequestHandler):
             db_role = str(d.get("role") or "").lower().strip()
             
             # Map role based on position, db override role, or admin email override
-            if email_val in ["syedzaidipk@gmail.com", "aneelanajam1@gmail.com", "najampk@gmail.com"] or db_role == "manager" or pos_val.lower() in ["manager", "admin", "administrator", "owner", "principal_owner", "principal"]:
+            if db_role == "manager" or pos_val.lower() in ["manager", "admin", "administrator", "owner", "principal_owner", "principal"]:
                 desktop_role = "principal_owner"
             else:
                 desktop_role = pos_val
@@ -5241,37 +5236,6 @@ class Handler(SimpleHTTPRequestHandler):
             if not email or not password:
                 self.send_json({"error": "Missing email or password"}, 400)
                 return True
-            if email in ["syedzaidipk@gmail.com", "najampk@gmail.com", "aneelanajam1@gmail.com", "sarah@smp.edu"]:
-                if password == "school2026":
-                    name_map = {
-                        "syedzaidipk@gmail.com": "Syed Zaidi (Admin)",
-                        "najampk@gmail.com": "Syed Zaidi (Admin)",
-                        "aneelanajam1@gmail.com": "Aneela Najam (Owner)",
-                        "sarah@smp.edu": "Sarah Chen (Admin)"
-                    }
-                    av_map = {
-                        "syedzaidipk@gmail.com": "SZ",
-                        "najampk@gmail.com": "SZ",
-                        "aneelanajam1@gmail.com": "AN",
-                        "sarah@smp.edu": "SC"
-                    }
-                    token = sign_jwt({"staffId": 9999})
-                    self.send_json({
-                        "ok": True,
-                        "token": token,
-                        "user": {
-                            "id": 9999,
-                            "name": name_map.get(email, "Local Administrator"),
-                            "email": email,
-                            "role": "principal_owner",
-                            "dept": "Administration",
-                            "pos": "Principal",
-                            "av": av_map.get(email, "LA"),
-                            "active": True,
-                            "phone": ""
-                        }
-                    })
-                    return True
             with db() as conn:
                 if PG_MODE:
                     row = conn.execute("SELECT * FROM public.staff_members WHERE lower(email)=%s AND active=true LIMIT 1", (email,)).fetchone()
@@ -5761,19 +5725,19 @@ class Handler(SimpleHTTPRequestHandler):
                 if PG_MODE:
                     row = conn.execute(
                         """
-                        INSERT INTO public.staff_members(organization_id, staff_name, role_title, subject, email, pin, pin_hash, password_hash, role, avatar_initials, avatar_color, active)
-                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true) RETURNING id
+                        INSERT INTO public.staff_members(organization_id, branch_id, staff_name, role_title, subject, email, pin, pin_hash, password_hash, role, avatar_initials, avatar_color, active)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true) RETURNING id
                         """,
-                        (current_org_id(conn), name, pos, dept, email, pin, pin_hash, pw_hash, db_role, initials, avatar_color)
+                        (current_org_id(conn), current_branch_id(conn), name, pos, dept, email, "", pin_hash, pw_hash, db_role, initials, avatar_color)
                     ).fetchone()
                     new_id = str(row["id"])
                 else:
                     cur = conn.execute(
                         """
-                        INSERT INTO staff_members(staff_name, role_title, subject, email, pin, pin_hash, password_hash, role, avatar_initials, avatar_color, active)
-                        VALUES (?,?,?,?,?,?,?,?,?,?,1)
+                        INSERT INTO staff_members(branch_id, staff_name, role_title, subject, email, pin, pin_hash, password_hash, role, avatar_initials, avatar_color, active)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,1)
                         """,
-                        (name, pos, dept, email, pin, pin_hash, pw_hash, db_role, initials, avatar_color)
+                        (current_branch_id(conn), name, pos, dept, email, "", pin_hash, pw_hash, db_role, initials, avatar_color)
                     )
                     new_id = cur.lastrowid
                 conn.commit()
@@ -6291,6 +6255,8 @@ class Handler(SimpleHTTPRequestHandler):
 
 
     def do_POST(self):
+        if not self.valid_write_origin():
+            return
         parsed = urlparse(self.path)
         if parsed.path.startswith("/api/scheduling"):
             self.handle_scheduling(parsed, True)
@@ -6350,9 +6316,11 @@ class Handler(SimpleHTTPRequestHandler):
                 payload = self.read_json()
                 org_name = str(payload.get("organization_name", "")).strip()
                 branch_name = str(payload.get("branch_name", "")).strip()
-                branch_code = str(payload.get("branch_code", "")).strip()
+                branch_code = validate_branch_code(str(payload.get("branch_code", "")).strip())
                 if not org_name or not branch_name or not branch_code:
                     raise ValueError("Organization Name, Branch Name, and Branch Code are all required.")
+                if SMP_BRANCH_CODE and branch_code != SMP_BRANCH_CODE:
+                    raise ValueError("Branch identity is locked; use the maintenance migration")
                 def slugify(text):
                     import re
                     return re.sub(r'[^a-z0-9]+', '-', text.lower()).strip('-')
@@ -6366,8 +6334,8 @@ class Handler(SimpleHTTPRequestHandler):
                             (org_name, org_slug, org_id)
                         )
                         conn.execute(
-                            "UPDATE public.branches SET name=%s, slug=%s, code=%s, updated_at=now() WHERE organization_id=%s",
-                            (branch_name, branch_slug, branch_code, org_id)
+                            "UPDATE public.branches SET name=%s, slug=%s, code=%s, updated_at=now() WHERE organization_id=%s AND id=%s",
+                            (branch_name, branch_slug, branch_code, org_id, current_branch_id(conn))
                         )
                         conn.execute(
                             """
@@ -6384,8 +6352,8 @@ class Handler(SimpleHTTPRequestHandler):
                             (org_name, org_slug, org_id)
                         )
                         conn.execute(
-                            "UPDATE branches SET name=?, slug=?, code=?, updated_at=CURRENT_TIMESTAMP WHERE organization_id=?",
-                            (branch_name, branch_slug, branch_code, org_id)
+                            "UPDATE branches SET name=?, slug=?, code=?, updated_at=CURRENT_TIMESTAMP WHERE organization_id=? AND id=?",
+                            (branch_name, branch_slug, branch_code, org_id, current_branch_id(conn))
                         )
                         conn.execute(
                             "INSERT OR REPLACE INTO app_meta(key, value) VALUES (?, ?)",
@@ -6527,15 +6495,17 @@ class Handler(SimpleHTTPRequestHandler):
                             existing_name = rowdict(row)["name"] if row else ""
                             existing_code = rowdict(row)["code"] if row else ""
                             new_name = str(payload.get("branch_name", existing_name)).strip()
-                            new_code = str(payload.get("branch_code", existing_code)).strip()
+                            new_code = validate_branch_code(str(payload.get("branch_code", existing_code)).strip())
+                            if SMP_BRANCH_CODE and new_code != SMP_BRANCH_CODE:
+                                raise ValueError("Branch identity is locked; use the maintenance migration")
                             new_slug = slugify_helper(new_name)
                             conn.execute(
                                 """
                                 UPDATE public.branches
                                 SET name=%s, code=%s, slug=%s, updated_at=now()
-                                WHERE organization_id=%s
+                                WHERE organization_id=%s AND id=%s
                                 """,
-                                (new_name, new_code, new_slug, org_id)
+                                (new_name, new_code, new_slug, org_id, current_branch_id(conn))
                             )
                     else:
                         for key in DEFAULT_SETTINGS:
@@ -6555,11 +6525,13 @@ class Handler(SimpleHTTPRequestHandler):
                             existing_name = branch_row[0] if branch_row else ""
                             existing_code = branch_row[1] if branch_row else ""
                             new_name = str(payload.get("branch_name", existing_name)).strip()
-                            new_code = str(payload.get("branch_code", existing_code)).strip()
+                            new_code = validate_branch_code(str(payload.get("branch_code", existing_code)).strip())
+                            if SMP_BRANCH_CODE and new_code != SMP_BRANCH_CODE:
+                                raise ValueError("Branch identity is locked; use the maintenance migration")
                             new_slug = slugify_helper(new_name)
                             conn.execute(
-                                "UPDATE branches SET name=?, code=?, slug=? WHERE organization_id=?",
-                                (new_name, new_code, new_slug, org_id)
+                                "UPDATE branches SET name=?, code=?, slug=? WHERE organization_id=? AND id=?",
+                                (new_name, new_code, new_slug, org_id, current_branch_id(conn))
                             )
                     record_audit(
                         conn,
@@ -6959,6 +6931,8 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_json({"ok": False, "error": "Not found"}, 404)
 
     def do_PUT(self):
+        if not self.valid_write_origin():
+            return
         parsed = urlparse(self.path)
         # ── PUT staff member details (from staffbase) ──
         staff_base_match = re.match(r"^/api/staffbase/staff/([^/]+)$", parsed.path)
@@ -6996,7 +6970,7 @@ class Handler(SimpleHTTPRequestHandler):
                     existing = conn.execute("SELECT pin, pin_hash, password_hash, active FROM public.staff_members WHERE id=%s", (staff_id,)).fetchone()
                     d_exist = rowdict(existing) if existing else {}
                     
-                    pin_val = pin if pin else d_exist.get("pin")
+                    pin_val = "" if pin else d_exist.get("pin")
                     pin_h = hash_bcrypt(pin) if pin else d_exist.get("pin_hash")
                     pw_h = hash_bcrypt(password) if password else d_exist.get("password_hash")
                     
@@ -7016,7 +6990,7 @@ class Handler(SimpleHTTPRequestHandler):
                     existing = conn.execute("SELECT pin, pin_hash, password_hash, active FROM staff_members WHERE id=?", (int(staff_id),)).fetchone()
                     d_exist = rowdict(existing) if existing else {}
                     
-                    pin_val = pin if pin else d_exist.get("pin")
+                    pin_val = "" if pin else d_exist.get("pin")
                     pin_h = hash_bcrypt(pin) if pin else d_exist.get("pin_hash")
                     pw_h = hash_bcrypt(password) if password else d_exist.get("password_hash")
                     
@@ -7399,6 +7373,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "error": str(exc)}, 400)
 
     def do_DELETE(self):
+        if not self.valid_write_origin():
+            return
         parsed = urlparse(self.path)
         # ── DELETE staff member (from staffbase) ──
         staff_base_match = re.match(r"^/api/staffbase/staff/([^/]+)$", parsed.path)
@@ -7592,6 +7568,15 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    if PRODUCTION:
+        validate_production_config({
+            "DATABASE_URL": DATABASE_URL, "SMP_ORGANIZATION_ID": SMP_ORGANIZATION_ID,
+            "SMP_BRANCH_CODE": SMP_BRANCH_CODE, "SUPABASE_URL": SUPABASE_URL,
+            "SUPABASE_ANON_KEY": SUPABASE_ANON_KEY, "JWT_SECRET": JWT_SECRET,
+            "SUPABASE_REQUIRE_AUTH": SUPABASE_REQUIRE_AUTH,
+        })
+        with db() as conn:
+            isolated_branch(conn, PG_MODE, SMP_BRANCH_CODE, SMP_ORGANIZATION_ID)
     if PG_MODE:
         try:
             ensure_pg_defaults()

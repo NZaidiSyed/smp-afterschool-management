@@ -1,0 +1,39 @@
+name: Security and branch isolation
+on:
+  pull_request:
+  push:
+    branches: [main, security/branch-isolation-staging]
+permissions:
+  contents: read
+jobs:
+  regressions:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: smp_ci_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      SMP_TEST_POSTGRES_DSN: postgresql://postgres:synthetic-ci-only@127.0.0.1:5432/smp_ci_test
+      SMP_DATA_DIR: /tmp/smp-ci-test-uat/data
+      SMP_BACKUP_DIR: /tmp/smp-ci-test-uat/backups
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-16
+      - run: python -m pip install -r requirements.txt
+      - run: python -m unittest discover -v
+      - run: node scripts/test_service_worker.cjs
+      - run: node scripts/test_camera_scanner.cjs

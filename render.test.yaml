@@ -1,0 +1,33 @@
+# Create a NEW test service with separate Supabase project/database/auth users.
+# This file does not change the existing production service or provision Supabase.
+services:
+  - type: web
+    name: smp-afterschool-management-test
+    runtime: python
+    plan: starter
+    branch: security/branch-isolation-staging
+    autoDeploy: false
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: SMP_ENV
+        value: staging
+      - key: SMP_DATA_DIR
+        value: /tmp/smp-test
+      - key: SMP_BRANCH_CODE
+        value: CA-YYC-KMN-0001
+      - key: SUPABASE_REQUIRE_AUTH
+        value: '1'
+      - key: DATABASE_URL
+        sync: false
+      - key: SMP_ORGANIZATION_ID
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_PROJECT_REF
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
