@@ -1,3 +1,9 @@
+> **Mandatory promotion gate:** Follow [APP_MASTER.md](APP_MASTER.md) and
+> [docs/RELEASE_POLICY.md](docs/RELEASE_POLICY.md) before these hosting notes.
+> Do not push/merge to main, trigger production deployment, or apply a live
+> migration without recorded release-specific user UAT approval and passed
+> preflight checks. Hosting instructions below do not grant that approval.
+
 # Deployment Notes
 
 ## Recommended First Public Test

@@ -6,6 +6,28 @@ on:
 permissions:
   contents: read
 jobs:
+  release_documentation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/release_guard.py validate --require-current
+  production_approval:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    needs: [release_documentation, regressions]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/release_guard.py check-production
   regressions:
     runs-on: ubuntu-24.04
     services:

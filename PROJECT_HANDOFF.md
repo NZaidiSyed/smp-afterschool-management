@@ -1,3 +1,11 @@
+> **Historical handoff — not the current release/security authority.** Read
+> [APP_MASTER.md](APP_MASTER.md), [AGENTS.md](AGENTS.md), and the
+> [release policy](docs/RELEASE_POLICY.md) first. Claims below about complete
+> branch isolation, automatic migrations, secure integration, production state,
+> and deployment behavior were not verified and are superseded by the master.
+> The staged security release rejects shared-database branch operation. Preserve
+> this document as historical context; do not use it to authorize production.
+
 # After School Management Program (SMP) - Project Summary & Integration Guide
 
 This document provides a comprehensive detail of the project architecture, file structures, database schemas, and integration points for the **After School Management Program (SMP)**, including the newly added **Multi-Branch Architecture** and **One-Time Centre Setup** features.

@@ -1,5 +1,7 @@
 # Separate test and production environments
 
+Start with [APP_MASTER.md](../APP_MASTER.md) and the [release policy](RELEASE_POLICY.md). Record the exact candidate, UAT approval and verified deployment outcome in the master release history.
+
 ## Current status
 
 Security changes are on `security/branch-isolation-staging`, not production `main`.
@@ -14,11 +16,17 @@ records/configuration have not been accessed or modified by this work.
 | Service | A new Render test service | Existing service |
 | Database | Separate Supabase test project | Existing production project |
 | Accounts | Synthetic test users; separate auth configuration | Approved real users |
-| Secrets | Test-only keys and a distinct signing secret | Production-only credentials |
+| Application secrets | Test project keys and a distinct signing secret | Production project credentials |
 | Files and backups | Test-only storage | Restricted encrypted production storage |
 | Email/payments | Disabled or provider sandbox | Explicit live configuration |
 
-Do not point a test service at the production database, copy production secrets,
+Reuse existing authorized Render/Supabase account-management credentials through
+secure operator bindings for managing both environments; do not duplicate or
+rotate them unnecessarily, and never inject them into application runtimes.
+Their absence from this cloud environment is not proof that production has no
+keys. Application-level credentials remain project/environment-specific.
+
+Do not point a test service at the production database, copy production application secrets,
 or import identifiable student/payment data into test. Test has the same security
 requirements as production; local synthetic fixtures are explicitly different.
 

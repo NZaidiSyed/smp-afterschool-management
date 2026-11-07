@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "active_release_id": "SMP-20261107-002",
+  "releases": [
+    {
+      "id": "SMP-20261107-001",
+      "title": "Navigation design and Operations tab order",
+      "candidate_sha": "6f2ddc11c8b57085bc6d81700d5373ecf8aa199b",
+      "scope": "Teal/indigo/purple layered navigation and Dashboard, Student Roster, Student Barcode, Student Presence, Student Attendance, Reports ordering.",
+      "state": "legacy_unverified",
+      "rollback_plan": "Restore the previously reviewed navigation source after explicit production authorization; no database migration was part of this change.",
+      "checks": {},
+      "events": [
+        {
+          "state": "legacy_unverified",
+          "candidate_sha": "6f2ddc11c8b57085bc6d81700d5373ecf8aa199b",
+          "actor": "Codex",
+          "reference": "Conversation history and origin/main Git read on 2026-11-07",
+          "summary": "Source was pushed to production main following the user request. Live deployment and formal release-specific UAT evidence were not verified; no retrospective approval is asserted.",
+          "recorded_at": "2026-11-07T22:47:42.585685Z"
+        }
+      ]
+    },
+    {
+      "id": "SMP-20261107-002",
+      "title": "Branch security, isolated testing and governed production promotion",
+      "candidate_sha": "6f0c18473ffa13b110b39db2a40dd25d9b6ba9f2",
+      "scope": "Staged authentication/branch hardening, CA-YYC-KMN-0001 code-only migration, isolated test workflow, reusable management-credential policy, master documentation and explicit UAT/change-history controls. Production data/configuration remain untouched.",
+      "state": "blocked",
+      "rollback_plan": "Do not promote until gates pass. Before an authorized production rollout retain the prior live source and verified production backup, preserve the branch ID, stop conflicting writes for the migration, and use a reviewed recovery plan that preserves newer writes.",
+      "checks": {
+        "automated_tests": {
+          "status": "passed",
+          "candidate_sha": "6f0c18473ffa13b110b39db2a40dd25d9b6ba9f2",
+          "evidence": "Local staged baseline: 159 Python tests with PostgreSQL 17, no skips; 15 JavaScript scenarios; scripts/check_test_environment.py completed successfully. No GitHub CI status was verified."
+        },
+        "browser": {
+          "status": "passed",
+          "candidate_sha": "6f0c18473ffa13b110b39db2a40dd25d9b6ba9f2",
+          "evidence": "Local Chromium scheduling workflow passed; synthetic branch rename survived API/bootstrap startup."
+        },
+        "hosted_uat": {
+          "status": "pending",
+          "evidence": "Hosted TEST service/Supabase project and explicit user UAT approval are not available."
+        },
+        "target_identity": {
+          "status": "pending",
+          "evidence": "Live Render service/database/branch identities and deployed production revision have not been verified."
+        },
+        "data_protection": {
+          "status": "pending",
+          "evidence": "Local SQLite and PostgreSQL migration/restore rehearsals passed. Current production backup, ownership inventory and restore evidence are still required."
+        },
+        "security_review": {
+          "status": "blocked",
+          "evidence": "Real hosted login/MFA, legacy endpoint/session review and database-role/RLS/private-storage verification remain open."
+        },
+        "release_controls": {
+          "status": "blocked",
+          "evidence": "Repository policy/guard are being added. Protected main, independent production reviewers and controlled Render deployment remain unconfigured/unverified."
+        }
+      },
+      "events": [
+        {
+          "state": "planned",
+          "candidate_sha": "6f0c18473ffa13b110b39db2a40dd25d9b6ba9f2",
+          "actor": "Codex",
+          "reference": "Current conversation: security/test environment and master-document requests",
+          "summary": "User requested branch isolation, airport-based codes, separate testing, reused authorized management credentials and a master record with explicit UAT approval before production.",
+          "recorded_at": "2026-11-07T22:47:42.585685Z"
+        },
+        {
+          "state": "blocked",
+          "candidate_sha": "6f0c18473ffa13b110b39db2a40dd25d9b6ba9f2",
+          "actor": "Codex",
+          "reference": "Local test evidence from staged security baseline and current credential metadata review",
+          "summary": "Local baseline passed; production promotion is blocked pending hosted UAT, live security/data verification and provider controls. This request is not production UAT approval.",
+          "recorded_at": "2026-11-07T22:47:42.585685Z"
+        }
+      ]
+    }
+  ]
+}

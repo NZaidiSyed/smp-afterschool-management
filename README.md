@@ -1,5 +1,7 @@
 # SMP - After School Management Program
 
+Before changing or promoting this app, read [APP_MASTER.md](APP_MASTER.md) and the [release policy](docs/RELEASE_POLICY.md). Production promotion requires explicit UAT approval of the recorded candidate.
+
 SMP is a local web application for after-school learning centres to manage student rosters, fee tracking, dashboard reporting, batch enrolment, and payment reconciliation.
 
 ## Run Locally
