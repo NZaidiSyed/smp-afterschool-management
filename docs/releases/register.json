@@ -30,9 +30,9 @@
       "rollback_plan": "Do not promote until gates pass. Before an authorized production rollout retain the prior live source and verified production backup, preserve the branch ID, stop conflicting writes for the migration, and use a reviewed recovery plan that preserves newer writes.",
       "checks": {
         "automated_tests": {
-          "status": "pending",
+          "status": "passed",
           "candidate_sha": "cd16e8b2e2c89a7a6ebc6e7175171023c6404962",
-          "evidence": "All 172 local Python tests pass without skips using PostgreSQL 16 backup tools and packaged tzdata 2026.6, matching corrected CI settings. System-timezone historical DST test also passes. Log SHA256 2cc1a3e2827e1eeab20b1d3d2b631f542c840d290f9c730a79beeb9f6e95df31. Awaiting corrected hosted workflow."
+          "evidence": "GitHub Actions run https://github.com/NZaidiSyed/smp-afterschool-management/actions/runs/42425508134 completed successfully for commit 95669a71bdc01ca985e7ce6fe2d66688dc0136ed, whose application/test source matches this candidate. Local CI-equivalent validation passed all 172 Python tests without skips and 15 JavaScript scenarios. Documentation gate passed; production approval was not requested."
         },
         "browser": {
           "status": "pending",
@@ -106,6 +106,14 @@
           "reference": "GitHub run 42425306958 failure annotations and local latest-tzdata reproduction",
           "summary": "Hosted annotations identified two failures in the inherited DST test: current Edmonton timezone data no longer repeats the hour on 2026-11-01. Reproduced with tzdata 2026.6; replaced future-rule assumptions with genuine 2025 gap/fold fixtures, preserving both ValueError assertions. CI explicitly uses the declared tzdata package. All 172 local tests now pass with CI-equivalent data and PostgreSQL 16. Awaiting hosted verification; production/UAT gates remain blocked.",
           "recorded_at": "2026-11-07T23:29:58.533447Z",
+          "candidate_sha": "cd16e8b2e2c89a7a6ebc6e7175171023c6404962"
+        },
+        {
+          "state": "blocked",
+          "actor": "Codex",
+          "reference": "https://github.com/NZaidiSyed/smp-afterschool-management/actions/runs/42425508134",
+          "summary": "Verified successful hosted workflow after the historical DST fixture correction, declared tzdata selection, PostgreSQL 16 backup-tool pin and visible test annotations. Automated CI is passing. Hosted application UAT, live security/data/provider checks and explicit user production approval remain outstanding; production stays unchanged.",
+          "recorded_at": "2026-11-07T23:31:24.999940Z",
           "candidate_sha": "cd16e8b2e2c89a7a6ebc6e7175171023c6404962"
         }
       ]
