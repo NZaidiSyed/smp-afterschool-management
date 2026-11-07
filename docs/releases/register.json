@@ -24,15 +24,15 @@
     {
       "id": "SMP-20261107-002",
       "title": "Branch security, isolated testing and governed production promotion",
-      "candidate_sha": "65c23647c462f45ac779945be7feef7575178187",
+      "candidate_sha": "9a9b271d3f05ae8f33192a95f770d64950e4779e",
       "scope": "Staged authentication/branch hardening, CA-YYC-KMN-0001 code-only migration, isolated test workflow, reusable management-credential policy, master documentation and explicit UAT/change-history controls. Production data/configuration remain untouched.",
       "state": "blocked",
       "rollback_plan": "Do not promote until gates pass. Before an authorized production rollout retain the prior live source and verified production backup, preserve the branch ID, stop conflicting writes for the migration, and use a reviewed recovery plan that preserves newer writes.",
       "checks": {
         "automated_tests": {
-          "status": "passed",
-          "candidate_sha": "65c23647c462f45ac779945be7feef7575178187",
-          "evidence": "172 Python tests passed without skips against PostgreSQL 16 using pg_dump/pg_restore 16.15; 15 JavaScript scenarios passed. Workflow version check accepts 16 and rejects 17. Log SHA256 7a1f4bc356dcfb4aa24ca9a45f8a205d3d772486d03ca02e1a0e7b8465baec74. Hosted rerun is not yet verified."
+          "status": "failed",
+          "candidate_sha": "9a9b271d3f05ae8f33192a95f770d64950e4779e",
+          "evidence": "Local annotated runner passes all 172 tests against PostgreSQL 16. Hosted run 42425086050 still fails Python regressions despite the selected tool version; next run adds visible failure tracebacks. Do not treat local success as hosted success."
         },
         "browser": {
           "status": "pending",
@@ -91,6 +91,14 @@
           "summary": "Investigated earlier staging Python-test failure. Reproduced a restore failure using newer backup tools against PostgreSQL 16: transaction_timeout is unsupported. Pinned CI backup tools to major 16, added an early version check and surfaced restore stderr. All 172 local Python tests and 15 JavaScript checks pass with matching tools. Awaiting hosted rerun; UAT and production gates remain blocked. User-requested local documentation removals are preserved.",
           "recorded_at": "2026-11-07T23:24:08.446309Z",
           "candidate_sha": "65c23647c462f45ac779945be7feef7575178187"
+        },
+        {
+          "state": "blocked",
+          "actor": "Codex",
+          "reference": "GitHub run 42425086050 and local CI reporter validation",
+          "summary": "Documentation validation passed remotely but Python regressions still failed. Added escaped GitHub failure annotations while preserving failing exit status to diagnose the remaining runner difference. Local 172-test run passes; hosted failure remains unresolved. No production changes or local documentation restoration.",
+          "recorded_at": "2026-11-07T23:27:09.993710Z",
+          "candidate_sha": "9a9b271d3f05ae8f33192a95f770d64950e4779e"
         }
       ]
     }
