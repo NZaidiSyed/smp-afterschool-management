@@ -53,6 +53,7 @@ source revisions above are historical baselines, not a moving production claim.
 | Staff scheduling domain/UI | `staff_scheduling.py`, `staff-scheduler.*`, `docs/STAFF_SCHEDULING_UAT.md` |
 | Legacy staff administration UI | `staffbase.html`; authorization audit remains open |
 | Static asset cache | `sw.js`; do not cache API data or session-bearing URLs |
+| Verified sign-in audit and private Admin view | `auth_audit.py`, `login-history.js`, `test_auth_audit.py` |
 | Branch rules, isolation and code allocation | `branch_security.py`, `scripts/allocate_branch_code.py` |
 | Existing-branch rename and data fingerprints | `scripts/migrate_branch_code.py` |
 | Initial Supabase schema | `supabase/schema.sql`; not proof of applied live schema/policies |
@@ -161,13 +162,69 @@ Older `PROJECT_HANDOFF.md`, deployment notes and component UAT documents may
 contain historical assumptions; their statements do not override this master,
 current user instructions, or the release-specific evidence/approval record.
 
+## Sign-in History and professional rollout review (staged)
+
+Admin -> Sign-in History is restricted server-side to Admin and Owner. It shows
+login ID, display name, role at verification, sign-in type, branch, and verified
+UTC time displayed in the viewer's labelled timezone. Centre-account sessions
+are recorded when first verified by SMP, not as an asserted provider login time.
+Opaque/legacy tokens are explicitly labelled token-first-verification events.
+Staff PIN/password events are recorded after successful credential checks. No
+passwords, PINs, bearer tokens, or raw session identifiers are stored in this
+history. Failed provider attempts, logout/online status, and pre-activation
+history are not represented. They need a separate provider-log integration.
+
+The new `auth_sign_ins` table/index is additive. Unique scoped session digests
+prevent duplicate API/refresh records; an indexed read avoids repeated write
+locks for existing sessions. Keyset pagination bounds reads to 50 default/100
+maximum rows. No history is put in browser storage or general bootstrap output.
+Rows are immutable through the application API, not a tamper-proof external log.
+PostgreSQL RLS and revoked public/browser-role privileges restrict direct clients;
+actual hosted DB role/policies must be checked before rollout. Failure to persist
+a new verification prevents granting access/issuing a staff token and returns a
+service-unavailable response rather than pretending the credentials were wrong.
+
+Centre-account authorization now requires the provider's confirmed email/id;
+editable profile metadata cannot supply the permission identity. Existing live
+accounts need verification before this stricter check is promoted. Role grants
+are still email-based in the inspected app and must migrate to immutable auth
+user IDs in a separately reviewed data migration. Parent/iframe messaging now
+checks exact origin and expected source window and sends to the explicit origin.
+
+Priority improvements from source review (not production load measurements):
+
+1. **Before additional branches:** finish every legacy endpoint's role/object
+   authorization audit, replace pre-auth public staff-name/role enumeration with
+   an approved account-login design, enforce admin MFA on the server, bind grants
+   to auth UUIDs, and complete secure session/XSS and private-storage review.
+2. **Performance:** primary auth currently calls the provider on each API request;
+   evaluate cached-JWKS verification with issuer/audience/expiry checks and prompt
+   membership/revocation handling. Move repeated schema/backfill work from normal
+   read paths into versioned migrations, use bounded connection pooling/explicit
+   connection lifetimes, paginate/filter roster and financial queries, and profile
+   SQL plans/aggregates with representative synthetic branch volumes before
+   making latency or capacity claims. Never trade isolation for caching speed.
+3. **Operations:** replace the built-in HTTP serving stack with an appropriate
+   production server/framework, set request/worker limits, add latency/error and
+   authentication alerts, enforce provider-side deployment reviews, and rehearse
+   encrypted backup recovery with owner-approved retention/recovery targets.
+4. **Branch onboarding:** keep one branch/database/deployment boundary for now;
+   validate immutable IDs/code/permissions/timezone/currency, provision a real
+   hosted TEST environment, run a repeatable migration/UAT checklist, and promote
+   only the exact approved candidate. Shared-database tenancy/central regional
+   reporting needs explicit grants, composite integrity constraints and a full
+   RLS/cross-branch test design. Airport codes alone never grant access.
+
+No claim of a complete security certification or readiness for multi-branch
+production rollout is made. These priorities and the new tab remain staged.
+
 ## Master change history
 
 This section is generated from `docs/releases/register.json`. Append events with
 `scripts/release_guard.py record`; do not edit historical approvals or outcomes.
 
 <!-- RELEASE_HISTORY:START -->
-Active release: **SMP-20261107-002**.
+Active release: **SMP-20261107-003**.
 
 ### SMP-20261107-001 — Navigation design and Operations tab order
 
@@ -202,4 +259,23 @@ Rollback: Do not promote until gates pass. Before an authorized production rollo
 - 2026-11-07T23:27:09.993710Z · **blocked** · Codex: Documentation validation passed remotely but Python regressions still failed. Added escaped GitHub failure annotations while preserving failing exit status to diagnose the remaining runner difference. Local 172-test run passes; hosted failure remains unresolved. No production changes or local documentation restoration. Reference: GitHub run 42425086050 and local CI reporter validation. Source: `9a9b271d3f05ae8f33192a95f770d64950e4779e`.
 - 2026-11-07T23:29:58.533447Z · **blocked** · Codex: Hosted annotations identified two failures in the inherited DST test: current Edmonton timezone data no longer repeats the hour on 2026-11-01. Reproduced with tzdata 2026.6; replaced future-rule assumptions with genuine 2025 gap/fold fixtures, preserving both ValueError assertions. CI explicitly uses the declared tzdata package. All 172 local tests now pass with CI-equivalent data and PostgreSQL 16. Awaiting hosted verification; production/UAT gates remain blocked. Reference: GitHub run 42425306958 failure annotations and local latest-tzdata reproduction. Source: `cd16e8b2e2c89a7a6ebc6e7175171023c6404962`.
 - 2026-11-07T23:31:24.999940Z · **blocked** · Codex: Verified successful hosted workflow after the historical DST fixture correction, declared tzdata selection, PostgreSQL 16 backup-tool pin and visible test annotations. Automated CI is passing. Hosted application UAT, live security/data/provider checks and explicit user production approval remain outstanding; production stays unchanged. Reference: https://github.com/NZaidiSyed/smp-afterschool-management/actions/runs/42425508134. Source: `cd16e8b2e2c89a7a6ebc6e7175171023c6404962`.
+
+### SMP-20261107-003 — Admin sign-in history and pre-rollout security review
+
+State: **blocked** · Candidate: `1d5404e1e35b6e3cba8633e0e987ec324cfb574a`
+
+Add branch-scoped Admin/Owner sign-in history with durable verified-session records and private paginated UI; require provider-confirmed account emails, reject editable-metadata identity fallback, and restrict iframe messages to the expected origin/window. Review performance/security/branch rollout priorities. No production deployment or live data migration.
+
+Rollback: Before any approved production deployment back up and verify the existing database, review new auth_sign_ins table/role privileges and confirmed-email memberships, and retain the prior application version. The schema addition does not rewrite students/payments/branch IDs. Keep audit records on rollback; do not restore stale backups over newer writes.
+
+- Check `automated_tests`: **pending** — Candidate freeze and full final CI validation pending. Local targeted authentication-history tests pass.
+- Check `browser`: **pending** — Local synthetic Admin history, role hiding, XSS, account reset, mobile layout and scheduling checks passed; final candidate evidence to be recorded.
+- Check `hosted_uat`: **pending** — Hosted Render TEST/Supabase TEST and real-provider sign-in remain unavailable without connected management credentials.
+- Check `target_identity`: **pending** — Live production service/database/branch identities have not been verified.
+- Check `data_protection`: **pending** — New audit schema is additive and tests use only synthetic data. Live backup/restore proof and RLS/backend-role review are required before promotion.
+- Check `security_review`: **blocked** — The staged changes fix metadata-identity and iframe-origin findings. Legacy endpoint/session audit, immutable user-ID membership grants, server-enforced admin MFA and live least-privilege/storage review remain outstanding.
+- Check `release_controls`: **blocked** — Release record updated without recreating user-removed local documents. Protected main, independent owner UAT review and controlled Render deployment remain unverified.
+
+- 2026-11-08T00:48:20.598495Z · **planned** · Codex: Registered the sign-in history feature and focused security fixes as a separate release. This implementation request is not UAT approval for production. Reference: Current user request: professional performance/security/branch rollout review and Admin login IDs/times tab. Source: `1d5404e1e35b6e3cba8633e0e987ec324cfb574a`.
+- 2026-11-08T00:48:20.598495Z · **blocked** · Codex: Implemented verified sign-in history, Admin/Owner permission, session refresh/concurrency deduplication, secret-free records and UTC timestamps. Public browsing/provider attempts and real hosted UAT remain distinct. Production promotion is blocked pending full candidate evidence and external gates. Reference: Local synthetic HTTP/SQLite/PostgreSQL/browser validation and source review. Source: `1d5404e1e35b6e3cba8633e0e987ec324cfb574a`.
 <!-- RELEASE_HISTORY:END -->

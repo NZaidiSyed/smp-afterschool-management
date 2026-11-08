@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "active_release_id": "SMP-20261107-002",
+  "active_release_id": "SMP-20261107-003",
   "releases": [
     {
       "id": "SMP-20261107-001",
@@ -115,6 +115,62 @@
           "summary": "Verified successful hosted workflow after the historical DST fixture correction, declared tzdata selection, PostgreSQL 16 backup-tool pin and visible test annotations. Automated CI is passing. Hosted application UAT, live security/data/provider checks and explicit user production approval remain outstanding; production stays unchanged.",
           "recorded_at": "2026-11-07T23:31:24.999940Z",
           "candidate_sha": "cd16e8b2e2c89a7a6ebc6e7175171023c6404962"
+        }
+      ]
+    },
+    {
+      "id": "SMP-20261107-003",
+      "title": "Admin sign-in history and pre-rollout security review",
+      "candidate_sha": "1d5404e1e35b6e3cba8633e0e987ec324cfb574a",
+      "scope": "Add branch-scoped Admin/Owner sign-in history with durable verified-session records and private paginated UI; require provider-confirmed account emails, reject editable-metadata identity fallback, and restrict iframe messages to the expected origin/window. Review performance/security/branch rollout priorities. No production deployment or live data migration.",
+      "state": "blocked",
+      "rollback_plan": "Before any approved production deployment back up and verify the existing database, review new auth_sign_ins table/role privileges and confirmed-email memberships, and retain the prior application version. The schema addition does not rewrite students/payments/branch IDs. Keep audit records on rollback; do not restore stale backups over newer writes.",
+      "checks": {
+        "automated_tests": {
+          "status": "pending",
+          "evidence": "Candidate freeze and full final CI validation pending. Local targeted authentication-history tests pass."
+        },
+        "browser": {
+          "status": "pending",
+          "evidence": "Local synthetic Admin history, role hiding, XSS, account reset, mobile layout and scheduling checks passed; final candidate evidence to be recorded."
+        },
+        "hosted_uat": {
+          "status": "pending",
+          "evidence": "Hosted Render TEST/Supabase TEST and real-provider sign-in remain unavailable without connected management credentials."
+        },
+        "target_identity": {
+          "status": "pending",
+          "evidence": "Live production service/database/branch identities have not been verified."
+        },
+        "data_protection": {
+          "status": "pending",
+          "evidence": "New audit schema is additive and tests use only synthetic data. Live backup/restore proof and RLS/backend-role review are required before promotion."
+        },
+        "security_review": {
+          "status": "blocked",
+          "evidence": "The staged changes fix metadata-identity and iframe-origin findings. Legacy endpoint/session audit, immutable user-ID membership grants, server-enforced admin MFA and live least-privilege/storage review remain outstanding."
+        },
+        "release_controls": {
+          "status": "blocked",
+          "evidence": "Release record updated without recreating user-removed local documents. Protected main, independent owner UAT review and controlled Render deployment remain unverified."
+        }
+      },
+      "events": [
+        {
+          "state": "planned",
+          "candidate_sha": "1d5404e1e35b6e3cba8633e0e987ec324cfb574a",
+          "actor": "Codex",
+          "recorded_at": "2026-11-08T00:48:20.598495Z",
+          "reference": "Current user request: professional performance/security/branch rollout review and Admin login IDs/times tab",
+          "summary": "Registered the sign-in history feature and focused security fixes as a separate release. This implementation request is not UAT approval for production."
+        },
+        {
+          "state": "blocked",
+          "candidate_sha": "1d5404e1e35b6e3cba8633e0e987ec324cfb574a",
+          "actor": "Codex",
+          "recorded_at": "2026-11-08T00:48:20.598495Z",
+          "reference": "Local synthetic HTTP/SQLite/PostgreSQL/browser validation and source review",
+          "summary": "Implemented verified sign-in history, Admin/Owner permission, session refresh/concurrency deduplication, secret-free records and UTC timestamps. Public browsing/provider attempts and real hosted UAT remain distinct. Production promotion is blocked pending full candidate evidence and external gates."
         }
       ]
     }
