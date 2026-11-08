@@ -262,14 +262,14 @@ Rollback: Do not promote until gates pass. Before an authorized production rollo
 
 ### SMP-20261107-003 — Admin sign-in history and pre-rollout security review
 
-State: **blocked** · Candidate: `1d5404e1e35b6e3cba8633e0e987ec324cfb574a`
+State: **blocked** · Candidate: `ae62449ae72225bc388936d9da7e9abaecc3cb86`
 
 Add branch-scoped Admin/Owner sign-in history with durable verified-session records and private paginated UI; require provider-confirmed account emails, reject editable-metadata identity fallback, and restrict iframe messages to the expected origin/window. Review performance/security/branch rollout priorities. No production deployment or live data migration.
 
 Rollback: Before any approved production deployment back up and verify the existing database, review new auth_sign_ins table/role privileges and confirmed-email memberships, and retain the prior application version. The schema addition does not rewrite students/payments/branch IDs. Keep audit records on rollback; do not restore stale backups over newer writes.
 
-- Check `automated_tests`: **pending** — Candidate freeze and full final CI validation pending. Local targeted authentication-history tests pass.
-- Check `browser`: **pending** — Local synthetic Admin history, role hiding, XSS, account reset, mobile layout and scheduling checks passed; final candidate evidence to be recorded.
+- Check `automated_tests`: **pending** — All 191 local Python tests pass without skips against disposable PostgreSQL 17 and packaged tzdata; 22 JavaScript scenarios pass. Includes successful/failed PIN/password, provider-confirmed identity, refresh and concurrent-session deduplication, branch scope, RLS denial and audit-storage failure checks. Log SHA256 37a79ea85d711affd3947989ee36380cb446fde58e3e58db40556c4972f67754. Awaiting hosted CI.
+- Check `browser`: **passed** — Synthetic Chromium scheduling and Admin sign-in history checks pass: real synthetic events, branch code, timezone display, refresh, inert HTML, mobile fit, account-change clearing and ordinary-role hiding. No browser exceptions; no real Supabase login was exercised.
 - Check `hosted_uat`: **pending** — Hosted Render TEST/Supabase TEST and real-provider sign-in remain unavailable without connected management credentials.
 - Check `target_identity`: **pending** — Live production service/database/branch identities have not been verified.
 - Check `data_protection`: **pending** — New audit schema is additive and tests use only synthetic data. Live backup/restore proof and RLS/backend-role review are required before promotion.
@@ -278,4 +278,5 @@ Rollback: Before any approved production deployment back up and verify the exist
 
 - 2026-11-08T00:48:20.598495Z · **planned** · Codex: Registered the sign-in history feature and focused security fixes as a separate release. This implementation request is not UAT approval for production. Reference: Current user request: professional performance/security/branch rollout review and Admin login IDs/times tab. Source: `1d5404e1e35b6e3cba8633e0e987ec324cfb574a`.
 - 2026-11-08T00:48:20.598495Z · **blocked** · Codex: Implemented verified sign-in history, Admin/Owner permission, session refresh/concurrency deduplication, secret-free records and UTC timestamps. Public browsing/provider attempts and real hosted UAT remain distinct. Production promotion is blocked pending full candidate evidence and external gates. Reference: Local synthetic HTTP/SQLite/PostgreSQL/browser validation and source review. Source: `1d5404e1e35b6e3cba8633e0e987ec324cfb574a`.
+- 2026-11-08T00:50:26.467280Z · **blocked** · Codex: Frozen candidate passed 191 Python tests without skips, 22 JavaScript scenarios and both scheduling/history browser workflows. Review recommendations recorded in the master. Awaiting hosted CI and real hosted UAT/security/data checks; no production change and no UAT approval asserted. Local documentation remains removed at user request. Reference: Local scripts/check_test_environment.py --browser --port 8798; validation log SHA256 37a79ea85d711affd3947989ee36380cb446fde58e3e58db40556c4972f67754. Source: `ae62449ae72225bc388936d9da7e9abaecc3cb86`.
 <!-- RELEASE_HISTORY:END -->
