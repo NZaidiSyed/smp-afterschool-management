@@ -2318,3 +2318,12 @@ button.danger,
 
 .environment-banner{padding:12px 20px;background:#fff1b8;border-bottom:2px solid #d69b0c;color:#573800;text-align:center;font-size:14px;font-weight:800;letter-spacing:.04em}
 .environment-banner[hidden]{display:none}
+
+/* Private Admin sign-in history. */
+#tabLoginHistory[hidden],#loginHistoryMore[hidden]{display:none!important}
+.login-history-table{width:100%;min-width:760px;border-collapse:collapse}
+.login-history-table th,.login-history-table td{padding:14px 16px;text-align:left;border-bottom:1px solid #e2e8f0;vertical-align:top}
+.login-history-table th{background:#f4eef9;color:#633282;font-size:12px;letter-spacing:.03em}
+.login-history-table td:first-child{font-weight:650;overflow-wrap:anywhere;max-width:280px}
+.login-history-table time{white-space:nowrap}.login-history-caption{text-align:left;padding:12px 0;color:#526375}
+#loginHistoryStatus[data-error="true"]{color:#a32332}#loginHistoryZone{font-size:13px;color:#526375}

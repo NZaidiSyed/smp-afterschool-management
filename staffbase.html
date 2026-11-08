@@ -1090,11 +1090,12 @@ function saveCheckinLog() {
 // Notifies the parent window (index.html) whenever staffbase data changes,
 // so the Student-Administration shell can keep its staff views in sync.
 function notifyParent(key, data) {
-  try { window.parent.postMessage({ type: 'sb:dataChanged', key, data }, '*'); } catch (e) {}
+  try { window.parent.postMessage({ type: 'sb:dataChanged', key, data }, window.location.origin); } catch (e) {}
 }
 
 // Listen for settings pushes from the parent (school name, subjects, hours).
 window.addEventListener('message', (event) => {
+  if (event.origin !== window.location.origin || event.source !== window.parent) return;
   if (!event.data || event.data.type !== 'smp:settingsChanged') return;
   const d = event.data;
   let changed = false;
@@ -1466,7 +1467,7 @@ function doLogout() {
   $('login-screen').style.display = 'flex';
   $('ln-email').value = ''; $('ln-pass').value = '';
   $('ln-sel').value = ''; onEmpSelect();
-  window.parent.postMessage({ type: 'logout' }, '*');
+  window.parent.postMessage({ type: 'logout' }, window.location.origin);
 }
 
 function toggleMyPin(btn) {

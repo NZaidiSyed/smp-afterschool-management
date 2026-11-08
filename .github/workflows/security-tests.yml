@@ -75,3 +75,4 @@ jobs:
         run: python scripts/run_ci_tests.py
       - run: node scripts/test_service_worker.cjs
       - run: node scripts/test_camera_scanner.cjs
+      - run: node scripts/test_trusted_messages.cjs

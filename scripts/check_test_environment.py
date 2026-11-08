@@ -44,7 +44,7 @@ def main():
                    cwd=root, env=env, check=True)
     env['SMP_BRANCH_CODE'] = 'CA-YYC-KMN-0001'
     subprocess.run([str(python), '-m', 'unittest', 'discover', '-v'], cwd=root, env=env, check=True)
-    for script in ('test_service_worker.cjs','test_camera_scanner.cjs'):
+    for script in ('test_service_worker.cjs','test_camera_scanner.cjs','test_trusted_messages.cjs'):
         subprocess.run(['node', str(root/'scripts'/script)], cwd=root, env=env, check=True)
     if args.browser:
         base = f'http://127.0.0.1:{args.port}'
@@ -78,6 +78,8 @@ def main():
                 if bootstrap.get('settings',{}).get('branch_code') != 'CA-YYC-KMN-0001' or not bootstrap.get('students'):
                     raise RuntimeError('Migrated branch identity and synthetic students did not survive startup')
                 subprocess.run(['node',str(root/'scripts/test_staff_scheduler_browser.cjs')],cwd=root,
+                               env=dict(env,SMP_SCHEDULER_TEST_URL=base),check=True)
+                subprocess.run(['node',str(root/'scripts/test_login_history_browser.cjs')],cwd=root,
                                env=dict(env,SMP_SCHEDULER_TEST_URL=base),check=True)
             finally:
                 process.terminate()

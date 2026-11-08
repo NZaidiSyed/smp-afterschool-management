@@ -26,7 +26,7 @@
       }
     }
   </script>
-  <link rel="stylesheet" href="styles.css?v=20261107-security-staging">
+  <link rel="stylesheet" href="styles.css?v=20261108-signins1">
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
@@ -139,12 +139,24 @@
       <div class="tab-group-buttons">
         <button class="tab" data-tab="batch">Batch Enrolment</button>
         <button class="tab" data-tab="settings">Settings</button>
+        <button class="tab" id="tabLoginHistory" data-tab="login-history" hidden>Sign-in History</button>
         <button class="tab" id="tabCentreSetup" data-tab="centre-setup">One-Time Centre Setup</button>
       </div>
     </div>
   </nav>
 
   <main>
+    <section id="login-history" class="panel">
+      <div class="section-title page-title"><div><h2>Sign-in History</h2><span>Verified access to this branch · Admin and Owner only</span></div><button type="button" id="loginHistoryRefresh">Refresh history</button></div>
+      <section class="surface">
+        <p id="loginHistoryScope">History is recorded from feature activation; earlier logins are not reconstructed.</p>
+        <p class="muted-note">Centre-account entries show the first time a session was verified by SMP. Staff entries show successful sign-ins. Failed provider sign-ins and current online status are not included.</p>
+        <p id="loginHistoryZone"></p>
+        <p id="loginHistoryStatus" role="status" aria-live="polite">Select Refresh history to load verified sign-ins.</p>
+        <div class="table-scroll"><table class="login-history-table"><caption class="login-history-caption">Recent verified sign-ins for this branch</caption><thead><tr><th scope="col">Login ID</th><th scope="col">Name</th><th scope="col">Role at sign-in</th><th scope="col">Sign-in type</th><th scope="col">Verified time</th><th scope="col">Event</th></tr></thead><tbody id="loginHistoryRows"></tbody></table></div>
+        <button type="button" id="loginHistoryMore" class="ghost" hidden>Load older records</button>
+      </section>
+    </section>
     <section id="attendance" class="panel">
       <div class="section-title page-title"><div><h2>Student Attendance</h2><span>Actual arrivals and departures · schedules remain in Student Presence</span></div><button type="button" id="attendanceRefresh">Refresh</button></div>
       <div id="attendanceConnection" role="status" class="attendance-connection">Open this tab to load attendance.</div>
@@ -867,9 +879,10 @@
   <div id="toast" role="status"></div>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="student-navigation.js?v=20261030-workspace1"></script>
-  <script src="app.js?v=20261107-security-staging"></script>
+  <script src="app.js?v=20261108-signins1"></script>
   <script src="vendor/zxing-library-0.21.3.min.js"></script>
   <script src="camera-scanner.js?v=20261029-camera1"></script>
   <script src="attendance-ui.js?v=20261029-camera1"></script>
+  <script src="login-history.js?v=20261108-signins1"></script>
 </body>
 </html>

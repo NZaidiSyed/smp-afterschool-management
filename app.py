@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import quote, unquote, urlparse, urlunparse, parse_qs
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
+import auth_audit
 from branch_security import LoginLimiter, isolated_branch, validate_branch_code, validate_production_config
 from attendance import Attendance, ensure_schema as ensure_attendance_schema
 from staff_scheduling import Scheduler, SchedulingError, ensure_schema as ensure_scheduler_schema
@@ -104,8 +105,8 @@ MONTHS = [
 BASE_MONTHS = MONTHS[:]
 ROLE_OPTIONS = ["Owner", "Admin", "Office Manager", "Office Assistant", "Staff"]
 ROLE_PERMISSIONS = {
-    "Owner": {"admin", "manage_students", "manage_payments", "manage_settings", "manage_users", "manage_staff", "delete_records"},
-    "Admin": {"admin", "manage_students", "manage_payments", "manage_settings", "manage_users", "manage_staff", "delete_records"},
+    "Owner": {"view_login_history", "admin", "manage_students", "manage_payments", "manage_settings", "manage_users", "manage_staff", "delete_records"},
+    "Admin": {"view_login_history", "admin", "manage_students", "manage_payments", "manage_settings", "manage_users", "manage_staff", "delete_records"},
     "Office Manager": {"manage_students", "manage_payments", "manage_staff"},
     "Office Assistant": {"manage_payments"},
     "Staff": set(),
@@ -1616,7 +1617,7 @@ def base64url_decode(payload_str: str) -> bytes:
         payload_str += '=' * (4 - rem)
     return base64.urlsafe_b64decode(payload_str.encode('utf-8'))
 
-def sign_jwt(payload: dict, expires_in: int = 28800) -> str:
+def sign_jwt(payload: dict, expires_in: int = 28800, method: str = "staff") -> str:
     import hmac
     import hashlib
     import json
@@ -1626,6 +1627,18 @@ def sign_jwt(payload: dict, expires_in: int = 28800) -> str:
     with db() as conn:
         payload["branch_id"] = str(current_branch_id(conn))
         payload["organization_id"] = str(current_org_id(conn) or "local")
+        member = execute(conn, "SELECT * FROM staff_members WHERE id=? AND branch_id=? AND active=?",
+                         (payload.get("staffId"), current_branch_id(conn), True)).fetchone()
+        if not member:
+            raise ValueError("Staff account is inactive or outside this branch")
+        member = rowdict(member)
+        from uuid import uuid4
+        payload["jti"] = str(uuid4())
+        auth_audit.record_verified(conn, scope=scheduler_scope(conn), subject_id=str(member["id"]),
+                                  login_id=member.get("email") or f"Staff {member['id']}",
+                                  display_name=member.get("staff_name") or "", role=member.get("role") or "staff",
+                                  method=method, session_reference=payload["jti"], event_kind="staff_sign_in", pg=PG_MODE)
+        conn.commit()
     payload["iss"] = "smp-staff"
     payload["aud"] = "smp-staff-api"
     payload["exp"] = int(time.time()) + expires_in
@@ -4224,7 +4237,7 @@ class Handler(SimpleHTTPRequestHandler):
             "index.html", "styles.css", "app.js", "attendance-ui.js", "camera-scanner.js",
             "student-navigation.js", "staff-scheduler.html", "staff-scheduler.css",
             "staff-scheduler.js", "staffbase.html", "manifest.json", "sw.js",
-            "vendor/zxing-library-0.21.3.min.js",
+            "vendor/zxing-library-0.21.3.min.js", "login-history.js",
         }
         target = (ROOT / name).resolve()
         if name not in root_assets or not target.is_relative_to(ROOT.resolve()) or not target.is_file():
@@ -4312,9 +4325,16 @@ class Handler(SimpleHTTPRequestHandler):
                     return False
                 payload = json.loads(response.read().decode("utf-8"))
                 metadata = payload.get("user_metadata") or {}
+                # User-editable profile metadata must never establish identity
+                # for email-based application permissions or the audit trail.
+                verified_email = payload.get("email")
+                if (not payload.get("id") or not isinstance(verified_email, str) or not verified_email.strip()
+                        or not payload.get("email_confirmed_at")):
+                    self.send_json({"ok": False, "error": "A verified centre-account email is required."}, 403)
+                    return False
                 self.auth_user = {
-                    "id": payload.get("id") or payload.get("sub"),
-                    "email": str(payload.get("email") or metadata.get("email") or "").lower(),
+                    "id": payload["id"],
+                    "email": verified_email.strip().lower(),
                     "name": metadata.get("full_name") or metadata.get("name") or payload.get("email") or "",
                 }
                 with db() as conn:
@@ -4323,11 +4343,28 @@ class Handler(SimpleHTTPRequestHandler):
                     if not access:
                         self.send_json({"ok": False, "error": "Your email is not authorized for this centre. Ask the Admin to add your user access in Settings."}, 403)
                         return False
+                    try:
+                        session_reference, event_kind = auth_audit.verified_session_reference(token, self.auth_user["id"])
+                        auth_audit.record_verified(conn, scope=scheduler_scope(conn), subject_id=self.auth_user["id"],
+                                                  login_id=self.auth_user["email"], display_name=self.auth_user["name"],
+                                                  role=access["role"], method="supabase", session_reference=session_reference,
+                                                  event_kind=event_kind, pg=PG_MODE)
+                        conn.commit()
+                    except Exception:
+                        self.send_json({"ok": False, "error": "Sign-in history is unavailable; please retry."}, 503)
+                        return False
                     self.auth_access = access
                 return True
         except Exception:
             self.send_json({"ok": False, "error": "Login session could not be verified"}, 401)
             return False
+
+    def issue_staff_token(self, member, method):
+        try:
+            return sign_jwt({"staffId": member["id"]}, method=method)
+        except Exception:
+            self.send_json({"ok": False, "error": "Sign-in could not be recorded; please retry."}, 503)
+            return None
 
     def require_permission(self, permission, send_error=True):
         role = normalize_role((self.auth_access or {}).get("role"))
@@ -4858,6 +4895,23 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if parsed.path.startswith("/api/") and not self.require_auth():
             return
+        if parsed.path == "/api/auth/history":
+            if not self.require_permission("view_login_history"):
+                return
+            try:
+                arguments = parse_qs(parsed.query)
+                limit = int(arguments.get("limit", ["50"])[0])
+                with db() as conn:
+                    result = auth_audit.page(conn, scheduler_scope(conn), limit=limit,
+                                             cursor=arguments.get("cursor", [None])[0], pg=PG_MODE)
+                    branch = isolated_branch(conn, PG_MODE, SMP_BRANCH_CODE or None, SMP_ORGANIZATION_ID or None)
+                    result["branch_code"] = branch["code"] or "Unassigned"
+                self.send_json(result)
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, 400)
+            except Exception:
+                self.send_json({"ok": False, "error": "Sign-in history could not be loaded."}, 503)
+            return
         if parsed.path == "/api/bootstrap":
             if not self.require_permission("manage_students", send_error=False) and not self.require_permission("manage_payments"):
                 return
@@ -5188,7 +5242,9 @@ class Handler(SimpleHTTPRequestHandler):
                     return True
                 
                 # Sign JWT token
-                token = sign_jwt({"staffId": d["id"]})
+                token = self.issue_staff_token(d, "staff_pin")
+                if token is None:
+                    return True
                 self.send_json({
                     "token": token,
                     "id": d["id"],
@@ -5224,7 +5280,9 @@ class Handler(SimpleHTTPRequestHandler):
                 if not verify_staff_pin(pin, d.get("pin"), d.get("pin_hash")):
                     self.send_json({"error": "Incorrect PIN"}, 401)
                     return True
-                token = sign_jwt({"staffId": d["id"]})
+                token = self.issue_staff_token(d, "staff_pin")
+                if token is None:
+                    return True
                 self.send_json({"ok": True, "token": token, "user": desktop_staff_row(row)})
             return True
 
@@ -5253,7 +5311,9 @@ class Handler(SimpleHTTPRequestHandler):
                     self.send_json({"error": "Invalid credentials"}, 401)
                     return True
                 
-                token = sign_jwt({"staffId": d["id"]})
+                token = self.issue_staff_token(d, "staff_password")
+                if token is None:
+                    return True
                 self.send_json({"ok": True, "token": token, "user": desktop_staff_row(row)})
             return True
 
@@ -7590,6 +7650,7 @@ if __name__ == "__main__":
             ensure_staff_tables(conn)
         ensure_meta_defaults()
     with db() as conn:
+        auth_audit.ensure_schema(conn, PG_MODE)
         ensure_attendance_schema(conn, PG_MODE)
         if scheduling_enabled():
             ensure_scheduler_schema(conn, PG_MODE)

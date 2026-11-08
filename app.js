@@ -243,6 +243,7 @@ function paymentMethodLabel(value) {
 }
 
 function renderAuthState() {
+  document.dispatchEvent(new Event("smp:auth-changed"));
   const authRequired = Boolean(appConfig.auth_required);
   const signedIn = Boolean(authSession);
   const authPanel = qs("#authPanel");
@@ -440,6 +441,8 @@ function applyRoleTabVisibility() {
   const batchTab = document.querySelector('.tab[data-tab="batch"]');
   if (batchTab) batchTab.style.display = isStaff ? "none" : "inline-flex";
 
+  const loginHistoryTab = document.querySelector('#tabLoginHistory');
+  if (loginHistoryTab) loginHistoryTab.hidden = !["admin", "owner"].includes(role);
   const settingsTab = document.querySelector('.tab[data-tab="settings"]');
   if (settingsTab) settingsTab.style.display = isStaff ? "none" : "inline-flex";
 
@@ -456,7 +459,7 @@ function applyRoleTabVisibility() {
 
   // Redirect if currently on a hidden tab
   const activeTab = document.querySelector('.tab.active');
-  if (activeTab && activeTab.style.display === "none") {
+  if (activeTab && (activeTab.hidden || activeTab.style.display === "none")) {
     document.querySelectorAll(".tab, .panel").forEach((node) => node.classList.remove("active"));
     const dashTab = document.querySelector('.tab[data-tab="dashboard"]');
     if (dashTab) dashTab.classList.add("active");
@@ -4455,10 +4458,12 @@ function pushSettingsToStaffbase() {
     operating_end: state.settings?.operating_end || '20:00',
     support_email: state.settings?.support_email || 'support@smp.edu',
     el_students: elStudents,
-  }, '*');
+  }, window.location.origin);
 }
 
 window.addEventListener("message", (event) => {
+  const frame = document.getElementById('staffbaseFrame');
+  if (event.origin !== window.location.origin || !frame || event.source !== frame.contentWindow) return;
   if (event.data?.type === "logout") {
     signOut();
     return;

@@ -57,6 +57,43 @@ class BranchPostgresTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             isolated_branch(self.conn,True)
 
+    def test_auth_history_is_scoped_deduplicated_and_paginated(self):
+        import auth_audit
+        auth_audit.ensure_schema(self.conn,True)
+        for scope,reference in [('org:branch','one'),('org:branch','one'),('org:branch','two'),('other:branch','private')]:
+            auth_audit.record_verified(self.conn,scope=scope,subject_id='synthetic',login_id='synthetic@example.invalid',
+                                      display_name='Synthetic user',role='Admin',method='supabase',
+                                      session_reference=reference,pg=True)
+        first=auth_audit.page(self.conn,'org:branch',limit=1,pg=True)
+        second=auth_audit.page(self.conn,'org:branch',limit=1,cursor=first['next_cursor'],pg=True)
+        self.assertEqual(len(first['records'])+len(second['records']),2)
+        self.assertNotEqual(first['records'][0]['id'],second['records'][0]['id'])
+        self.assertIsNone(second['next_cursor'])
+        auth_audit.ensure_schema(self.conn,True)
+        self.assertEqual(len(auth_audit.page(self.conn,'org:branch',pg=True)['records']),2)
+
+    def test_auth_history_rls_denies_direct_unprivileged_clients(self):
+        import auth_audit
+        import psycopg
+        auth_audit.ensure_schema(self.conn,True)
+        auth_audit.record_verified(self.conn,scope='org:branch',subject_id='synthetic',login_id='synthetic@example.invalid',
+                                  display_name='Synthetic user',role='Admin',method='supabase',session_reference='one',pg=True)
+        role='smp_audit_reader_'+uuid4().hex
+        self.admin.execute(self.sql.SQL('CREATE ROLE {}').format(self.sql.Identifier(role)))
+        def cleanup():
+            self.conn.execute(self.sql.SQL('REVOKE ALL ON auth_sign_ins FROM {}').format(self.sql.Identifier(role)))
+            self.admin.execute(self.sql.SQL('DROP ROLE {}').format(self.sql.Identifier(role)))
+        self.addCleanup(cleanup)
+        self.conn.execute(self.sql.SQL('GRANT SELECT,INSERT ON auth_sign_ins TO {}').format(self.sql.Identifier(role)))
+        with self.conn.transaction():
+            self.conn.execute(self.sql.SQL('SET LOCAL ROLE {}').format(self.sql.Identifier(role)))
+            self.assertEqual(self.conn.execute('SELECT * FROM auth_sign_ins').fetchall(),[])
+        with self.assertRaises(psycopg.errors.InsufficientPrivilege):
+            with self.conn.transaction():
+                self.conn.execute(self.sql.SQL('SET LOCAL ROLE {}').format(self.sql.Identifier(role)))
+                auth_audit.record_verified(self.conn,scope='org:branch',subject_id='forged',login_id='forged@example.invalid',
+                                          display_name='Untrusted',role='Owner',method='supabase',session_reference='forged',pg=True)
+
     @unittest.skipUnless(shutil.which('pg_dump') and shutil.which('pg_restore'), 'PostgreSQL backup tools unavailable')
     def test_postgres_cli_backup_can_be_restored(self):
         import psycopg

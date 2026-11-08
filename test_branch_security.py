@@ -38,6 +38,7 @@ def fixture(path):
         INSERT INTO staff_members VALUES(8,42,1);
         CREATE TABLE users(id INTEGER, email TEXT, display_name TEXT, role TEXT, active INTEGER);
     ''')
+    app.auth_audit.ensure_schema(conn)
     conn.commit()
     return conn
 
