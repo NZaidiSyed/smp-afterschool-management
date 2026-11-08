@@ -127,9 +127,9 @@
       "rollback_plan": "Before any approved production deployment back up and verify the existing database, review new auth_sign_ins table/role privileges and confirmed-email memberships, and retain the prior application version. The schema addition does not rewrite students/payments/branch IDs. Keep audit records on rollback; do not restore stale backups over newer writes.",
       "checks": {
         "automated_tests": {
-          "status": "pending",
+          "status": "passed",
           "candidate_sha": "ae62449ae72225bc388936d9da7e9abaecc3cb86",
-          "evidence": "All 191 local Python tests pass without skips against disposable PostgreSQL 17 and packaged tzdata; 22 JavaScript scenarios pass. Includes successful/failed PIN/password, provider-confirmed identity, refresh and concurrent-session deduplication, branch scope, RLS denial and audit-storage failure checks. Log SHA256 37a79ea85d711affd3947989ee36380cb446fde58e3e58db40556c4972f67754. Awaiting hosted CI."
+          "evidence": "GitHub Actions https://github.com/NZaidiSyed/smp-afterschool-management/actions/runs/42431592564 completed successfully for commit d18b52d, whose code matches this candidate. Local validation passed 191 Python tests without skips, 22 JavaScript scenarios and both scheduling/sign-in-history browser workflows. Supabase authentication tests use a stub provider, not a real hosted account."
         },
         "browser": {
           "status": "passed",
@@ -181,6 +181,14 @@
           "summary": "Frozen candidate passed 191 Python tests without skips, 22 JavaScript scenarios and both scheduling/history browser workflows. Review recommendations recorded in the master. Awaiting hosted CI and real hosted UAT/security/data checks; no production change and no UAT approval asserted. Local documentation remains removed at user request.",
           "candidate_sha": "ae62449ae72225bc388936d9da7e9abaecc3cb86",
           "recorded_at": "2026-11-08T00:50:26.467280Z"
+        },
+        {
+          "state": "blocked",
+          "actor": "Codex",
+          "candidate_sha": "ae62449ae72225bc388936d9da7e9abaecc3cb86",
+          "recorded_at": "2026-11-08T00:52:40.686679Z",
+          "reference": "https://github.com/NZaidiSyed/smp-afterschool-management/actions/runs/42431592564",
+          "summary": "Verified successful hosted regression/documentation workflow for Admin sign-in history and focused identity/message security fixes. Full review and prioritized recommendations are recorded in the master. Local documentation remains removed. Hosted app UAT, production data/security checks and explicit user approval are still required; production remains unchanged."
         }
       ]
     }
