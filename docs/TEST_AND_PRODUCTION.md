@@ -72,6 +72,12 @@ suites. A workflow definition is not a successful CI run; check actual results.
 
 ## Hosted test setup
 
+Use [the guarded hosted TEST procedure](HOSTED_TEST_SETUP.md) for exact commands
+and environment settings. The historical starter SQL alone does not satisfy the
+current branch/startup requirements. The preparation script refuses existing
+databases and requires a confirmed TEST provider account before creating the
+synthetic organization and matching Admin membership.
+
 1. Provision a separate Supabase TEST project with its own database, users,
    storage, and authentication redirect URLs. Disable outgoing live notifications.
 2. Prepare its schema and a single synthetic organization/branch through a

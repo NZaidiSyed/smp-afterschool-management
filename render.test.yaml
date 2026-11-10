@@ -11,10 +11,14 @@ services:
     startCommand: python app.py
     healthCheckPath: /api/healthz
     envVars:
+      - key: PYTHON_VERSION
+        value: '3.12.14'
       - key: SMP_ENV
         value: staging
       - key: SMP_DATA_DIR
         value: /tmp/smp-test
+      - key: SMP_BACKUP_DIR
+        value: /tmp/smp-test/backups
       - key: SMP_BRANCH_CODE
         value: CA-YYC-KMN-0001
       - key: SUPABASE_REQUIRE_AUTH

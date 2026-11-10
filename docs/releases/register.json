@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "active_release_id": "SMP-20261107-003",
+  "active_release_id": "SMP-20261109-004",
   "releases": [
     {
       "id": "SMP-20261107-001",
@@ -189,6 +189,50 @@
           "recorded_at": "2026-11-08T00:52:40.686679Z",
           "reference": "https://github.com/NZaidiSyed/smp-afterschool-management/actions/runs/42431592564",
           "summary": "Verified successful hosted regression/documentation workflow for Admin sign-in history and focused identity/message security fixes. Full review and prioritized recommendations are recorded in the master. Local documentation remains removed. Hosted app UAT, production data/security checks and explicit user approval are still required; production remains unchanged."
+        }
+      ]
+    },
+    {
+      "id": "SMP-20261109-004",
+      "title": "Isolated hosted TEST database preparation and UAT setup",
+      "candidate_sha": "75289fe88c8445682f860dd1b4046920e410fd09",
+      "scope": "Prepare a guarded empty-project PostgreSQL bootstrap, synthetic TEST identity and access provisioning, Render TEST instructions and validation. No production deployment, migration or UAT approval.",
+      "state": "planned",
+      "rollback_plan": "Stop only the new TEST service; retain synthetic evidence and backups. Never modify existing projects or production resources. Discard an explicitly verified new TEST database only with operator authorization.",
+      "checks": {
+        "automated_tests": {
+          "status": "pending",
+          "evidence": "New TEST preparation scope registered; validation has not yet run."
+        },
+        "hosted_uat": {
+          "status": "pending",
+          "evidence": "New TEST preparation scope registered; validation has not yet run."
+        },
+        "target_identity": {
+          "status": "pending",
+          "evidence": "New TEST preparation scope registered; validation has not yet run."
+        },
+        "data_protection": {
+          "status": "pending",
+          "evidence": "New TEST preparation scope registered; validation has not yet run."
+        },
+        "security_review": {
+          "status": "pending",
+          "evidence": "New TEST preparation scope registered; validation has not yet run."
+        },
+        "release_controls": {
+          "status": "pending",
+          "evidence": "New TEST preparation scope registered; validation has not yet run."
+        }
+      },
+      "events": [
+        {
+          "state": "planned",
+          "candidate_sha": "75289fe88c8445682f860dd1b4046920e410fd09",
+          "actor": "Codex",
+          "reference": "User request in this chat to complete Render and database TEST/UAT setup; production approval explicitly withheld.",
+          "summary": "Registered TEST preparation before implementation. Hosted management bindings are absent; independent local preparation proceeds.",
+          "recorded_at": "2026-11-10T01:10:23.543147Z"
         }
       ]
     }

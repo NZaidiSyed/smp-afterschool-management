@@ -43,6 +43,12 @@ own workspace tabs. Existing role permissions still determine visible features.
 The release register and generated history below track subsequent changes; the
 source revisions above are historical baselines, not a moving production claim.
 
+Hosted TEST preparation now has a guarded empty-database bootstrap and an
+operator guide at `docs/HOSTED_TEST_SETUP.md`. Local PostgreSQL schema/startup,
+synthetic API, browser-role denial and rollback checks have been exercised.
+No hosted TEST resource or real-provider UAT is claimed; management access and a
+tester-controlled administrator email remain prerequisites in this workspace.
+
 ## Architecture and code map
 
 | Area | Source / guide |
@@ -59,6 +65,7 @@ source revisions above are historical baselines, not a moving production claim.
 | Initial Supabase schema | `supabase/schema.sql`; not proof of applied live schema/policies |
 | Hosting definitions | `render.yaml`, `render.test.yaml`, `Dockerfile`, `Procfile` |
 | Synthetic setup and checks | `run_attendance_uat.py`, `run_staff_scheduling_uat.py`, `scripts/check_test_environment.py` |
+| Empty hosted TEST database preparation | `scripts/prepare_hosted_test.py`, `docs/HOSTED_TEST_SETUP.md` |
 | Release process and history | `docs/RELEASE_POLICY.md`, `docs/releases/register.json`, `scripts/release_guard.py` |
 
 Python 3.12 and Node 24 are the exercised development tools. Dependencies are in
@@ -224,7 +231,7 @@ This section is generated from `docs/releases/register.json`. Append events with
 `scripts/release_guard.py record`; do not edit historical approvals or outcomes.
 
 <!-- RELEASE_HISTORY:START -->
-Active release: **SMP-20261107-003**.
+Active release: **SMP-20261109-004**.
 
 ### SMP-20261107-001 — Navigation design and Operations tab order
 
@@ -280,4 +287,21 @@ Rollback: Before any approved production deployment back up and verify the exist
 - 2026-11-08T00:48:20.598495Z · **blocked** · Codex: Implemented verified sign-in history, Admin/Owner permission, session refresh/concurrency deduplication, secret-free records and UTC timestamps. Public browsing/provider attempts and real hosted UAT remain distinct. Production promotion is blocked pending full candidate evidence and external gates. Reference: Local synthetic HTTP/SQLite/PostgreSQL/browser validation and source review. Source: `1d5404e1e35b6e3cba8633e0e987ec324cfb574a`.
 - 2026-11-08T00:50:26.467280Z · **blocked** · Codex: Frozen candidate passed 191 Python tests without skips, 22 JavaScript scenarios and both scheduling/history browser workflows. Review recommendations recorded in the master. Awaiting hosted CI and real hosted UAT/security/data checks; no production change and no UAT approval asserted. Local documentation remains removed at user request. Reference: Local scripts/check_test_environment.py --browser --port 8798; validation log SHA256 37a79ea85d711affd3947989ee36380cb446fde58e3e58db40556c4972f67754. Source: `ae62449ae72225bc388936d9da7e9abaecc3cb86`.
 - 2026-11-08T00:52:40.686679Z · **blocked** · Codex: Verified successful hosted regression/documentation workflow for Admin sign-in history and focused identity/message security fixes. Full review and prioritized recommendations are recorded in the master. Local documentation remains removed. Hosted app UAT, production data/security checks and explicit user approval are still required; production remains unchanged. Reference: https://github.com/NZaidiSyed/smp-afterschool-management/actions/runs/42431592564. Source: `ae62449ae72225bc388936d9da7e9abaecc3cb86`.
+
+### SMP-20261109-004 — Isolated hosted TEST database preparation and UAT setup
+
+State: **planned** · Candidate: `75289fe88c8445682f860dd1b4046920e410fd09`
+
+Prepare a guarded empty-project PostgreSQL bootstrap, synthetic TEST identity and access provisioning, Render TEST instructions and validation. No production deployment, migration or UAT approval.
+
+Rollback: Stop only the new TEST service; retain synthetic evidence and backups. Never modify existing projects or production resources. Discard an explicitly verified new TEST database only with operator authorization.
+
+- Check `automated_tests`: **pending** — New TEST preparation scope registered; validation has not yet run.
+- Check `hosted_uat`: **pending** — New TEST preparation scope registered; validation has not yet run.
+- Check `target_identity`: **pending** — New TEST preparation scope registered; validation has not yet run.
+- Check `data_protection`: **pending** — New TEST preparation scope registered; validation has not yet run.
+- Check `security_review`: **pending** — New TEST preparation scope registered; validation has not yet run.
+- Check `release_controls`: **pending** — New TEST preparation scope registered; validation has not yet run.
+
+- 2026-11-10T01:10:23.543147Z · **planned** · Codex: Registered TEST preparation before implementation. Hosted management bindings are absent; independent local preparation proceeds. Reference: User request in this chat to complete Render and database TEST/UAT setup; production approval explicitly withheld.. Source: `75289fe88c8445682f860dd1b4046920e410fd09`.
 <!-- RELEASE_HISTORY:END -->
