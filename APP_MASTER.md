@@ -290,18 +290,19 @@ Rollback: Before any approved production deployment back up and verify the exist
 
 ### SMP-20261109-004 — Isolated hosted TEST database preparation and UAT setup
 
-State: **planned** · Candidate: `75289fe88c8445682f860dd1b4046920e410fd09`
+State: **blocked** · Candidate: `ef04b06087d34c34299efd3db9446ea77926d08e`
 
 Prepare a guarded empty-project PostgreSQL bootstrap, synthetic TEST identity and access provisioning, Render TEST instructions and validation. No production deployment, migration or UAT approval.
 
 Rollback: Stop only the new TEST service; retain synthetic evidence and backups. Never modify existing projects or production resources. Discard an explicitly verified new TEST database only with operator authorization.
 
-- Check `automated_tests`: **pending** — New TEST preparation scope registered; validation has not yet run.
-- Check `hosted_uat`: **pending** — New TEST preparation scope registered; validation has not yet run.
-- Check `target_identity`: **pending** — New TEST preparation scope registered; validation has not yet run.
-- Check `data_protection`: **pending** — New TEST preparation scope registered; validation has not yet run.
-- Check `security_review`: **pending** — New TEST preparation scope registered; validation has not yet run.
-- Check `release_controls`: **pending** — New TEST preparation scope registered; validation has not yet run.
+- Check `automated_tests`: **passed** — Local PostgreSQL 17.11 validation passed all 199 Python tests without skips, including 8 TEST bootstrap checks. 22 JavaScript scenarios and scheduling/sign-in-history browser workflows passed. Evidence /workspace/.smp-test-evidence/SMP-20261109-004; final Python log SHA256 f396b5da7d71cb6940a5e5b41e434c3ccfa6ce02232f2892b5e1510a18e2240f. Provider authentication was stubbed; no hosted login claimed.
+- Check `hosted_uat`: **blocked** — No connected Render/Supabase management bindings or confirmed TEST administrator email. No hosted service/project or real-provider UAT was performed.
+- Check `target_identity`: **pending** — Supabase TEST and Render TEST identities must be discovered from authorized account metadata. Existing production resources were not accessed or changed.
+- Check `data_protection`: **pending** — Local PostgreSQL/SQLite migration and backup/restore regressions and atomic TEST rollback passed. Hosted TEST recovery and production backup/restore proof remain unrun.
+- Check `security_review`: **blocked** — Bootstrap enforces selected TEST endpoint, verify-full TLS, confirmed Auth identity, empty database, atomic schema, RLS and direct browser-role denial. Hosted MFA, runtime least privilege, legacy endpoints/session/XSS and private storage remain open.
+- Check `release_controls`: **blocked** — Local release record validates; no production UAT approval, verified provider protections or production action. TEST Blueprint pins Python 3.12.14 and keeps auto-deploy off.
 
 - 2026-11-10T01:10:23.543147Z · **planned** · Codex: Registered TEST preparation before implementation. Hosted management bindings are absent; independent local preparation proceeds. Reference: User request in this chat to complete Render and database TEST/UAT setup; production approval explicitly withheld.. Source: `75289fe88c8445682f860dd1b4046920e410fd09`.
+- 2026-11-10T01:17:53.498881Z · **blocked** · Codex: Implemented and locally tested the guarded hosted TEST bootstrap, synthetic database and access/rollback rehearsals, Python pin and operator guide. Hosted provisioning is blocked by absent management credentials and TEST administrator identity. Production remains unchanged and unapproved. Reference: Current user request to complete isolated Render/Supabase UAT setup; local test evidence retained outside checkout.. Source: `ef04b06087d34c34299efd3db9446ea77926d08e`.
 <!-- RELEASE_HISTORY:END -->
